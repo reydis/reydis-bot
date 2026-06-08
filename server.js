@@ -11,10 +11,15 @@ app.use((req, res, next) => {
 });
 
 function obtenerFechaRD() {
-    const fecha = new Date();
-    const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
-    const formateador = new Intl.DateTimeFormat('en-CA', opciones);
-    return formateador.format(fecha);
+    try {
+        const fecha = new Date();
+        const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
+        const formateador = new Intl.DateTimeFormat('en-CA', opciones);
+        return formateador.format(fecha);
+    } catch (error) {
+        console.error("⚠️ Error fatal al obtener la fecha:", error.message);
+        return "2026-06-08"; // Fecha de respaldo para hoy
+    }
 }
 
 let datosLoterias = {
@@ -28,7 +33,6 @@ let datosLoterias = {
     }
 };
 
-// Diccionario extendido y corregido para evitar fallos de lectura
 const mapeoFuentes = {
     'anguila mañana': 'anguila_m',
     'la primera': 'laprimera',
@@ -48,42 +52,46 @@ async function rasparLoteriasRD() {
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 10000 
+            timeout: 15000 
         });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
             
             $('.lottery-result-card').each((i, elemento) => {
-                const nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
-                
-                // 🛑 FILTRO DE SEGURIDAD CRÍTICO: Validamos que el nombre exista antes de procesarlo
-                if (nombreLoteriaWeb) {
-                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase();
-                    const codigoRadar = mapeoFuentes[nombreMinuscula];
+                try {
+                    const nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
                     
-                    // Si el código existe en nuestro radar, extraemos los bolos
-                    if (codigoRadar) {
-                        let numerosExtraidos = [];
-                        $(elemento).find('.ball').each((j, bola) => {
-                            const numero = parseInt($(bola).text().trim(), 10);
-                            if (!isNaN(numero)) numerosExtraidos.push(numero);
-                        });
+                    if (nombreLoteriaWeb) {
+                        const nombreMinuscula = nombreLoteriaWeb.toLowerCase();
+                        const codigoRadar = mapeoFuentes[nombreMinuscula];
+                        
+                        if (codigoRadar) {
+                            let numerosExtraidos = [];
+                            $(elemento).find('.ball').each((j, bola) => {
+                                const numeroRaw = $(bola).text().trim();
+                                if (numeroRaw) {
+                                    const numero = parseInt(numeroRaw, 10);
+                                    if (!isNaN(numero)) numerosExtraidos.push(numero);
+                                }
+                            });
 
-                        if (numerosExtraidos.length >= 3) {
-                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                            console.log(`✅ Indexado automático: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
+                            if (numerosExtraidos.length >= 3) {
+                                datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                                console.log(`✅ Indexado automático: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
+                            }
                         }
                     }
+                } catch (errorElemento) {
+                    console.error("⚠️ Error procesando una tómbola específica:", errorElemento.message);
                 }
             });
         }
     } catch (error) {
-        console.log("⚠️ Error en el rastreo automático de red:", error.message);
+        console.error("⚠️ Error crítico en el rastreo automático de red:", error.message);
     }
 }
 
-// Escaneo continuo en red cada 3 minutos
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', (req, res) => {
@@ -91,7 +99,7 @@ app.get('/api/radar', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Bot Automatizado en línea. Operaciones de hoy: ${obtenerFechaRD()}`);
+    res.send(`🤖 Reydis Bot Automatizado Blindado en línea. Operaciones de hoy: ${obtenerFechaRD()}`);
 });
 
 app.listen(PORT, () => {
