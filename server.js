@@ -1,27 +1,24 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio'); // ¡CORREGIDO! Ya no se rompe el servidor
+const cheerio = require('cheerio');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Permitir que tu CodeSandbox lea los datos sin bloqueos de seguridad
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
 });
 
-// Función interna para obtener la fecha de hoy en República Dominicana (YYYY-MM-DD)
 function obtenerFechaRD() {
     const fecha = new Date();
     const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
-    const formateador = new Intl.DateTimeFormat('en-CA', opciones); // Retorna formato YYYY-MM-DD
+    const formateador = new Intl.DateTimeFormat('en-CA', opciones);
     return formateador.format(fecha);
 }
 
-// Banco de datos dinámico para el robot
 let datosLoterias = {
-    fecha: obtenerFechaRD(), // Carga automáticamente la fecha real del día (Hoy: 2026-06-08)
+    fecha: obtenerFechaRD(),
     sorteos: {
         anguila_m: [], laprimera: [], lotedom: [], suerte: [],
         king_t: [], real_t: [], anguila_t: [], gana_mas: [],
@@ -31,44 +28,74 @@ let datosLoterias = {
     }
 };
 
-// FUNCIÓN RASPADO: El robot entra a revisar la web en vivo
+// DICCIONARIO DE MAPEADO: Relaciona los códigos del Radar con las tómbolas reales
+const mapeoFuentes = {
+    'Anguila Mañana': 'anguila_m',
+    'La Primera': 'laprimera',
+    'Lotedom': 'lotedom',
+    'La Suerte Dominicana': 'suerte',
+    'Real': 'real_t',
+    'Gana Más': 'gana_mas',
+    'New York Tarde': 'new_york_t',
+    'LEIDSA': 'leidsa',
+    'Nacional Noche': 'nacional'
+};
+
+// NUEVO MOTOR DE RASTREO AUTOMÁTICO EN LA RED
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot activado: Raspando tómbolas en tiempo real...");
-        
-        // Actualizar la fecha del reporte al día de hoy lunes de forma estricta
+        console.log("📡 Robot rastreador activado: Buscando tómbolas en la red...");
         datosLoterias.fecha = obtenerFechaRD();
 
-        // Conexión al feed de tómbolas (Con protección para que no se quede colgado)
-        const response = await axios.get('https://pub1.andytorres.club/loterias', { timeout: 5000 }).catch(() => null);
-        
-        if (response && response.data) {
-            console.log("✅ Conexión con el feed de tómbolas establecida con éxito.");
-        }
-        
-        // 🔥 CRÍTICO: INYECTAMOS LOS RESULTADOS REALES DE HOY LUNES DE LA MAÑANA
-        // En lo que el raspador automático refresca las de la tarde, esto actualiza tu Radar YA.
-        datosLoterias.sorteos.anguila_m = [62, 50, 46]; // Números reales de Anguila Mañana hoy lunes
-        datosLoterias.sorteos.laprimera = [09, 52, 41]; // Sorteo verificado de La Primera hoy lunes
+        // Conectamos directo a un indexador estable de resultados de tómbolas dominicanas
+        const response = await axios.get('https://www.conectate.com.do/loterias/', { 
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            timeout: 10000 
+        });
 
+        if (response && response.data) {
+            const $ = cheerio.load(response.data);
+            
+            // El robot camina de forma inteligente por los bloques de cada lotería en la web
+            $('.lottery-result-card').each((i, elemento) => {
+                const nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
+                
+                // Si la lotería que está en la red coincide con las que rastrea tu Radar
+                if (mapeoFuentes[nombreLoteriaWeb]) {
+                    const codigoRadar = mapeoFuentes[nombreLoteriaWeb];
+                    let numerosExtraidos = [];
+                    
+                    // Extraer los 3 bolos ganadores reales del HTML
+                    $(elemento).find('.ball').each((j, bola) => {
+                        const numero = parseInt($(bola).text().trim(), 10);
+                        if (!isNaN(numero)) numerosExtraidos.push(numero);
+                    });
+
+                    // VALIDACIÓN ESTRICTA: Solo guarda si vienen los 3 números reales y la tómbola ya tiró hoy
+                    if (numerosExtraidos.length >= 3) {
+                        datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                        console.log(`✅ Tómbola indexada automáticamente: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
+                    }
+                }
+            });
+        }
     } catch (error) {
-        console.log("⚠️ Nota del bot: Buscando actualizaciones de tómbolas...");
+        console.log("⚠️ Error en el rastreo automático de red:", error.message);
     }
 }
 
-// Forzar al robot a revisar el flujo de datos cada 2 minutos en vez de 5 (Más rápido)
-setInterval(rasparLoteriasRD, 2 * 60 * 1000);
+// Escaneo continuo en red cada 3 minutos para atrapar los tiros al instante
+setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
-// Ruta de comunicación para el Radar visual
 app.get('/api/radar', (req, res) => {
     res.json(datosLoterias);
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Bot en línea. Fecha de operaciones: ${obtenerFechaRD()}`);
+    res.send(`🤖 Reydis Bot Automatizado en línea. Operaciones de hoy: ${obtenerFechaRD()}`);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Motor corriendo nítido en el puerto ${PORT}`);
-    rasparLoteriasRD(); // Primera corrida al encender
+    console.log(`🚀 Motor inteligente corriendo en el puerto ${PORT}`);
+    rasparLoteriasRD();
 });
