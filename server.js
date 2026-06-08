@@ -11,15 +11,10 @@ app.use((req, res, next) => {
 });
 
 function obtenerFechaRD() {
-    try {
-        const fecha = new Date();
-        const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
-        const formateador = new Intl.DateTimeFormat('en-CA', opciones);
-        return formateador.format(fecha);
-    } catch (error) {
-        console.error("⚠️ Error fatal al obtener la fecha:", error.message);
-        return "2026-06-08"; // Fecha de respaldo para hoy
-    }
+    const fecha = new Date();
+    const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const formateador = new Intl.DateTimeFormat('en-CA', opciones);
+    return formateador.format(fecha);
 }
 
 let datosLoterias = {
@@ -33,16 +28,17 @@ let datosLoterias = {
     }
 };
 
+// Diccionario corregido con los nombres exactos que usa la web en su HTML
 const mapeoFuentes = {
     'anguila mañana': 'anguila_m',
     'la primera': 'laprimera',
     'lotedom': 'lotedom',
     'la suerte dominicana': 'suerte',
-    'real': 'real_t',
+    'lotería real': 'real_t',
     'gana más': 'gana_mas',
     'new york tarde': 'new_york_t',
     'leidsa': 'leidsa',
-    'nacional noche': 'nacional'
+    'lotería nacional': 'nacional'
 };
 
 async function rasparLoteriasRD() {
@@ -51,47 +47,74 @@ async function rasparLoteriasRD() {
         datosLoterias.fecha = obtenerFechaRD();
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 15000 
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+            },
+            timeout: 12000 
         });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
             
-            $('.lottery-result-card').each((i, elemento) => {
-                try {
-                    const nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
-                    
-                    if (nombreLoteriaWeb) {
-                        const nombreMinuscula = nombreLoteriaWeb.toLowerCase();
-                        const codigoRadar = mapeoFuentes[nombreMinuscula];
-                        
-                        if (codigoRadar) {
-                            let numerosExtraidos = [];
-                            $(elemento).find('.ball').each((j, bola) => {
-                                const numeroRaw = $(bola).text().trim();
-                                if (numeroRaw) {
-                                    const numero = parseInt(numeroRaw, 10);
-                                    if (!isNaN(numero)) numerosExtraidos.push(numero);
-                                }
-                            });
+            // Caminamos por cada bloque de lotería usando la estructura exacta de la web
+            $('.game-block').each((i, elemento) => {
+                let nombreLoteriaWeb = $(elemento).find('.game-title').text().trim();
+                if (!nombreLoteriaWeb) {
+                    nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
+                }
 
-                            if (numerosExtraidos.length >= 3) {
-                                datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                                console.log(`✅ Indexado automático: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
-                            }
+                if (nombreLoteriaWeb) {
+                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().replace(/[\n\t]/g, '');
+                    
+                    // Buscar coincidencia en nuestro diccionario
+                    let codigoRadar = null;
+                    for (const [key, value] of Object.entries(mapeoFuentes)) {
+                        if (nombreMinuscula.includes(key)) {
+                            codigoRadar = value;
+                            break;
                         }
                     }
-                } catch (errorElemento) {
-                    console.error("⚠️ Error procesando una tómbola específica:", errorElemento.message);
+                    
+                    if (codigoRadar) {
+                        let numerosExtraidos = [];
+                        
+                        // Buscamos los bolos en las diferentes clases que usa la web (.ball, .bolo, o .number)
+                        $(elemento).find('.ball, .bolo, .game-number').each((j, bola) => {
+                            const numeroRaw = $(bola).text().trim();
+                            if (numeroRaw) {
+                                const numero = parseInt(numeroRaw, 10);
+                                if (!isNaN(numero) && numero >= 0 && numero <= 99) {
+                                    numerosExtraidos.push(numero);
+                                }
+                            }
+                        });
+
+                        // Si el raspado falló por cambios de diseño, usamos un plan B leyendo las celdas directamente
+                        if (numerosExtraidos.length < 3) {
+                            numerosExtraidos = [];
+                            $(elemento).find('td, span').each((j, celda) => {
+                                const textoCelda = $(celda).text().trim();
+                                if (textoCelda.length === 2 && !isNaN(textoCelda)) {
+                                    numerosExtraidos.push(parseInt(textoCelda, 10));
+                                }
+                            });
+                        }
+
+                        // Guardar solo si el dato es real y consistente
+                        if (numerosExtraidos.length >= 3) {
+                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                            console.log(`✅ Indexado con éxito: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0, 3)}`);
+                        }
+                    }
                 }
             });
         }
     } catch (error) {
-        console.error("⚠️ Error crítico en el rastreo automático de red:", error.message);
+        console.log("⚠️ Nota en el rastreo:", error.message);
     }
 }
 
+// Escaneo automático en red cada 3 minutos
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', (req, res) => {
@@ -99,7 +122,7 @@ app.get('/api/radar', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Bot Automatizado Blindado en línea. Operaciones de hoy: ${obtenerFechaRD()}`);
+    res.send(`🤖 Reydis Bot en línea y corregido. Operaciones: ${obtenerFechaRD()}`);
 });
 
 app.listen(PORT, () => {
