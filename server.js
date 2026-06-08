@@ -28,53 +28,52 @@ let datosLoterias = {
     }
 };
 
-// DICCIONARIO DE MAPEADO: Relaciona los códigos del Radar con las tómbolas reales
+// Diccionario extendido y corregido para evitar fallos de lectura
 const mapeoFuentes = {
-    'Anguila Mañana': 'anguila_m',
-    'La Primera': 'laprimera',
-    'Lotedom': 'lotedom',
-    'La Suerte Dominicana': 'suerte',
-    'Real': 'real_t',
-    'Gana Más': 'gana_mas',
-    'New York Tarde': 'new_york_t',
-    'LEIDSA': 'leidsa',
-    'Nacional Noche': 'nacional'
+    'anguila mañana': 'anguila_m',
+    'la primera': 'laprimera',
+    'lotedom': 'lotedom',
+    'la suerte dominicana': 'suerte',
+    'real': 'real_t',
+    'gana más': 'gana_mas',
+    'new york tarde': 'new_york_t',
+    'leidsa': 'leidsa',
+    'nacional noche': 'nacional'
 };
 
-// NUEVO MOTOR DE RASTREO AUTOMÁTICO EN LA RED
 async function rasparLoteriasRD() {
     try {
         console.log("📡 Robot rastreador activado: Buscando tómbolas en la red...");
         datosLoterias.fecha = obtenerFechaRD();
 
-        // Conectamos directo a un indexador estable de resultados de tómbolas dominicanas
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
             timeout: 10000 
         });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
             
-            // El robot camina de forma inteligente por los bloques de cada lotería en la web
             $('.lottery-result-card').each((i, elemento) => {
                 const nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
                 
-                // Si la lotería que está en la red coincide con las que rastrea tu Radar
-                if (mapeoFuentes[nombreLoteriaWeb]) {
-                    const codigoRadar = mapeoFuentes[nombreLoteriaWeb];
-                    let numerosExtraidos = [];
+                // 🛑 FILTRO DE SEGURIDAD CRÍTICO: Validamos que el nombre exista antes de procesarlo
+                if (nombreLoteriaWeb) {
+                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase();
+                    const codigoRadar = mapeoFuentes[nombreMinuscula];
                     
-                    // Extraer los 3 bolos ganadores reales del HTML
-                    $(elemento).find('.ball').each((j, bola) => {
-                        const numero = parseInt($(bola).text().trim(), 10);
-                        if (!isNaN(numero)) numerosExtraidos.push(numero);
-                    });
+                    // Si el código existe en nuestro radar, extraemos los bolos
+                    if (codigoRadar) {
+                        let numerosExtraidos = [];
+                        $(elemento).find('.ball').each((j, bola) => {
+                            const numero = parseInt($(bola).text().trim(), 10);
+                            if (!isNaN(numero)) numerosExtraidos.push(numero);
+                        });
 
-                    // VALIDACIÓN ESTRICTA: Solo guarda si vienen los 3 números reales y la tómbola ya tiró hoy
-                    if (numerosExtraidos.length >= 3) {
-                        datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                        console.log(`✅ Tómbola indexada automáticamente: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
+                        if (numerosExtraidos.length >= 3) {
+                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                            console.log(`✅ Indexado automático: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0,3)}`);
+                        }
                     }
                 }
             });
@@ -84,7 +83,7 @@ async function rasparLoteriasRD() {
     }
 }
 
-// Escaneo continuo en red cada 3 minutos para atrapar los tiros al instante
+// Escaneo continuo en red cada 3 minutos
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', (req, res) => {
