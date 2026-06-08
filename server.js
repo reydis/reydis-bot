@@ -28,7 +28,7 @@ let datosLoterias = {
     }
 };
 
-// Diccionario corregido con los nombres exactos que usa la web en su HTML
+// DICCIONARIO MATRIZ: Adaptado a los nombres exactos de loteriasdominicanas.com
 const mapeoFuentes = {
     'anguila mañana': 'anguila_m',
     'la primera': 'laprimera',
@@ -43,30 +43,28 @@ const mapeoFuentes = {
 
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot rastreador activado: Buscando tómbolas en la red...");
+        console.log("📡 Robot rastreador activado: Indexando directo desde LoteriasDominicanas.com...");
         datosLoterias.fecha = obtenerFechaRD();
 
-        const response = await axios.get('https://www.conectate.com.do/loterias/', { 
+        // Conexión directa a la nueva fuente recomendada
+        const response = await axios.get('https://loteriasdominicanas.com/', { 
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
             },
-            timeout: 12000 
+            timeout: 10000 
         });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
             
-            // Caminamos por cada bloque de lotería usando la estructura exacta de la web
-            $('.game-block').each((i, elemento) => {
-                let nombreLoteriaWeb = $(elemento).find('.game-title').text().trim();
-                if (!nombreLoteriaWeb) {
-                    nombreLoteriaWeb = $(elemento).find('.lottery-title').text().trim();
-                }
-
+            // Caminamos por los bloques principales de resultados de la nueva web
+            $('.lottery-block, .game-block, .session-block').each((i, elemento) => {
+                let nombreLoteriaWeb = $(elemento).find('h2, h3, .title, .lottery-title').text().trim();
+                
                 if (nombreLoteriaWeb) {
-                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().replace(/[\n\t]/g, '');
+                    // Limpiar el texto para que el robot lo lea limpio sin espacios raros
+                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().replace(/[\n\t]/g, '').trim();
                     
-                    // Buscar coincidencia en nuestro diccionario
                     let codigoRadar = null;
                     for (const [key, value] of Object.entries(mapeoFuentes)) {
                         if (nombreMinuscula.includes(key)) {
@@ -75,11 +73,12 @@ async function rasparLoteriasRD() {
                         }
                     }
                     
+                    // Si encontramos la tómbola en el Radar, extraemos sus tres bolos
                     if (codigoRadar) {
                         let numerosExtraidos = [];
                         
-                        // Buscamos los bolos en las diferentes clases que usa la web (.ball, .bolo, o .number)
-                        $(elemento).find('.ball, .bolo, .game-number').each((j, bola) => {
+                        // En esta web los bolos suelen venir en elementos con clases como .ball, .bolo o .number-ball
+                        $(elemento).find('.ball, .bolo, .number-ball, .ball-single').each((j, bola) => {
                             const numeroRaw = $(bola).text().trim();
                             if (numeroRaw) {
                                 const numero = parseInt(numeroRaw, 10);
@@ -89,10 +88,10 @@ async function rasparLoteriasRD() {
                             }
                         });
 
-                        // Si el raspado falló por cambios de diseño, usamos un plan B leyendo las celdas directamente
+                        // Plan B de respaldo por si la web usa un diseño de celdas o divs planos
                         if (numerosExtraidos.length < 3) {
                             numerosExtraidos = [];
-                            $(elemento).find('td, span').each((j, celda) => {
+                            $(elemento).find('span, div').each((j, celda) => {
                                 const textoCelda = $(celda).text().trim();
                                 if (textoCelda.length === 2 && !isNaN(textoCelda)) {
                                     numerosExtraidos.push(parseInt(textoCelda, 10));
@@ -100,21 +99,21 @@ async function rasparLoteriasRD() {
                             });
                         }
 
-                        // Guardar solo si el dato es real y consistente
+                        // Guardamos de forma estricta los 3 primeros bolos del día de hoy lunes
                         if (numerosExtraidos.length >= 3) {
                             datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                            console.log(`✅ Indexado con éxito: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0, 3)}`);
+                            console.log(`✅ ¡Éxito de Red! Indexado: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0, 3)}`);
                         }
                     }
                 }
             });
         }
     } catch (error) {
-        console.log("⚠️ Nota en el rastreo:", error.message);
+        console.log("⚠️ Nota del bot rastreando la nueva web:", error.message);
     }
 }
 
-// Escaneo automático en red cada 3 minutos
+// Escaneo automático continuo cada 3 minutos para atrapar los tiros al instante
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', (req, res) => {
@@ -122,10 +121,10 @@ app.get('/api/radar', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Bot en línea y corregido. Operaciones: ${obtenerFechaRD()}`);
+    res.send(`🤖 Reydis Bot Autónomo v3 en línea. Fuente: LoteriasDominicanas. Operaciones: ${obtenerFechaRD()}`);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Motor inteligente corriendo en el puerto ${PORT}`);
+    console.log(`🚀 Motor inteligente corriendo nítido en el puerto ${PORT}`);
     rasparLoteriasRD();
 });
