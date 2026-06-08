@@ -1,14 +1,14 @@
 {
   "name": "reydis-bot",
   "version": "1.0.0",
-  "description": "Robot raspador automático de loterías dominicanas",
+  "description": "Robot rastreador automático para Reydis Radar Pro",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "axios": "^1.6.8",
-    "cheerio": "^1.0.0-rc.12"
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "express": "^4.18.2"
   }
 }
