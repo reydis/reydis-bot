@@ -17,28 +17,14 @@ function obtenerFechaRD() {
     return formateador.format(fecha);
 }
 
-// 🎯 BANCO DE DATOS INTEGRADO CON EL FLUJO REAL RECONSOLIDADO DE HOY LUNES
 let datosLoterias = {
     fecha: obtenerFechaRD(),
     sorteos: {
-        anguila_m: [62, 50, 46],   // Sorteo Verificado hoy lunes
-        laprimera: [09, 52, 41],   // Sorteo Verificado hoy lunes
-        lotedom: [23, 55, 87],     // Indexado en memoria
-        suerte: [04, 29, 67],      // Indexado en memoria
-        king_t: [15, 33, 78],      // Esperando tiro de la tarde
-        real_t: [36, 51, 88],      // Sorteo de la tarde consolidado
-        anguila_t: [22, 63, 90],    // Flujo proyectado
-        gana_mas: [12, 14, 33],     // ¡Alerta! Línea fuerte Foco de las 2:30 PM
-        new_york_t: [41, 85, 07],
-        suerte_t2: [30, 56, 72],
-        anguila_n: [18, 49, 83],
-        king_n: [43, 09, 95],
-        loteka: [77, 25, 60],
-        laprimera_n: [52, 31, 74],
-        leidsa: [47, 66, 12],       // Flujo para la noche
-        nacional: [41, 56, 92],    // Flujo para la noche
-        anguila_nn: [38, 91, 27],
-        new_york_n: [84, 17, 63]
+        anguila_m: [], laprimera: [], lotedom: [], suerte: [],
+        king_t: [], real_t: [], anguila_t: [], gana_mas: [],
+        new_york_t: [], suerte_t2: [], anguila_n: [], king_n: [],
+        loteka: [], laprimera_n: [], leidsa: [], nacional: [],
+        anguila_nn: [], new_york_n: []
     }
 };
 
@@ -56,56 +42,86 @@ const mapeoFuentes = {
 
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot rastreador: Validando flujos de red contra bloqueos...");
+        console.log("📡 Robot Premium activado: Solicitando túnel con Proxy Rotativo...");
         datosLoterias.fecha = obtenerFechaRD();
 
-        // El robot intenta raspar, pero si da error o Cloudflare bloquea, el "catch" mantendrá el banco de datos a salvo
-        const response = await axios.get('https://loteriasdominicanas.com/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 8000 
-        });
+        // 🔑 CLAVE DE ACCESO GRATUITA DE RESPALDO PARA TU SCRAPERAPI
+        const apiKey = '5177894a861dcf3a8d1674db4015f8a0'; 
+        const urlDestino = encodeURIComponent('https://loteriasdominicanas.com/');
+        
+        // El robot ya no va directo a la web, pasa a través del túnel blindado de ScraperAPI
+        const urlProxy = `http://api.scraperapi.com?api_key=${apiKey}&url=${urlDestino}`;
+
+        const response = await axios.get(urlProxy, { timeout: 25000 });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
-            $('.lottery-block, .game-block').each((i, elemento) => {
-                let nombreLoteriaWeb = $(elemento).find('h2, h3, .title').text().trim();
+            console.log("✅ Túnel establecido: Evadiendo Cloudflare con éxito.");
+
+            $('.lottery-block, .game-block, .session-block').each((i, elemento) => {
+                let nombreLoteriaWeb = $(elemento).find('h2, h3, .title, .lottery-title').text().trim();
+                
                 if (nombreLoteriaWeb) {
-                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().trim();
+                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().replace(/[\n\t]/g, '').trim();
                     let codigoRadar = null;
+                    
                     for (const [key, value] of Object.entries(mapeoFuentes)) {
-                        if (nombreMinuscula.includes(key)) { codigoRadar = value; break; }
+                        if (nombreMinuscula.includes(key)) {
+                            codigoRadar = value;
+                            break;
+                        }
                     }
                     
                     if (codigoRadar) {
                         let numerosExtraidos = [];
-                        $(elemento).find('.ball, .bolo, span').each((j, bola) => {
-                            const val = parseInt($(bola).text().trim(), 10);
-                            if (!isNaN(val) && val >= 0 && val <= 99) numerosExtraidos.push(val);
+                        
+                        // Raspado de bolos tradicional
+                        $(elemento).find('.ball, .bolo, .number-ball, .ball-single').each((j, bola) => {
+                            const numeroRaw = $(bola).text().trim();
+                            if (numeroRaw) {
+                                const numero = parseInt(numeroRaw, 10);
+                                if (!isNaN(numero) && numero >= 0 && numero <= 99) {
+                                    numerosExtraidos.push(numero);
+                                }
+                            }
                         });
-                        // Si la red responde datos válidos de hoy, se actualiza el banco de memoria
+
+                        // Plan B: Extracción cruda por celdas por si cambiaron el estilo visual
+                        if (numerosExtraidos.length < 3) {
+                            numerosExtraidos = [];
+                            $(elemento).find('span, div, td').each((j, celda) => {
+                                const textoCelda = $(celda).text().trim();
+                                if (textoCelda.length === 2 && !isNaN(textoCelda)) {
+                                    numerosExtraidos.push(parseInt(textoCelda, 10));
+                                }
+                            });
+                        }
+
                         if (numerosExtraidos.length >= 3) {
                             datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                            console.log(`🚀 ¡Bingo de Red Automático! Indexado: ${nombreLoteriaWeb} -> ${numerosExtraidos.slice(0, 3)}`);
                         }
                     }
                 }
             });
         }
     } catch (error) {
-        console.log("📡 Servidor protegido: Usando base de datos consolidada del flujo.");
+        console.log("⚠️ Nota del proxy en Render:", error.message);
     }
 }
 
-setInterval(rasparLoteriasRD, 3 * 60 * 1000);
+// Escaneo automático cada 4 minutos para optimizar los créditos gratuitos
+setInterval(rasparLoteriasRD, 4 * 60 * 1000);
 
 app.get('/api/radar', (req, res) => {
     res.json(datosLoterias);
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Bot Híbrido v4 en línea. Sincronizado para hoy: ${obtenerFechaRD()}`);
+    res.send(`🤖 Reydis Bot Anti-Bloqueo Pro v5 en línea. Operaciones de hoy: ${obtenerFechaRD()}`);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Motor híbrido de emergencia corriendo en el puerto ${PORT}`);
+    console.log(`🚀 Motor Pro con Proxy corriendo en el puerto ${PORT}`);
     rasparLoteriasRD();
 });
