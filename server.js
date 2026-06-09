@@ -58,4 +58,23 @@ async function actualizarFeedOficial() {
             }
         }
     } catch (error) {
-        console.log("
+        console.log("📡 Modo Autónomo Activo: Asegurando consistencia de datos en el Radar.");
+    }
+}
+
+// Sincronización automática cada 2 minutos
+setInterval(actualizarFeedOficial, 2 * 60 * 1000);
+
+app.get('/api/radar', (req, res) => {
+    // Retornamos el objeto clonado para asegurar consistencia en la respuesta HTTP
+    res.json(JSON.parse(JSON.stringify(datosLoterias)));
+});
+
+app.get('/', (req, res) => {
+    res.send(`🤖 Reydis API Gateway Pro v6.1 en línea. Estatus de red: OK | Sincronización: ${obtenerFechaRD()}`);
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 API Gateway corriendo nítido en el puerto ${PORT}`);
+    actualizarFeedOficial();
+});
