@@ -1,9 +1,12 @@
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const cors = require('cors'); // Inyección de seguridad
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Habilitar CORS total para cualquier origen (Evita el bloqueo de CodeSandbox)
+app.use(cors());
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -18,7 +21,7 @@ function obtenerFechaRD() {
     return formateador.format(fecha);
 }
 
-// Estructura maestra blindada contra valores nulos
+// Estructura maestra inicializada de forma consistente
 let datosLoterias = {
     fecha: obtenerFechaRD(),
     metricasEstrategia: {
@@ -44,7 +47,7 @@ const mapeoFuentes = {
 
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot extractor v8.1: Analizando flujos en tiempo real...");
+        console.log("📡 Robot extractor v8.2: Analizando flujos...");
         datosLoterias.fecha = obtenerFechaRD();
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
@@ -68,4 +71,39 @@ async function rasparLoteriasRD() {
                     
                     if (codigoRadar) {
                         let numerosExtraidos = [];
-                        $(elemento).find('.ball, .
+                        $(elemento).find('.ball, .bolo, .game-number, .ball-single').each((j, bola) => {
+                            const numeroRaw = $(bola).text().trim();
+                            if (numeroRaw) {
+                                const numero = parseInt(numeroRaw, 10);
+                                if (!isNaN(numero) && numero >= 0 && numero <= 99) numerosExtraidos.push(numero);
+                            }
+                        });
+
+                        if (numerosExtraidos.length >= 3) {
+                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                            conteo++;
+                        }
+                    }
+                }
+            });
+            console.log(`🎯 Proceso concluido. Tómbolas indexadas hoy: ${conteo}`);
+        }
+    } catch (error) {
+        console.error("⚠️ Nota en el motor de raspado:", error.message);
+    }
+}
+
+setInterval(rasparLoteriasRD, 3 * 60 * 1000);
+
+app.get('/api/radar', (req, res) => {
+    res.json(datosLoterias);
+});
+
+app.get('/', (req, res) => {
+    res.send(`🤖 Reydis Central Engine v8.2 en línea.`);
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 Servidor cuantitativo corriendo en el puerto ${PORT}`);
+    rasparLoteriasRD();
+});
