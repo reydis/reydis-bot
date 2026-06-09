@@ -39,7 +39,7 @@ const mapeoFuentes = {
 
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot v8.4: Ejecutando raspado en vivo solicitado por el Radar...");
+        console.log("📡 Robot v8.5: Raspando con blindaje anti-bloqueo...");
         datosLoterias.fecha = obtenerFechaRD();
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
@@ -54,60 +54,69 @@ async function rasparLoteriasRD() {
             let conteo = 0;
             
             $('.lottery-result-card, .game-block, .lottery-block').each((i, elemento) => {
-                let nombreLoteriaWeb = $(elemento).find('.lottery-title, .game-title, h2, h3, h4').text().trim();
+                let tituloContenedor = $(elemento).find('.lottery-title, .game-title, h2, h3, h4').text();
                 
-                if (nombreLoteriaWeb) {
-                    const nombreMinuscula = nombreLoteriaWeb.toLowerCase().replace(/[\n\t]/g, '').trim();
-                    let codigoRadar = null;
-                    for (const [key, value] of Object.entries(mapeoFuentes)) {
-                        if (nombreMinuscula.includes(key)) { codigoRadar = value; break; }
-                    }
+                // 🛡️ FILTRO CRUCIAL: Validamos estrictamente que el texto exista antes de procesarlo
+                if (tituloContenedor && typeof tituloContenedor === 'string') {
+                    const nombreMinuscula = tituloContenedor.toLowerCase().replace(/[\n\t]/g, '').trim();
                     
-                    if (codigoRadar) {
-                        let numerosExtraidos = [];
-                        $(elemento).find('.ball, .bolo, .game-number, .ball-single').each((j, bola) => {
-                            const numeroRaw = $(bola).text().trim();
-                            if (numeroRaw) {
-                                const numero = parseInt(numeroRaw, 10);
-                                if (!isNaN(numero) && numero >= 0 && numero <= 99) numerosExtraidos.push(numero);
+                    if (nombreMinuscula) {
+                        let codigoRadar = null;
+                        for (const [key, value] of Object.entries(mapeoFuentes)) {
+                            if (nombreMinuscula.includes(key)) { 
+                                codigoRadar = value; 
+                                break; 
                             }
-                        });
-
-                        if (numerosExtraidos.length < 3) {
-                            numerosExtraidos = [];
-                            $(elemento).find('span, div, td').each((j, celda) => {
-                                const textoCelda = $(celda).text().trim();
-                                if (textoCelda.length === 2 && !isNaN(textoCelda)) {
-                                    numerosExtraidos.push(parseInt(textoCelda, 10));
+                        }
+                        
+                        if (codigoRadar) {
+                            let numerosExtraidos = [];
+                            $(elemento).find('.ball, .bolo, .game-number, .ball-single, .lottery-number').each((j, bola) => {
+                                const numeroRaw = $(bola).text().trim();
+                                if (numeroRaw) {
+                                    const numero = parseInt(numeroRaw, 10);
+                                    if (!isNaN(numero) && numero >= 0 && numero <= 99) numerosExtraidos.push(numero);
                                 }
                             });
-                        }
 
-                        if (numerosExtraidos.length >= 3) {
-                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                            conteo++;
+                            if (numerosExtraidos.length < 3) {
+                                numerosExtraidos = [];
+                                $(elemento).find('span, div, td').each((j, celda) => {
+                                    const textoCelda = $(celda).text().trim();
+                                    if (textoCelda.length === 2 && !isNaN(textoCelda)) {
+                                        numerosExtraidos.push(parseInt(textoCelda, 10));
+                                    }
+                                });
+                            }
+
+                            if (numerosExtraidos.length >= 3) {
+                                datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
+                                conteo++;
+                            }
                         }
                     }
                 }
             });
-            console.log(`🎯 Sincronización Realizada. Sorteos reales indexados: ${conteo}`);
+            console.log(`🎯 Sincronización exitosa. Sorteos reales en memoria: ${conteo}`);
         }
     } catch (error) {
-        console.error("⚠️ Error de conexión en raspado:", error.message);
+        console.error("⚠️ Error controlado en proceso de red:", error.message);
     }
 }
 
-// 🎯 CAMBIO MAESTRO: Cuando tu app llama a esta ruta, el servidor raspa en caliente antes de responder
+// Escaneo automático en segundo plano por si acaso
+setInterval(rasparLoteriasRD, 3 * 60 * 1000);
+
 app.get('/api/radar', async (req, res) => {
-    await rasparLoteriasRD(); // Forzar actualización al segundo
+    await rasparLoteriasRD(); // Forzar actualización en vivo al vuelo
     res.json(datosLoterias);
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Central Engine v8.4 listo.`);
+    res.send(`🤖 Reydis Central Engine v8.5 blindado y activo.`);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor operativo en puerto ${PORT}`);
+    console.log(`🚀 Servidor protegido corriendo en puerto ${PORT}`);
     rasparLoteriasRD();
 });
