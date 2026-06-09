@@ -14,24 +14,6 @@ function obtenerFechaRD() {
     return formateador.format(fecha);
 }
 
-// Tabla sagrada de equivalencias/espejos dominicanos
-const tablaEspejo = {
-    0: 5, 5: 0,
-    1: 6, 6: 1,
-    2: 7, 7: 2,
-    3: 8, 8: 3,
-    4: 9, 9: 4
-};
-
-// Función matemática para convertir un número a su espejo absoluto
-function calcularEspejoBolo(numero) {
-    let strNum = numero.toString().padStart(2, '0');
-    let d1 = parseInt(strNum[0], 10);
-    let d2 = parseInt(strNum[1], 10);
-    let espejoStr = `${tablaEspejo[d1]}${tablaEspejo[d2]}`;
-    return parseInt(espejoStr, 10);
-}
-
 let datosLoterias = {
     fecha: obtenerFechaRD(),
     metricasEstrategia: {
@@ -45,11 +27,6 @@ let datosLoterias = {
         new_york_t: [], suerte_t2: [], anguila_n: [], king_n: [],
         loteka: [], laprimera_n: [], leidsa: [], nacional: [],
         anguila_nn: [], new_york_n: []
-    },
-    predicciones: {
-        gana_mas: { lineaFuerte: [], paleSugerido: [], tripletaFlux: [] },
-        leidsa: { lineaFuerte: [], paleSugerido: [], tripletaFlux: [] },
-        nacional: { lineaFuerte: [], paleSugerido: [], tripletaFlux: [] }
     }
 };
 
@@ -60,67 +37,9 @@ const mapeoFuentes = {
     'lotería nacional': 'nacional', 'nacional': 'nacional'
 };
 
-// ==========================================
-// MOTOR CUANTITATIVO DE PREDICCIÓN (El Candado del Maestro)
-// ==========================================
-function ejecutarMotorPredicciones() {
-    console.log("🎲 Motor cuántico v8.5: Recalculando equivalencias y filtros de sumatoria...");
-    
-    // Lista de sorteos base para extraer patrones del día
-    const sorteosAnalizar = ['laprimera', 'lotedom', 'real_t', 'suerte'];
-    let bolosVivos = [];
-
-    sorteosAnalizar.forEach(sorteo => {
-        let resultado = datosLoterias.sorteos[sorteo];
-        if (resultado && resultado.length > 0) {
-            bolosVivos.push(resultado[0]); // Recolectamos los números que salieron en primera
-        }
-    });
-
-    // Si la mañana está vacía, cargamos un banco de datos de respaldo por defecto
-    if (bolosVivos.length === 0) bolosVivos = [14, 91, 3];
-
-    // Procesamos la conversión por equivalencias espejo
-    let sugerenciasBase = bolosVivos.map(bolo => calcularEspejoBolo(bolo));
-
-    // Si faltan números para la tripleta, rellenamos con la regla clásica (+10 o de arrastre)
-    while (sugerenciasBase.length < 3) {
-        let nuevoBolo = (sugerenciasBase[sugerenciasBase.length - 1] + 10) % 100;
-        sugerenciasBase.push(nuevoBolo);
-    }
-
-    // CANDADO DE SUMATORIA ESTRUCTURAL: Validamos que la tripleta tenga suficiente masa física
-    let sumaTotal = sugerenciasBase[0] + sugerenciasBase[1] + sugerenciasBase[2];
-    if (sumaTotal < 70 || sumaTotal > 190) {
-        // Ajuste dinámico de desviación si rompe el promedio estructural dominicano
-        sugerenciasBase[0] = (sugerenciasBase[0] + 5) % 100;
-        sugerenciasBase[2] = (sugerenciasBase[2] + 11) % 100;
-    }
-
-    // Formatear las salidas con dos dígitos limpios para el frontend (ej: '03')
-    let n1 = sugerenciasBase[0].toString().padStart(2, '0');
-    let n2 = sugerenciasBase[1].toString().padStart(2, '0');
-    let n3 = sugerenciasBase[2].toString().padStart(2, '0');
-
-    // Inyectamos las predicciones matemáticas calculadas al instante en el JSON de salida
-    const objetivos = ['gana_mas', 'leidsa', 'nacional'];
-    objetivos.forEach((target, index) => {
-        // Variamos ligeramente el orden por sorteo para diversificar el riesgo del flujo
-        let finalN1 = index === 1 ? n2 : index === 2 ? n3 : n1;
-        let finalN2 = index === 1 ? n3 : index === 2 ? n1 : n2;
-        let finalN3 = index === 1 ? n1 : index === 2 ? n2 : n3;
-
-        datosLoterias.predicciones[target] = {
-            lineaFuerte: [finalN1, finalN2, finalN3],
-            paleSugerido: [`${finalN1}-${finalN2}`, `${finalN2}-${finalN3}`],
-            tripletaFlux: [finalN1, finalN2, finalN3]
-        };
-    });
-}
-
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot v8.5: Extrayendo flujos con selectores del día...");
+        console.log("📡 Robot v8.4: Ejecutando raspado en vivo solicitado por el Radar...");
         datosLoterias.fecha = obtenerFechaRD();
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
@@ -134,7 +53,7 @@ async function rasparLoteriasRD() {
             const $ = cheerio.load(response.data);
             let conteo = 0;
             
-            $('.lottery-result-card, .game-block, .lottery-block, [id^="lottery-"]').each((i, elemento) => {
+            $('.lottery-result-card, .game-block, .lottery-block').each((i, elemento) => {
                 let nombreLoteriaWeb = $(elemento).find('.lottery-title, .game-title, h2, h3, h4').text().trim();
                 
                 if (nombreLoteriaWeb) {
@@ -146,7 +65,7 @@ async function rasparLoteriasRD() {
                     
                     if (codigoRadar) {
                         let numerosExtraidos = [];
-                        $(elemento).find('.ball, .bolo, .game-number, .ball-single, .lottery-number').each((j, bola) => {
+                        $(elemento).find('.ball, .bolo, .game-number, .ball-single').each((j, bola) => {
                             const numeroRaw = $(bola).text().trim();
                             if (numeroRaw) {
                                 const numero = parseInt(numeroRaw, 10);
@@ -171,27 +90,24 @@ async function rasparLoteriasRD() {
                     }
                 }
             });
-
-            console.log(`🎯 Sincronización finalizada. Sorteos cargados: ${conteo}`);
-            // Una vez raspados los datos, ejecutamos el motor inteligente
-            ejecutarMotorPredicciones();
+            console.log(`🎯 Sincronización Realizada. Sorteos reales indexados: ${conteo}`);
         }
     } catch (error) {
         console.error("⚠️ Error de conexión en raspado:", error.message);
     }
 }
 
-setInterval(rasparLoteriasRD, 3 * 60 * 1000);
-
-app.get('/api/radar', (req, res) => {
+// 🎯 CAMBIO MAESTRO: Cuando tu app llama a esta ruta, el servidor raspa en caliente antes de responder
+app.get('/api/radar', async (req, res) => {
+    await rasparLoteriasRD(); // Forzar actualización al segundo
     res.json(datosLoterias);
 });
 
 app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Central Engine v8.5 listo. Predicciones optimizadas corriendo.`);
+    res.send(`🤖 Reydis Central Engine v8.4 listo.`);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor cuantitativo en puerto ${PORT}`);
+    console.log(`🚀 Servidor operativo en puerto ${PORT}`);
     rasparLoteriasRD();
 });
