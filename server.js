@@ -18,12 +18,12 @@ function obtenerFechaRD() {
     return formateador.format(fecha);
 }
 
-// Base de datos inteligente con memoria de flujo
+// Estructura maestra blindada contra valores nulos
 let datosLoterias = {
     fecha: obtenerFechaRD(),
     metricasEstrategia: {
-        pale_efectividad: 94.8, // Filtro institucional calibrado
-        alarmas_emitidas: 28,   // Reducción de falsos positivos (Filtro Strict)
+        pale_efectividad: 94.8,
+        alarmas_emitidas: 28,
         probabilidad_exito: 95.2
     },
     sorteos: {
@@ -42,18 +42,19 @@ const mapeoFuentes = {
     'lotería nacional': 'nacional', 'nacional': 'nacional'
 };
 
-async function rasparYProcesarFlujo() {
+async function rasparLoteriasRD() {
     try {
-        console.log("📡 Algoritmo Cuantitativo: Analizando bloques y zonas de alta liquidez...");
+        console.log("📡 Robot extractor v8.1: Analizando flujos en tiempo real...");
         datosLoterias.fecha = obtenerFechaRD();
 
         const response = await axios.get('https://www.conectate.com.do/loterias/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
             timeout: 12000 
         });
 
         if (response && response.data) {
             const $ = cheerio.load(response.data);
+            let conteo = 0;
             
             $('.lottery-result-card, .game-block, .lottery-block').each((i, elemento) => {
                 let nombreLoteriaWeb = $(elemento).find('.lottery-title, .game-title, h2, h3').text().trim();
@@ -67,46 +68,4 @@ async function rasparYProcesarFlujo() {
                     
                     if (codigoRadar) {
                         let numerosExtraidos = [];
-                        $(elemento).find('.ball, .bolo, .game-number, .ball-single').each((j, bola) => {
-                            const numeroRaw = $(bola).text().trim();
-                            if (numeroRaw) {
-                                const numero = parseInt(numeroRaw, 10);
-                                if (!isNaN(numero) && numero >= 0 && numero <= 99) numerosExtraidos.push(numero);
-                            }
-                        });
-
-                        if (numerosExtraidos.length >= 3) {
-                            datosLoterias.sorteos[codigoRadar] = numerosExtraidos.slice(0, 3);
-                        }
-                    }
-                }
-            });
-
-            // 🎯 OPTIMIZACIÓN EN SERVIDOR: Filtro estricto de volatilidad acumulada
-            // Analiza si hay datos suficientes para activar el gatillo del 95%
-            let tómbolasActivas = Object.values(datosLoterias.sorteos).filter(arr => arr.length > 0).length;
-            if (tómbolasActivas > 4) {
-                datosLoterias.metricasEstrategia.pale_efectividad = 95.4;
-                datosLoterias.metricasEstrategia.probabilidad_exito = 96.1;
-            }
-            console.log(`✅ Bloques analizados. Tómbolas activas procesadas por el motor: ${tómbolasActivas}`);
-        }
-    } catch (error) {
-        console.error("⚠️ Nota en el motor de análisis:", error.message);
-    }
-}
-
-setInterval(rasparYProcesarFlujo, 3 * 60 * 1000);
-
-app.get('/api/radar', (req, res) => {
-    res.json(datosLoterias);
-});
-
-app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Institutional Engine v8.0 en línea. Filtro Strict: ACTIVO.`);
-});
-
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor cuantitativo corriendo en el puerto ${PORT}`);
-    rasparYProcesarFlujo();
-});
+                        $(elemento).find('.ball, .
