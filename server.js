@@ -9,258 +9,311 @@ app.use(cors({ origin: '*' }));
 app.options('*', cors());
 app.use(express.json());
 
-// ── Zona horaria RD ──────────────────────────────────────────────
+// ── Zona horaria RD ──────────────────────────────────────────────────────────
 function fechaRD() {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit'
+    timeZone: 'America/Santo_Domingo',
+    year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
 }
 function horaRD() {
   return new Intl.DateTimeFormat('es-DO', {
-    timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: false
+    timeZone: 'America/Santo_Domingo',
+    hour: '2-digit', minute: '2-digit', hour12: false
   }).format(new Date());
 }
 
-// ── Estado ───────────────────────────────────────────────────────
+// ── Estado en memoria ─────────────────────────────────────────────────────────
 let estado = {
   fecha: fechaRD(),
   hora_actualizacion: horaRD(),
   sorteos: crearSorteos(),
-  historico: []   // hasta 90 días en memoria
+  historico: []
 };
 
 function crearSorteos() {
   return {
-    anguila_m:   { nombre:'Anguila Mañana',    hora:'10:00 AM', numeros:[], estado:'pendiente' },
-    laprimera:   { nombre:'La Primera Día',    hora:'10:30 AM', numeros:[], estado:'pendiente' },
+    anguila_m:   { nombre:'Anguila Mañana',   hora:'10:00 AM', numeros:[], estado:'pendiente' },
+    laprimera:   { nombre:'La Primera Día',   hora:'10:30 AM', numeros:[], estado:'pendiente' },
     lotedom:     { nombre:'LoteDom',           hora:'11:30 AM', numeros:[], estado:'pendiente' },
-    suerte:      { nombre:'La Suerte 12:30',   hora:'12:30 PM', numeros:[], estado:'pendiente' },
+    suerte:      { nombre:'La Suerte 12:30',  hora:'12:30 PM', numeros:[], estado:'pendiente' },
     king_t:      { nombre:'King Tarde',        hora:'12:30 PM', numeros:[], estado:'pendiente' },
     real_t:      { nombre:'Lotería Real',      hora:'12:30 PM', numeros:[], estado:'pendiente' },
-    anguila_t:   { nombre:'Anguila 1:00 PM',   hora:'1:00 PM',  numeros:[], estado:'pendiente' },
+    anguila_t:   { nombre:'Anguila 1:00 PM',  hora:'1:00 PM',  numeros:[], estado:'pendiente' },
     gana_mas:    { nombre:'Gana Más',          hora:'2:30 PM',  numeros:[], estado:'pendiente' },
     new_york_t:  { nombre:'New York Tarde',    hora:'3:30 PM',  numeros:[], estado:'pendiente' },
-    suerte_t2:   { nombre:'La Suerte Tarde',   hora:'6:00 PM',  numeros:[], estado:'pendiente' },
-    anguila_n:   { nombre:'Anguila 6:00 PM',   hora:'6:00 PM',  numeros:[], estado:'pendiente' },
+    suerte_t2:   { nombre:'La Suerte Tarde',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
+    anguila_n:   { nombre:'Anguila 6:00 PM',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     king_n:      { nombre:'King Noche',        hora:'7:00 PM',  numeros:[], estado:'pendiente' },
     loteka:      { nombre:'Loteka',            hora:'7:30 PM',  numeros:[], estado:'pendiente' },
-    laprimera_n: { nombre:'La Primera Noche',  hora:'8:00 PM',  numeros:[], estado:'pendiente' },
+    laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM',  numeros:[], estado:'pendiente' },
     leidsa:      { nombre:'Leidsa',            hora:'8:55 PM',  numeros:[], estado:'pendiente' },
     nacional:    { nombre:'Lotería Nacional',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
-    anguila_nn:  { nombre:'Anguila 9:00 PM',   hora:'9:00 PM',  numeros:[], estado:'pendiente' },
+    anguila_nn:  { nombre:'Anguila 9:00 PM',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
     new_york_n:  { nombre:'New York Noche',    hora:'10:30 PM', numeros:[], estado:'pendiente' }
   };
 }
 
-// ── MAPEO de nombres del sitio → clave interna ───────────────────
-// Basado en los nombres exactos que usa quinielasrd.com
-const MAPA = {
-  'anguila 10:00 am': 'anguila_m',
-  'anguila mañana':   'anguila_m',
-  'primera día':      'laprimera',
-  'la primera día':   'laprimera',
-  'la primera dia':   'laprimera',
-  'lotedom':          'lotedom',
-  'la suerte 12:30':  'suerte',
-  'la suerte 12:30 pm': 'suerte',
-  'king tarde':       'king_t',
-  'lotería real':     'real_t',
-  'loteria real':     'real_t',
-  'anguila 1:00 pm':  'anguila_t',
-  'anguila mediodía': 'anguila_t',
-  'anguila mediodia': 'anguila_t',
-  'gana más':         'gana_mas',
-  'gana mas':         'gana_mas',
-  'new york 3:30':    'new_york_t',
-  'new york tarde':   'new_york_t',
-  'la suerte tarde':  'suerte_t2',
-  'anguila 6:00 pm':  'anguila_n',
-  'anguila tarde':    'anguila_n',
-  'king noche':       'king_n',
-  'loteka':           'loteka',
-  'la primera noche': 'laprimera_n',
-  'leidsa':           'leidsa',
-  'lotería nacional': 'nacional',
-  'loteria nacional': 'nacional',
-  'anguila 9:00 pm':  'anguila_nn',
-  'anguila noche':    'anguila_nn',
-  'new york 10:30 pm':'new_york_n',
-  'new york noche':   'new_york_n',
+// ── MAPEO: href del sitio → clave interna ─────────────────────────────────────
+// Basado en los hrefs reales de loteriasdominicanas.com
+const HREF_MAPA = {
+  '/loteria-nacional/gana-mas':           'gana_mas',
+  '/loteria-nacional/quiniela':           'nacional',
+  '/leidsa/quiniela-pale':               'leidsa',
+  '/loteka/quiniela':                    'loteka',
+  '/loto-real/quiniela':                 'real_t',
+  '/la-primera/quiniela':               'laprimera',
+  '/la-primera/quiniela-noche':         'laprimera_n',
+  '/la-suerte-dominicana/quiniela':     'suerte',
+  '/la-suerte-dominicana/quiniela-tarde':'suerte_t2',
+  '/lotedom/quiniela':                  'lotedom',
+  '/anguila/anguila-manana':            'anguila_m',
+  '/anguila/anguila-medio-dia':         'anguila_t',
+  '/anguila/anguila-tarde':             'anguila_n',
+  '/anguila/anguila-noche':             'anguila_nn',
+  '/americanas/new-york-tarde':         'new_york_t',
+  '/americanas/new-york-noche':         'new_york_n',
 };
 
-function buscarClave(texto) {
-  const t = texto.toLowerCase().trim();
-  for (const [k, v] of Object.entries(MAPA)) {
-    if (t.includes(k)) return v;
-  }
-  return null;
-}
+// También mapeo por nombre (para quinielasrd.com)
+const NOMBRE_MAPA = {
+  'gana más':           'gana_mas',
+  'gana mas':           'gana_mas',
+  'lotería nacional':   'nacional',
+  'loteria nacional':   'nacional',
+  'quiniela leidsa':    'leidsa',
+  'leidsa':             'leidsa',
+  'loteka':             'loteka',
+  'lotería real':       'real_t',
+  'loteria real':       'real_t',
+  'quiniela real':      'real_t',
+  'la primera día':     'laprimera',
+  'primera día':        'laprimera',
+  'la primera dia':     'laprimera',
+  'primera dia':        'laprimera',
+  'la primera noche':   'laprimera_n',
+  'la suerte 12:30':    'suerte',
+  'la suerte 12:30 pm': 'suerte',
+  'la suerte tarde':    'suerte_t2',
+  'lotedom':            'lotedom',
+  'anguila 10:00 am':   'anguila_m',
+  'anguila mañana':     'anguila_m',
+  'anguila 1:00 pm':    'anguila_t',
+  'anguila mediodía':   'anguila_t',
+  'anguila mediodia':   'anguila_t',
+  'anguila 6:00 pm':    'anguila_n',
+  'anguila tarde':      'anguila_n',
+  'anguila 9:00 pm':    'anguila_nn',
+  'anguila noche':      'anguila_nn',
+  'new york tarde':     'new_york_t',
+  'new york 3:30':      'new_york_t',
+  'new york noche':     'new_york_n',
+  'new york 10:30 pm':  'new_york_n',
+};
 
-function extraerNumeros(texto) {
-  // Busca grupos de exactamente 2 dígitos separados por espacios
-  const matches = texto.match(/\b\d{2}\b/g);
-  if (!matches) return [];
-  const nums = matches.map(Number).filter(n => n >= 0 && n <= 99);
-  // Devolver solo únicos, máx 3
-  return [...new Set(nums)].slice(0, 3);
-}
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'es-DO,es;q=0.9,en;q=0.8',
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache'
+};
 
-// ── SCRAPER PRINCIPAL: quinielasrd.com ───────────────────────────
-async function scrapeQuinielasRD(targetFecha) {
+// ── SCRAPER 1: loteriasdominicanas.com ────────────────────────────────────────
+// Estructura confirmada del HTML:
+//   <a class="game-title" href="/loteria-nacional/gana-mas"><span>Gana Más</span></a>
+//   <div class="game-scores p-2 ball-mode">
+//     <span class="score ">67</span>
+//     <span class="score ">66</span>
+//     <span class="score ">37</span>
+//   </div>
+async function scrapeLotDominicanas() {
   try {
-    console.log('📡 Raspando quinielasrd.com...');
-    const res = await axios.get('https://quinielasrd.com/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'es-DO,es;q=0.9',
-      },
-      timeout: 20000
+    console.log('📡 [1] Raspando loteriasdominicanas.com...');
+    const res = await axios.get('https://loteriasdominicanas.com/', {
+      headers: HEADERS, timeout: 20000
     });
-
     const $ = cheerio.load(res.data);
-    let capturados = 0;
-    let diaActual = null;
-    let capturandoHoy = false;
+    let conteo = 0;
 
-    // El sitio tiene secciones por día con h2 de fecha y luego links con los sorteos
-    // Estructura: <h2>martes 10 junio 2026</h2> ... <a href="/...">Nombre Sorteo</a> ... <span>52 14 98</span>
+    // Cada sorteo está en un .game-block
+    $('.game-block').each((i, bloque) => {
+      // Obtener href del game-title para identificar el sorteo
+      const enlace = $(bloque).find('a.game-title').first();
+      const href   = enlace.attr('href') || '';
+      const nombre = enlace.find('span').first().text().trim().toLowerCase();
 
-    // Estrategia: leer el texto completo y parsear línea por línea
-    const textoCompleto = $('body').text();
-    const lineas = textoCompleto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-    // También intentar con el HTML estructurado
-    // Buscar bloques de sorteo: cada sorteo tiene un <a> con el nombre y cerca los números
-    $('a[href]').each((i, el) => {
-      const href = $(el).attr('href') || '';
-      const texto = $(el).text().trim();
-      if (!href.includes('quinielasrd.com') && !href.startsWith('/')) return;
-      
-      const clave = buscarClave(texto);
-      if (!clave) return;
-      if (estado.sorteos[clave] && estado.sorteos[clave].numeros.length >= 3) return;
-
-      // Buscar números cerca de este elemento (siguiente sibling o parent)
-      let contenedor = $(el).parent();
-      let numTexto = contenedor.text().replace(texto, '').trim();
-      
-      // Si no hay números aquí, buscar en el siguiente elemento
-      if (!numTexto || numTexto.length < 6) {
-        const next = $(el).parent().next();
-        numTexto = (next.text() || '').trim();
+      // Identificar clave por href primero, luego por nombre
+      let clave = HREF_MAPA[href];
+      if (!clave) {
+        for (const [k, v] of Object.entries(NOMBRE_MAPA)) {
+          if (nombre.includes(k)) { clave = v; break; }
+        }
       }
+      if (!clave || !estado.sorteos[clave]) return;
+      if (estado.sorteos[clave].numeros.length >= 3) return; // ya tenemos
 
-      const nums = extraerNumeros(numTexto);
+      // Extraer los números: solo los primeros 3 span.score del .game-scores ball-mode
+      const nums = [];
+      $(bloque).find('.game-scores.ball-mode span.score').each((j, span) => {
+        if (nums.length >= 3) return false; // solo quiniela (3 nums)
+        const txt = $(span).text().trim();
+        const n = parseInt(txt, 10);
+        if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
+      });
+
       if (nums.length === 3) {
         estado.sorteos[clave].numeros = nums;
         estado.sorteos[clave].estado = 'disponible';
-        capturados++;
-        console.log(`  ✓ ${texto}: ${nums.join('-')}`);
+        conteo++;
+        console.log(`  ✓ ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
       }
     });
 
-    // Método 2: leer el texto del body y buscar patrones "Nombre\nNN NN NN"
-    if (capturados < 5) {
-      console.log('  → Usando parser de texto plano...');
-      for (let i = 0; i < lineas.length - 1; i++) {
-        const clave = buscarClave(lineas[i]);
-        if (!clave) continue;
-        if (estado.sorteos[clave] && estado.sorteos[clave].numeros.length >= 3) continue;
-
-        // Los números pueden estar en la misma línea o en las 2 siguientes
-        for (let j = i + 1; j <= Math.min(i + 3, lineas.length - 1); j++) {
-          const nums = extraerNumeros(lineas[j]);
-          if (nums.length === 3) {
-            estado.sorteos[clave].numeros = nums;
-            estado.sorteos[clave].estado = 'disponible';
-            capturados++;
-            console.log(`  ✓ [txt] ${lineas[i]}: ${nums.join('-')}`);
-            break;
-          }
-        }
-      }
-    }
-
-    console.log(`✅ quinielasrd.com: ${capturados} sorteos capturados`);
-    return capturados;
+    console.log(`✅ [1] loteriasdominicanas.com: ${conteo} sorteos`);
+    return conteo;
   } catch (e) {
-    console.error('⚠️ quinielasrd.com error:', e.message);
+    console.error(`⚠️ [1] loteriasdominicanas.com ERROR: ${e.message}`);
     return 0;
   }
 }
 
-// ── SCRAPER RESPALDO: loteriasdominicanas.com ────────────────────
-async function scrapeRespaldo() {
+// ── SCRAPER 2: quinielasrd.com (respaldo) ────────────────────────────────────
+// Estructura: texto plano — nombre del sorteo seguido de "NN NN NN"
+async function scrapeQuinielasRD() {
   try {
-    const res = await axios.get('https://loteriasdominicanas.com/', {
-      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36' },
-      timeout: 20000
+    console.log('📡 [2] Raspando quinielasrd.com...');
+    const res = await axios.get('https://quinielasrd.com/', {
+      headers: HEADERS, timeout: 20000
     });
     const $ = cheerio.load(res.data);
-    let capturados = 0;
+    let conteo = 0;
 
-    // Este sitio también tiene estructura simple de texto
-    const lineas = $('body').text().split('\n').map(l => l.trim()).filter(l => l);
-    for (let i = 0; i < lineas.length - 1; i++) {
-      const clave = buscarClave(lineas[i]);
-      if (!clave) continue;
-      if (estado.sorteos[clave] && estado.sorteos[clave].numeros.length >= 3) continue;
-      for (let j = i + 1; j <= Math.min(i + 3, lineas.length - 1); j++) {
-        const nums = extraerNumeros(lineas[j]);
-        if (nums.length === 3) {
-          estado.sorteos[clave].numeros = nums;
-          estado.sorteos[clave].estado = 'disponible';
-          capturados++;
-          break;
+    // quinielasrd usa links con el nombre y los números cerca
+    $('a[href]').each((i, el) => {
+      const href = $(el).attr('href') || '';
+      const txt  = $(el).text().trim().toLowerCase();
+      if (!txt || txt.length > 40) return;
+
+      // Buscar clave por href o nombre
+      let clave = null;
+      for (const [k, v] of Object.entries(HREF_MAPA)) {
+        if (href.includes(k.replace('/','')) || href === k) { clave = v; break; }
+      }
+      if (!clave) {
+        for (const [k, v] of Object.entries(NOMBRE_MAPA)) {
+          if (txt.includes(k)) { clave = v; break; }
         }
       }
-    }
-    console.log(`✅ respaldo: ${capturados} sorteos`);
-    return capturados;
+      if (!clave || !estado.sorteos[clave]) return;
+      if (estado.sorteos[clave].numeros.length >= 3) return;
+
+      // Buscar números en el texto del elemento padre y sus hermanos
+      const parent = $(el).closest('div, li, span');
+      const textoBloque = parent.text();
+      const matches = textoBloque.match(/\b(\d{2})\b/g);
+      if (!matches || matches.length < 3) return;
+
+      const nums = matches.slice(0, 3).map(Number).filter(n => n >= 0 && n <= 99);
+      if (nums.length === 3) {
+        estado.sorteos[clave].numeros = nums;
+        estado.sorteos[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [Q] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      }
+    });
+
+    console.log(`✅ [2] quinielasrd.com: ${conteo} sorteos`);
+    return conteo;
   } catch (e) {
-    console.error('⚠️ respaldo error:', e.message);
+    console.error(`⚠️ [2] quinielasrd.com ERROR: ${e.message}`);
     return 0;
   }
 }
 
-// ── Sincronización principal ─────────────────────────────────────
+// ── SCRAPER 3: conectate.com.do (respaldo 2) ─────────────────────────────────
+// Similar estructura a loteriasdominicanas.com (mismo proveedor kiskoo)
+async function scrapeConectate() {
+  try {
+    console.log('📡 [3] Raspando conectate.com.do...');
+    const res = await axios.get('https://www.conectate.com.do/loterias/', {
+      headers: HEADERS, timeout: 20000
+    });
+    const $ = cheerio.load(res.data);
+    let conteo = 0;
+
+    // Igual estructura .game-block / .game-title / .game-scores .score
+    $('.game-block').each((i, bloque) => {
+      const enlace = $(bloque).find('a.game-title, .game-title a').first();
+      const href   = enlace.attr('href') || '';
+      const nombre = $(bloque).find('.game-title span, .company-title a').first().text().trim().toLowerCase();
+
+      let clave = null;
+      for (const [k, v] of Object.entries(NOMBRE_MAPA)) {
+        if (nombre.includes(k)) { clave = v; break; }
+      }
+      if (!clave || !estado.sorteos[clave]) return;
+      if (estado.sorteos[clave].numeros.length >= 3) return;
+
+      const nums = [];
+      $(bloque).find('.game-scores span.score, .ball-single, .lottery-number').each((j, s) => {
+        if (nums.length >= 3) return false;
+        const n = parseInt($(s).text().trim(), 10);
+        if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
+      });
+
+      if (nums.length === 3) {
+        estado.sorteos[clave].numeros = nums;
+        estado.sorteos[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [C] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      }
+    });
+
+    console.log(`✅ [3] conectate.com.do: ${conteo} sorteos`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ [3] conectate.com.do ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
+// ── Sincronización principal ──────────────────────────────────────────────────
 async function sincronizar() {
   const hoy = fechaRD();
-  console.log(`\n🔄 [${horaRD()}] Sincronizando... fecha RD: ${hoy}`);
+  console.log(`\n🔄 [${horaRD()} RD] Sincronizando... (${hoy})`);
 
-  // Si cambió el día → guardar histórico y resetear
+  // Nuevo día → guardar histórico y resetear
   if (hoy !== estado.fecha) {
-    const entrada = {
-      fecha: estado.fecha,
-      sorteos: JSON.parse(JSON.stringify(estado.sorteos))
-    };
-    estado.historico.unshift(entrada);
+    const snapshot = { fecha: estado.fecha, sorteos: JSON.parse(JSON.stringify(estado.sorteos)) };
+    estado.historico.unshift(snapshot);
     if (estado.historico.length > 90) estado.historico.pop();
     estado.sorteos = crearSorteos();
     estado.fecha = hoy;
-    console.log(`📅 Nuevo día: ${hoy}. Histórico guardado (${estado.historico.length} días).`);
+    console.log(`📅 Nuevo día ${hoy}. Histórico: ${estado.historico.length} días.`);
   }
 
-  await scrapeQuinielasRD(hoy);
-  
-  // Si faltaron sorteos, intentar respaldo
+  // Scraper 1 primero (mejor fuente — HTML confirmado)
+  const c1 = await scrapeLotDominicanas();
+
+  // Scraper 2 si faltan sorteos
   const pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
-  if (pendientes > 10) {
-    await scrapeRespaldo();
-  }
+  if (pendientes > 8) await scrapeQuinielasRD();
+
+  // Scraper 3 si aún faltan
+  const pendientes2 = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes2 > 8) await scrapeConectate();
 
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
-  console.log(`📊 Resultado: ${disp}/18 sorteos disponibles\n`);
+  console.log(`📊 RESULTADO FINAL: ${disp}/18 sorteos con números\n`);
 }
 
-// ── Auto-sync cada 15 minutos ────────────────────────────────────
+// Auto-sync cada 15 minutos
 setInterval(sincronizar, 15 * 60 * 1000);
 
-// ── ENDPOINTS ────────────────────────────────────────────────────
+// ── ENDPOINTS ─────────────────────────────────────────────────────────────────
 
-// Resultados de hoy (fuerza sync)
 app.get('/api/hoy', async (req, res) => {
   await sincronizar();
   res.json({
@@ -270,26 +323,21 @@ app.get('/api/hoy', async (req, res) => {
   });
 });
 
-// Histórico completo
 app.get('/api/historico', (req, res) => {
   res.json({ historico: estado.historico, total: estado.historico.length });
 });
 
-// Consultar por lotería y rango de fecha
 app.get('/api/consultar', (req, res) => {
   const { loteria, fecha_inicio, fecha_fin } = req.query;
   const todos = [
     { fecha: estado.fecha, sorteos: estado.sorteos },
     ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: h.sorteos }))
   ];
-  
   const resultados = [];
   for (const dia of todos) {
     if (fecha_inicio && dia.fecha < fecha_inicio) continue;
-    if (fecha_fin   && dia.fecha > fecha_fin)   continue;
-    const lotes = (loteria && loteria !== 'todas')
-      ? [loteria]
-      : Object.keys(estado.sorteos);
+    if (fecha_fin   && dia.fecha > fecha_fin)     continue;
+    const lotes = (loteria && loteria !== 'todas') ? [loteria] : Object.keys(estado.sorteos);
     for (const k of lotes) {
       const s = dia.sorteos[k];
       if (s && s.numeros && s.numeros.length >= 3) {
@@ -300,7 +348,6 @@ app.get('/api/consultar', (req, res) => {
   res.json({ resultados, total: resultados.length });
 });
 
-// Estadísticas para backtesting
 app.get('/api/estadisticas', (req, res) => {
   const { loteria } = req.query;
   const todos = [
@@ -309,11 +356,9 @@ app.get('/api/estadisticas', (req, res) => {
   ];
   const freq = {}, pares = {}, trips = {};
   let total = 0;
-  
   for (const dia of todos) {
     const lotes = (loteria && loteria !== 'todas')
-      ? [loteria]
-      : ['gana_mas','leidsa','nacional','loteka'];
+      ? [loteria] : ['gana_mas','leidsa','nacional','loteka'];
     for (const k of lotes) {
       const s = dia.sorteos[k];
       if (!s || s.numeros.length < 3) continue;
@@ -327,27 +372,28 @@ app.get('/api/estadisticas', (req, res) => {
       trips[tk] = (trips[tk]||0) + 1;
     }
   }
-  
-  const topNumeros = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([n,f])=>({numero:+n,frecuencia:f}));
-  const topPares   = Object.entries(pares).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([p,f])=>({par:p,frecuencia:f}));
-  const topTrips   = Object.entries(trips).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([t,f])=>({tripleta:t,frecuencia:f}));
-  res.json({ topNumeros, topPares, topTrips, total_sorteos: total });
+  res.json({
+    topNumeros: Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([n,f])=>({numero:+n,frecuencia:f})),
+    topPares:   Object.entries(pares).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([p,f])=>({par:p,frecuencia:f})),
+    topTrips:   Object.entries(trips).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([t,f])=>({tripleta:t,frecuencia:f})),
+    total_sorteos: total
+  });
 });
 
-// Health
 app.get('/', (req, res) => {
   res.json({
-    version: 'v3.0',
+    version: 'v4.0-REAL',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
-    historico_dias: estado.historico.length
+    historico_dias: estado.historico.length,
+    fuente: 'loteriasdominicanas.com (selectores confirmados del HTML real)'
   });
 });
 
-// ── Arranque ──────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v3.0 corriendo en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v4.0-REAL en puerto ${PORT}`);
+  console.log(`📋 Selectores: .game-block > a.game-title[href] + .game-scores.ball-mode span.score`);
   sincronizar();
 });
