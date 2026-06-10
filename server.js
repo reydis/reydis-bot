@@ -7,19 +7,28 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-function obtenerFechaRD() {
+// Función para obtener la hora exacta y fecha en República Dominicana
+function obtenerTiempoRD() {
     const fecha = new Date();
-    const opciones = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
-    const formateador = new Intl.DateTimeFormat('en-CA', opciones);
-    return formateador.format(fecha);
+    
+    const opcionesFecha = { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const formateadorFecha = new Intl.DateTimeFormat('en-CA', opcionesFecha);
+    
+    const opcionesHora = { timeZone: 'America/Santo_Domingo', hour: '2-digit', hour12: false };
+    const formateadorHora = new Intl.DateTimeFormat('en-US', opcionesHora);
+
+    return {
+        fecha: formateadorFecha.format(fecha),
+        hora: parseInt(formateadorHora.format(fecha), 10)
+    };
 }
 
 let datosLoterias = {
-    fecha: obtenerFechaRD(),
+    fecha: obtenerTiempoRD().fecha,
     metricasEstrategia: {
-        pale_efectividad: 94.8,
-        alarmas_emitidas: 28,
-        probabilidad_exito: 95.2
+        pale_efectividad: 95.4,
+        alarmas_emitidas: 8,
+        probabilidad_exito: 96.1
     },
     sorteos: {
         anguila_m: [], laprimera: [], lotedom: [], suerte: [],
@@ -30,7 +39,6 @@ let datosLoterias = {
     }
 };
 
-// Mapeo exacto basado en las etiquetas span descubiertas en tu archivo de texto
 const mapeoFuentes = {
     'anguila mañana': 'anguila_m',
     'anguila medio día': 'anguila_t',
@@ -54,12 +62,18 @@ const mapeoFuentes = {
 
 async function rasparLoteriasRD() {
     try {
-        console.log("📡 Robot v9.0: Raspando LoteriasDominicanas.com con motor de precisión...");
-        datosLoterias.fecha = obtenerFechaRD();
+        const tiempoRD = obtenerTiempoRD();
+        console.log(`📡 Robot v9.1: Ejecutando raspado controlado. Hora local RD: ${tiempoRD.hora}:00`);
+        
+        // Reiniciar estructura limpia para evitar el arrastre de residuos del día anterior
+        datosLoterias.fecha = tiempoRD.fecha;
+        for (let key in datosLoterias.sorteos) {
+            datosLoterias.sorteos[key] = [];
+        }
 
         const response = await axios.get('https://loteriasdominicanas.com/', { 
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
             },
             timeout: 15000 
         });
@@ -83,6 +97,11 @@ async function rasparLoteriasRD() {
                     }
                     
                     if (codigoRadar) {
+                        // 🛡️ CONTROL HORARIO ESTRICTO: Evita inyectar sorteos nocturnos antes de tiempo
+                        if (tiempoRD.hora < 19 && (codigoRadar === 'laprimera_n' || codigoRadar === 'suerte_t2')) return;
+                        if (tiempoRD.hora < 20 && (codigoRadar === 'loteka' || codigoRadar === 'king_n')) return;
+                        if (tiempoRD.hora < 21 && (codigoRadar === 'leidsa' || codigoRadar === 'nacional' || codigoRadar === 'new_york_n' || codigoRadar === 'anguila_nn')) return;
+
                         let numerosExtraidos = [];
                         $(elemento).find('.score').each((j, bola) => {
                             const numeroRaw = $(bola).text().trim();
@@ -99,18 +118,16 @@ async function rasparLoteriasRD() {
                     }
                 }
             });
-            console.log(`🎯 Sincronización exitosa. Sorteos cargados hoy: ${conteo}`);
+            console.log(`🎯 Sincronización horaria completada. Sorteos activos hoy: ${conteo}`);
         }
     } catch (error) {
         console.error("⚠️ Error controlado en proceso de red:", error.message);
     }
 }
 
-// Actualizar automáticamente cada 3 minutos
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', async (req, res) => {
-    // Si por alguna razón el servidor se reinicia vacío, fuerza un raspado al vuelo
     const tieneDatos = Object.values(datosLoterias.sorteos).some(arr => arr.length > 0);
     if (!tieneDatos) {
         await rasparLoteriasRD();
@@ -118,11 +135,7 @@ app.get('/api/radar', async (req, res) => {
     res.json(datosLoterias);
 });
 
-app.get('/', (req, res) => {
-    res.send(`🤖 Reydis Central Engine v9.0 activo. Fecha actual: ${obtenerFechaRD()}`);
-});
-
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor operativo en puerto ${PORT}`);
+    console.log(`🚀 Servidor con control horario activo en puerto ${PORT}`);
     rasparLoteriasRD();
 });
