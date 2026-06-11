@@ -63,12 +63,18 @@ const mapeoFuentes = {
 async function rasparLoteriasRD() {
     try {
         const tiempoRD = obtenerTiempoRD();
-        console.log(`📡 Robot v9.1: Ejecutando raspado controlado. Hora local RD: ${tiempoRD.hora}:00`);
+        console.log(`📡 Robot v9.2: Analizando control. Hora RD: ${tiempoRD.hora}:00`);
         
-        // Reiniciar estructura limpia para evitar el arrastre de residuos del día anterior
+        // Reiniciar estructura limpia para el nuevo día
         datosLoterias.fecha = tiempoRD.fecha;
         for (let key in datosLoterias.sorteos) {
             datosLoterias.sorteos[key] = [];
+        }
+
+        // 🛡️ PARACAÍDAS DE MADRUGADA: Si es de las 12:00 AM a las 9:59 AM, el tablero se queda en blanco
+        if (tiempoRD.hora >= 0 && tiempoRD.hora < 10) {
+            console.log("🌙 Bloqueo de Madrugada Activo: Esperando que amanezca en RD...");
+            return; 
         }
 
         const response = await axios.get('https://loteriasdominicanas.com/', { 
@@ -97,7 +103,7 @@ async function rasparLoteriasRD() {
                     }
                     
                     if (codigoRadar) {
-                        // 🛡️ CONTROL HORARIO ESTRICTO: Evita inyectar sorteos nocturnos antes de tiempo
+                        // Control estricto de horarios para la tarde y noche
                         if (tiempoRD.hora < 19 && (codigoRadar === 'laprimera_n' || codigoRadar === 'suerte_t2')) return;
                         if (tiempoRD.hora < 20 && (codigoRadar === 'loteka' || codigoRadar === 'king_n')) return;
                         if (tiempoRD.hora < 21 && (codigoRadar === 'leidsa' || codigoRadar === 'nacional' || codigoRadar === 'new_york_n' || codigoRadar === 'anguila_nn')) return;
@@ -118,7 +124,7 @@ async function rasparLoteriasRD() {
                     }
                 }
             });
-            console.log(`🎯 Sincronización horaria completada. Sorteos activos hoy: ${conteo}`);
+            console.log(`🎯 Sincronización completada. Sorteos activos hoy: ${conteo}`);
         }
     } catch (error) {
         console.error("⚠️ Error controlado en proceso de red:", error.message);
@@ -128,14 +134,19 @@ async function rasparLoteriasRD() {
 setInterval(rasparLoteriasRD, 3 * 60 * 1000);
 
 app.get('/api/radar', async (req, res) => {
-    const tieneDatos = Object.values(datosLoterias.sorteos).some(arr => arr.length > 0);
-    if (!tieneDatos) {
-        await rasparLoteriasRD();
+    const tiempoRD = obtenerTiempoRD();
+    // Si estamos en la madrugada, ni siquiera intentamos raspar, mandamos el objeto limpio
+    if (tiempoRD.hora >= 0 && tiempoRD.hora < 10) {
+        datosLoterias.fecha = tiempoRD.fecha;
+        for (let key in datosLoterias.sorteos) { datosLoterias.sorteos[key] = []; }
+    } else {
+        const tieneDatos = Object.values(datosLoterias.sorteos).some(arr => arr.length > 0);
+        if (!tieneDatos) { await rasparLoteriasRD(); }
     }
     res.json(datosLoterias);
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor con control horario activo en puerto ${PORT}`);
+    console.log(`🚀 Servidor operativo con control de madrugada en puerto ${PORT}`);
     rasparLoteriasRD();
 });
