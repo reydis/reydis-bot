@@ -39,19 +39,19 @@ let estado = {
 function crearSorteos() {
   return {
     anguila_m:   { nombre:'Anguila Mañana',   hora:'10:00 AM', numeros:[], estado:'pendiente' },
-    laprimera:   { nombre:'La Primera Día',   hora:'10:30 AM', numeros:[], estado:'pendiente' },
-    lotedom:     { nombre:'LoteDom',           hora:'11:30 AM', numeros:[], estado:'pendiente' },
+    laprimera:   { nombre:'La Primera Día',   hora:'12:00 PM', numeros:[], estado:'pendiente' },
+    lotedom:     { nombre:'LoteDom',           hora:'12:00 PM', numeros:[], estado:'pendiente' },
     suerte:      { nombre:'La Suerte 12:30',  hora:'12:30 PM', numeros:[], estado:'pendiente' },
     king_t:      { nombre:'King Tarde',        hora:'12:30 PM', numeros:[], estado:'pendiente' },
-    real_t:      { nombre:'Lotería Real',      hora:'12:30 PM', numeros:[], estado:'pendiente' },
+    real_t:      { nombre:'Lotería Real',      hora:'1:00 PM',  numeros:[], estado:'pendiente' },
     anguila_t:   { nombre:'Anguila 1:00 PM',  hora:'1:00 PM',  numeros:[], estado:'pendiente' },
     gana_mas:    { nombre:'Gana Más',          hora:'2:30 PM',  numeros:[], estado:'pendiente' },
-    new_york_t:  { nombre:'New York Tarde',    hora:'3:30 PM',  numeros:[], estado:'pendiente' },
+    new_york_t:  { nombre:'New York Tarde',    hora:'2:30 PM',  numeros:[], estado:'pendiente' },
     suerte_t2:   { nombre:'La Suerte Tarde',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     anguila_n:   { nombre:'Anguila 6:00 PM',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     king_n:      { nombre:'King Noche',        hora:'7:00 PM',  numeros:[], estado:'pendiente' },
-    loteka:      { nombre:'Loteka',            hora:'7:30 PM',  numeros:[], estado:'pendiente' },
-    laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM',  numeros:[], estado:'pendiente' },
+    loteka:      { nombre:'Loteka',            hora:'6:55 PM',  numeros:[], estado:'pendiente' },
+    laprimera_n: { nombre:'La Primera Noche', hora:'7:00 PM',  numeros:[], estado:'pendiente' },
     leidsa:      { nombre:'Leidsa',            hora:'8:55 PM',  numeros:[], estado:'pendiente' },
     nacional:    { nombre:'Lotería Nacional',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
     anguila_nn:  { nombre:'Anguila 9:00 PM',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
@@ -131,18 +131,39 @@ async function scrapeLotDominicanas() {
       if (!clave || !estado.sorteos[clave]) return;
       if (estado.sorteos[clave].numeros.length >= 3) return; // ya tenemos
 
+      // ESTRICTO: solo el contenedor .game-scores.ball-mode (modo quiniela 3 bolas)
+      // Esto evita capturar Pega 3 Más, Mega Chance, Loto, etc. que tienen otros formatos
+      const contenedorBolas = $(bloque).find('.game-scores.ball-mode');
+      if (contenedorBolas.length === 0) {
+        console.log(`  ⏭️  ${tituloWeb}: sin .ball-mode (probablemente sin resultado aún o formato distinto)`);
+        return;
+      }
+
       const nums = [];
-      $(bloque).find('.game-scores .score').each((j, span) => {
+      contenedorBolas.first().find('span.score').each((j, span) => {
         if (nums.length >= 3) return false;
-        const n = parseInt($(span).text().trim(), 10);
+        const raw = $(span).text().trim();
+        // Validar que sea solo dígitos (rechazar vacíos, "--", "?", etc.)
+        if (!/^\d{1,2}$/.test(raw)) return;
+        const n = parseInt(raw, 10);
         if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
       });
 
+      // Rechazar patrones sospechosos: 00-99 + algo, o menos de 3 números válidos
       if (nums.length === 3) {
+        // Filtro adicional: si los 3 números son exactamente 0, 99 y otro, es sospechoso
+        // (probablemente placeholder / sin sorteo todavía)
+        const sospechoso = nums.includes(0) && nums.includes(99);
+        if (sospechoso) {
+          console.log(`  ⚠️  ${tituloWeb}: patrón sospechoso ${nums.join('-')} (0 y 99 juntos) - descartado`);
+          return;
+        }
         estado.sorteos[clave].numeros = nums;
         estado.sorteos[clave].estado = 'disponible';
         conteo++;
         console.log(`  ✓ ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      } else {
+        console.log(`  ⏭️  ${tituloWeb}: solo ${nums.length} números válidos encontrados`);
       }
     });
 
@@ -302,20 +323,40 @@ app.get('/api/estadisticas', (req, res) => {
   });
 });
 
+// Endpoint de diagnóstico: muestra qué títulos y bloques encuentra el scraper
+app.get('/api/debug', async (req, res) => {
+  try {
+    const r = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 20000 });
+    const $ = cheerio.load(r.data);
+    const bloques = [];
+    $('.game-block').each((i, b) => {
+      const titulo = $(b).find('.game-title span').text().trim();
+      const tieneBallMode = $(b).find('.game-scores.ball-mode').length > 0;
+      const scores = [];
+      $(b).find('.game-scores.ball-mode span.score').each((j, s) => scores.push($(s).text().trim()));
+      const clave = buscarClave(titulo);
+      bloques.push({ titulo, clave, tieneBallMode, scores });
+    });
+    res.json({ total_bloques: bloques.length, bloques });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({
-    version: 'v5.0-MERGED',
+    version: 'v5.1-STRICT',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico']
+    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug']
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v5.0-MERGED en puerto ${PORT}`);
-  console.log(`📋 Endpoints: /api/hoy /api/radar /api/consultar /api/estadisticas`);
+  console.log(`\n🚀 Reydis Engine v5.1-STRICT en puerto ${PORT}`);
+  console.log(`📋 Solo acepta .game-scores.ball-mode con 3 scores válidos (rechaza patrones 0+99)`);
   sincronizar();
 });
