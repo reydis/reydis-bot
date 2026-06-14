@@ -236,7 +236,15 @@ async function scrapeLotDominicanas() {
 }
 
 // ── SCRAPER RESPALDO: quinielasrd.com ──────────────────────────────────────────
+// ⚠️ DESACTIVADO TEMPORALMENTE: está capturando datos basura (0-99-0) en vez de
+// números reales de sorteo. Probablemente está leyendo paginación, años o IDs.
+// No lo usamos hasta corregir el parser.
 async function scrapeQuinielasRD() {
+  console.log('⏭️  quinielasrd.com DESACTIVADO (genera datos basura 0-99-0)');
+  return 0;
+}
+
+async function scrapeQuinielasRD_DESACTIVADO() {
   try {
     console.log('📡 [respaldo] Raspando quinielasrd.com...');
     const res = await axios.get('https://quinielasrd.com/', {
@@ -394,10 +402,23 @@ app.get('/api/debug', async (req, res) => {
       headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
       timeout: 20000
     });
+    let data = r1.data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (e) {}
+    }
+    const items = Array.isArray(data) ? data
+                 : Array.isArray(data?.data) ? data.data
+                 : Array.isArray(data?.results) ? data.results
+                 : Array.isArray(data?.loterias) ? data.loterias
+                 : [];
     resultado.conectate_api = {
       status: r1.status,
       content_type: r1.headers['content-type'],
-      data_preview: JSON.stringify(r1.data).slice(0, 3000)
+      total_items: items.length,
+      primer_item_completo: items[0] || null,
+      claves_primer_item: items[0] ? Object.keys(items[0]) : [],
+      primeros_3_items: items.slice(0, 3),
+      data_preview_crudo: JSON.stringify(r1.data).slice(0, 2000)
     };
   } catch (e) {
     resultado.conectate_api = { error: e.message, status: e.response?.status };
@@ -426,7 +447,7 @@ app.get('/api/debug', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v5.2-API',
+    version: 'v5.3-DEBUG',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
@@ -437,8 +458,10 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v5.2-API en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v5.3-DEBUG en puerto ${PORT}`);
   console.log(`📋 Fuente primaria: conectate.com.do/loterias/api/widget (JSON)`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
+  console.log(`⏭️  quinielasrd.com DESACTIVADO (generaba 0-99-0)`);
+  console.log(`🔍 Visita /api/debug para ver estructura real del JSON de conectate`);
   sincronizar();
 });
