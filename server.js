@@ -108,7 +108,67 @@ const HEADERS = {
   'Accept-Language': 'es-DO,es;q=0.9,en;q=0.8',
 };
 
-// ── SCRAPER: loteriasdominicanas.com ───────────────────────────────────────────
+// ── SCRAPER PRINCIPAL: conectate.com.do widget API (JSON) ─────────────────────
+// Este endpoint devuelve JSON estructurado, mucho más confiable que parsear HTML.
+// Encontrado en el código fuente: data-url="https://www.conectate.com.do/loterias/api/widget"
+async function scrapeConectateAPI() {
+  try {
+    console.log('📡 [PRIMARIO] Raspando conectate.com.do/loterias/api/widget...');
+    const res = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
+      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+      timeout: 20000
+    });
+
+    let data = res.data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (e) { /* no es JSON puro */ }
+    }
+
+    let conteo = 0;
+    // La estructura puede variar; intentamos varios formatos comunes
+    const items = Array.isArray(data) ? data
+                 : Array.isArray(data?.data) ? data.data
+                 : Array.isArray(data?.results) ? data.results
+                 : Array.isArray(data?.loterias) ? data.loterias
+                 : [];
+
+    console.log(`  → API devolvió ${items.length} items`);
+
+    for (const item of items) {
+      // Buscar nombre en varios campos posibles
+      const nombre = (item.name || item.nombre || item.title || item.game || '').toString();
+      if (!nombre) continue;
+
+      const clave = buscarClave(nombre);
+      if (!clave || !estado.sorteos[clave]) continue;
+      if (estado.sorteos[clave].numeros.length >= 3) continue;
+
+      // Buscar números en varios campos posibles
+      let nums = [];
+      const camposNumeros = item.numbers || item.numeros || item.results || item.scores || item.balls;
+      if (Array.isArray(camposNumeros)) {
+        nums = camposNumeros.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 0 && n <= 99).slice(0, 3);
+      }
+
+      if (nums.length === 3) {
+        const sospechoso = nums.includes(0) && nums.includes(99);
+        if (sospechoso) continue;
+        estado.sorteos[clave].numeros = nums;
+        estado.sorteos[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      }
+    }
+
+    console.log(`✅ [PRIMARIO] conectate API: ${conteo} sorteos`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ [PRIMARIO] conectate API ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
+
 // Estructura confirmada:
 //   <a class="game-title" href="..."><span>Gana Más</span></a>
 //   <div class="game-scores p-2 ball-mode">
@@ -228,13 +288,14 @@ async function sincronizar() {
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
   }
 
-  // Nota: no bloqueamos por horario — simplemente raspamos lo que esté disponible.
-  // Las loterias que aún no han corrido seguirán en estado "pendiente" naturalmente
-  // porque el sitio no las muestra todavía o muestra los resultados del día anterior
-  // (en cuyo caso el numero ya estará igual y no se sobreescribe dos veces).
-  await scrapeLotDominicanas();
+  // Intentar fuente primaria: API JSON de conectate
+  await scrapeConectateAPI();
 
-  const pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  // Si faltan, intentar HTML de loteriasdominicanas.com
+  let pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes > 0) await scrapeLotDominicanas();
+
+  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 8) await scrapeQuinielasRD();
 
   estado.hora_actualizacion = horaRD();
@@ -323,11 +384,29 @@ app.get('/api/estadisticas', (req, res) => {
   });
 });
 
-// Endpoint de diagnóstico: muestra qué títulos y bloques encuentra el scraper
+// Endpoint de diagnóstico: muestra qué encuentra cada scraper
 app.get('/api/debug', async (req, res) => {
+  const resultado = {};
+
+  // 1. Probar API de conectate
   try {
-    const r = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 20000 });
-    const $ = cheerio.load(r.data);
+    const r1 = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
+      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+      timeout: 20000
+    });
+    resultado.conectate_api = {
+      status: r1.status,
+      content_type: r1.headers['content-type'],
+      data_preview: JSON.stringify(r1.data).slice(0, 3000)
+    };
+  } catch (e) {
+    resultado.conectate_api = { error: e.message, status: e.response?.status };
+  }
+
+  // 2. Probar HTML de loteriasdominicanas.com
+  try {
+    const r2 = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 20000 });
+    const $ = cheerio.load(r2.data);
     const bloques = [];
     $('.game-block').each((i, b) => {
       const titulo = $(b).find('.game-title span').text().trim();
@@ -337,15 +416,17 @@ app.get('/api/debug', async (req, res) => {
       const clave = buscarClave(titulo);
       bloques.push({ titulo, clave, tieneBallMode, scores });
     });
-    res.json({ total_bloques: bloques.length, bloques });
+    resultado.loteriasdominicanas = { total_bloques: bloques.length, bloques };
   } catch (e) {
-    res.json({ error: e.message });
+    resultado.loteriasdominicanas = { error: e.message };
   }
+
+  res.json(resultado);
 });
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v5.1-STRICT',
+    version: 'v5.2-API',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
@@ -356,7 +437,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v5.1-STRICT en puerto ${PORT}`);
-  console.log(`📋 Solo acepta .game-scores.ball-mode con 3 scores válidos (rechaza patrones 0+99)`);
+  console.log(`\n🚀 Reydis Engine v5.2-API en puerto ${PORT}`);
+  console.log(`📋 Fuente primaria: conectate.com.do/loterias/api/widget (JSON)`);
+  console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
   sincronizar();
 });
