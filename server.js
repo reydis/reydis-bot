@@ -116,7 +116,7 @@ async function scrapeConectateAPI() {
     console.log('📡 [PRIMARIO] Raspando conectate.com.do/loterias/api/widget...');
     const res = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
       headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
-      timeout: 20000
+      timeout: 10000
     });
 
     let data = res.data;
@@ -178,7 +178,7 @@ async function scrapeLotDominicanas() {
   try {
     console.log('📡 Raspando loteriasdominicanas.com...');
     const res = await axios.get('https://loteriasdominicanas.com/', {
-      headers: HEADERS, timeout: 20000
+      headers: HEADERS, timeout: 10000
     });
     const $ = cheerio.load(res.data);
     let conteo = 0;
@@ -248,7 +248,7 @@ async function scrapeQuinielasRD_DESACTIVADO() {
   try {
     console.log('📡 [respaldo] Raspando quinielasrd.com...');
     const res = await axios.get('https://quinielasrd.com/', {
-      headers: HEADERS, timeout: 20000
+      headers: HEADERS, timeout: 10000
     });
     const $ = cheerio.load(res.data);
     let conteo = 0;
@@ -392,15 +392,12 @@ app.get('/api/estadisticas', (req, res) => {
   });
 });
 
-// Endpoint de diagnóstico: muestra qué encuentra cada scraper
+// Endpoint de diagnóstico - SOLO conectate API (rápido)
 app.get('/api/debug', async (req, res) => {
-  const resultado = {};
-
-  // 1. Probar API de conectate
   try {
     const r1 = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
       headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
-      timeout: 20000
+      timeout: 8000
     });
     let data = r1.data;
     if (typeof data === 'string') {
@@ -411,22 +408,23 @@ app.get('/api/debug', async (req, res) => {
                  : Array.isArray(data?.results) ? data.results
                  : Array.isArray(data?.loterias) ? data.loterias
                  : [];
-    resultado.conectate_api = {
+    res.json({
       status: r1.status,
       content_type: r1.headers['content-type'],
       total_items: items.length,
-      primer_item_completo: items[0] || null,
       claves_primer_item: items[0] ? Object.keys(items[0]) : [],
       primeros_3_items: items.slice(0, 3),
-      data_preview_crudo: JSON.stringify(r1.data).slice(0, 2000)
-    };
+      data_preview_crudo: JSON.stringify(r1.data).slice(0, 1500)
+    });
   } catch (e) {
-    resultado.conectate_api = { error: e.message, status: e.response?.status };
+    res.status(200).json({ error: e.message, code: e.code, status: e.response?.status });
   }
+});
 
-  // 2. Probar HTML de loteriasdominicanas.com
+// Endpoint de diagnóstico - SOLO loteriasdominicanas.com (rápido)
+app.get('/api/debug2', async (req, res) => {
   try {
-    const r2 = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 20000 });
+    const r2 = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 8000 });
     const $ = cheerio.load(r2.data);
     const bloques = [];
     $('.game-block').each((i, b) => {
@@ -437,31 +435,29 @@ app.get('/api/debug', async (req, res) => {
       const clave = buscarClave(titulo);
       bloques.push({ titulo, clave, tieneBallMode, scores });
     });
-    resultado.loteriasdominicanas = { total_bloques: bloques.length, bloques };
+    res.json({ total_bloques: bloques.length, bloques });
   } catch (e) {
-    resultado.loteriasdominicanas = { error: e.message };
+    res.status(200).json({ error: e.message, code: e.code });
   }
-
-  res.json(resultado);
 });
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v5.3-DEBUG',
+    version: 'v5.4-DEBUG-FIX',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug']
+    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug', '/api/debug2']
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v5.3-DEBUG en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v5.4-DEBUG-FIX en puerto ${PORT}`);
   console.log(`📋 Fuente primaria: conectate.com.do/loterias/api/widget (JSON)`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
   console.log(`⏭️  quinielasrd.com DESACTIVADO (generaba 0-99-0)`);
-  console.log(`🔍 Visita /api/debug para ver estructura real del JSON de conectate`);
+  console.log(`🔍 /api/debug = conectate API | /api/debug2 = loteriasdominicanas.com`);
   sincronizar();
 });
