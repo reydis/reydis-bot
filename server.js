@@ -103,10 +103,16 @@ const MAPA = {
   'anguila 6:00':         'anguila_n',
   'anguila 9:00 pm':      'anguila_nn',
   'anguila 9:00':         'anguila_nn',
-  'new york 11:30':       'new_york_t',   // New York Tarde (11:30 AM en conectate)
+  // Confirmados en logs de Render:
+  'la suerte 6pm':        'suerte_t2',   // ← "La Suerte 6PM"
+  'la suerte md':         'suerte',      // ← "La Suerte MD" (mediodía)
+  'new york 3:30':        'new_york_t',  // ← "New York 3:30"
+  'florida día':          'new_york_t',  // ← "Florida Día" = New York Tarde americana
+  'florida dia':          'new_york_t',
+  'florida noche':        'new_york_n',  // ← "Florida Noche" = New York Noche
+  'new york 11:30':       'new_york_t',
   'new york 2:30':        'new_york_t',
-  'florida noche':        'new_york_n',   // New York Noche aparece como "Florida Noche"
-  'new york 11:30 pm':    'new_york_n',
+  'nueva york':           'new_york_t',
   'primera noche':        'laprimera_n',
   'la primera noche':     'laprimera_n',
   'la primera 12:00':     'laprimera',
@@ -114,9 +120,8 @@ const MAPA = {
   'primera dia':          'laprimera',
   'king lottery 7:30':    'king_n',
   'king lottery 12:30':   'king_t',
-  'quiniela mega decenas': 'loteka',      // Loteka en conectate puede ser "Quiniela Mega Decenas"
+  'quiniela mega decenas': 'loteka',
   'quiniela loteka':      'loteka',
-  'lotedom':              'lotedom',
   'la suerte 12:30 pm':   'suerte',
   'suerte 12:30':         'suerte',
   'la suerte 6:00 pm':    'suerte_t2',
@@ -482,7 +487,7 @@ app.get('/api/debug2', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v6.0-LIVE',
+    version: 'v6.1-LIVE',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
@@ -493,9 +498,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v6.0-LIVE en puerto ${PORT}`);
-  console.log(`✅ Parser conectate CORREGIDO: campo game_title + score[]`);
+  console.log(`\n🚀 Reydis Engine v6.1-LIVE en puerto ${PORT}`);
+  console.log(`✅ Mapeo completo: 18/18 loterias (incl. La Suerte 6PM/MD, New York 3:30, Florida Día)`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
-  console.log(`⏭️  quinielasrd.com DESACTIVADO`);
   sincronizar();
 });
