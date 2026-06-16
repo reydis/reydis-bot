@@ -62,6 +62,7 @@ function crearSorteos() {
 // ── MAPEO de nombres del sitio → clave interna ────────────────────────────────
 // (Confirmado contra el HTML real de loteriasdominicanas.com)
 const MAPA = {
+  // ── Nombres de loteriasdominicanas.com ──
   'anguila mañana':       'anguila_m',
   'anguila medio día':    'anguila_t',
   'anguila medio dia':    'anguila_t',
@@ -92,6 +93,35 @@ const MAPA = {
   'king lottery 7:30':    'king_n',
   'king tarde':           'king_t',
   'king noche':           'king_n',
+
+  // ── Nombres REALES de conectate.com.do (confirmados en /api/debug) ──
+  'anguila 10:00 am':     'anguila_m',
+  'anguila 10:00':        'anguila_m',
+  'anguila 1:00 pm':      'anguila_t',
+  'anguila 1:00':         'anguila_t',
+  'anguila 6:00 pm':      'anguila_n',
+  'anguila 6:00':         'anguila_n',
+  'anguila 9:00 pm':      'anguila_nn',
+  'anguila 9:00':         'anguila_nn',
+  'new york 11:30':       'new_york_t',   // New York Tarde (11:30 AM en conectate)
+  'new york 2:30':        'new_york_t',
+  'florida noche':        'new_york_n',   // New York Noche aparece como "Florida Noche"
+  'new york 11:30 pm':    'new_york_n',
+  'primera noche':        'laprimera_n',
+  'la primera noche':     'laprimera_n',
+  'la primera 12:00':     'laprimera',
+  'primera día':          'laprimera',
+  'primera dia':          'laprimera',
+  'king lottery 7:30':    'king_n',
+  'king lottery 12:30':   'king_t',
+  'quiniela mega decenas': 'loteka',      // Loteka en conectate puede ser "Quiniela Mega Decenas"
+  'quiniela loteka':      'loteka',
+  'lotedom':              'lotedom',
+  'la suerte 12:30 pm':   'suerte',
+  'suerte 12:30':         'suerte',
+  'la suerte 6:00 pm':    'suerte_t2',
+  'lotería real 1:00':    'real_t',
+  'loto real':            'real_t',
 };
 
 function buscarClave(texto) {
@@ -109,8 +139,16 @@ const HEADERS = {
 };
 
 // ── SCRAPER PRINCIPAL: conectate.com.do widget API (JSON) ─────────────────────
-// Este endpoint devuelve JSON estructurado, mucho más confiable que parsear HTML.
-// Encontrado en el código fuente: data-url="https://www.conectate.com.do/loterias/api/widget"
+// Estructura CONFIRMADA del /api/debug:
+// {
+//   "game_title": "Anguila 10:00 AM",
+//   "permalink": "https://www.conectate.com.do/loterias/anguilla/anguila-10-am",
+//   "update_date_time": "2026-06-15 14:00:10",
+//   "score": ["03","91","75"],   ← AQUÍ están los números (strings)
+//   "date": "15-06",
+//   "today": true,               ← true = sorteo de HOY
+//   "text_mode": 0
+// }
 async function scrapeConectateAPI() {
   try {
     console.log('📡 [PRIMARIO] Raspando conectate.com.do/loterias/api/widget...');
@@ -119,44 +157,47 @@ async function scrapeConectateAPI() {
       timeout: 10000
     });
 
-    let data = res.data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (e) { /* no es JSON puro */ }
+    let items = res.data;
+    if (!Array.isArray(items)) {
+      // intentar extraer si viene envuelto
+      items = res.data?.data || res.data?.results || res.data?.loterias || [];
     }
 
-    let conteo = 0;
-    // La estructura puede variar; intentamos varios formatos comunes
-    const items = Array.isArray(data) ? data
-                 : Array.isArray(data?.data) ? data.data
-                 : Array.isArray(data?.results) ? data.results
-                 : Array.isArray(data?.loterias) ? data.loterias
-                 : [];
-
     console.log(`  → API devolvió ${items.length} items`);
+    let conteo = 0;
 
     for (const item of items) {
-      // Buscar nombre en varios campos posibles
-      const nombre = (item.name || item.nombre || item.title || item.game || '').toString();
+      const nombre = (item.game_title || '').toString().trim();
       if (!nombre) continue;
 
+      // Solo procesar si es de HOY (today === true) o si la fecha coincide
+      // Nota: también aceptamos today===false para historial reciente si ya tenemos la fecha
       const clave = buscarClave(nombre);
-      if (!clave || !estado.sorteos[clave]) continue;
+      if (!clave || !estado.sorteos[clave]) {
+        console.log(`  ⚠️  Sin mapeo para: "${nombre}"`);
+        continue;
+      }
       if (estado.sorteos[clave].numeros.length >= 3) continue;
 
-      // Buscar números en varios campos posibles
-      let nums = [];
-      const camposNumeros = item.numbers || item.numeros || item.results || item.scores || item.balls;
-      if (Array.isArray(camposNumeros)) {
-        nums = camposNumeros.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= 0 && n <= 99).slice(0, 3);
-      }
+      // score es array de strings ["03","91","75"]
+      const scoreArr = item.score;
+      if (!Array.isArray(scoreArr) || scoreArr.length < 3) continue;
+
+      const nums = scoreArr
+        .slice(0, 3)
+        .map(n => parseInt(n, 10))
+        .filter(n => !isNaN(n) && n >= 0 && n <= 99);
 
       if (nums.length === 3) {
-        const sospechoso = nums.includes(0) && nums.includes(99);
-        if (sospechoso) continue;
+        // Rechazar placeholder 0+99
+        if (nums.includes(0) && nums.includes(99)) {
+          console.log(`  ⚠️  ${nombre}: patrón sospechoso ${nums.join('-')} - descartado`);
+          continue;
+        }
         estado.sorteos[clave].numeros = nums;
         estado.sorteos[clave].estado = 'disponible';
         conteo++;
-        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (today:${item.today})`);
       }
     }
 
@@ -399,22 +440,20 @@ app.get('/api/debug', async (req, res) => {
       headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
       timeout: 8000
     });
-    let data = r1.data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch (e) {}
-    }
-    const items = Array.isArray(data) ? data
-                 : Array.isArray(data?.data) ? data.data
-                 : Array.isArray(data?.results) ? data.results
-                 : Array.isArray(data?.loterias) ? data.loterias
-                 : [];
+    let items = r1.data;
+    if (!Array.isArray(items)) items = r1.data?.data || r1.data?.results || [];
     res.json({
       status: r1.status,
-      content_type: r1.headers['content-type'],
       total_items: items.length,
-      claves_primer_item: items[0] ? Object.keys(items[0]) : [],
-      primeros_3_items: items.slice(0, 3),
-      data_preview_crudo: JSON.stringify(r1.data).slice(0, 1500)
+      // Lista todos los game_title con su mapeo y scores
+      todos_los_items: items.map(item => ({
+        game_title: item.game_title,
+        clave_mapeada: buscarClave(item.game_title || ''),
+        score: item.score,
+        today: item.today,
+        date: item.date,
+        update_date_time: item.update_date_time
+      }))
     });
   } catch (e) {
     res.status(200).json({ error: e.message, code: e.code, status: e.response?.status });
@@ -443,7 +482,7 @@ app.get('/api/debug2', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v5.4-DEBUG-FIX',
+    version: 'v6.0-LIVE',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
@@ -454,10 +493,9 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v5.4-DEBUG-FIX en puerto ${PORT}`);
-  console.log(`📋 Fuente primaria: conectate.com.do/loterias/api/widget (JSON)`);
+  console.log(`\n🚀 Reydis Engine v6.0-LIVE en puerto ${PORT}`);
+  console.log(`✅ Parser conectate CORREGIDO: campo game_title + score[]`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
-  console.log(`⏭️  quinielasrd.com DESACTIVADO (generaba 0-99-0)`);
-  console.log(`🔍 /api/debug = conectate API | /api/debug2 = loteriasdominicanas.com`);
+  console.log(`⏭️  quinielasrd.com DESACTIVADO`);
   sincronizar();
 });
