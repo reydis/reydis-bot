@@ -175,14 +175,20 @@ async function scrapeConectateAPI() {
       const nombre = (item.game_title || '').toString().trim();
       if (!nombre) continue;
 
-      // Solo procesar si es de HOY (today === true) o si la fecha coincide
-      // Nota: también aceptamos today===false para historial reciente si ya tenemos la fecha
       const clave = buscarClave(nombre);
       if (!clave || !estado.sorteos[clave]) {
         console.log(`  ⚠️  Sin mapeo para: "${nombre}"`);
         continue;
       }
       if (estado.sorteos[clave].numeros.length >= 3) continue;
+
+      // CRÍTICO: solo aceptar resultados marcados como "today: true".
+      // Si today=false, ese número es de un sorteo anterior (ayer u otro día)
+      // y NO debe mostrarse como resultado de hoy.
+      if (item.today !== true) {
+        console.log(`  ⏭️  ${nombre}: today=false (es de ${item.date || 'fecha anterior'}), aún no salió hoy`);
+        continue;
+      }
 
       // score es array de strings ["03","91","75"]
       const scoreArr = item.score;
@@ -202,7 +208,7 @@ async function scrapeConectateAPI() {
         estado.sorteos[clave].numeros = nums;
         estado.sorteos[clave].estado = 'disponible';
         conteo++;
-        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (today:${item.today})`);
+        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy confirmado, fecha:${item.date})`);
       }
     }
 
@@ -487,7 +493,7 @@ app.get('/api/debug2', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v6.1-LIVE',
+    version: 'v6.2-TODAY-STRICT',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
@@ -498,8 +504,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v6.1-LIVE en puerto ${PORT}`);
-  console.log(`✅ Mapeo completo: 18/18 loterias (incl. La Suerte 6PM/MD, New York 3:30, Florida Día)`);
+  console.log(`\n🚀 Reydis Engine v6.2-TODAY-STRICT en puerto ${PORT}`);
+  console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
   sincronizar();
 });
