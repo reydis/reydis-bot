@@ -2,8 +2,44 @@ const express = require('express');
 const axios   = require('axios');
 const cheerio = require('cheerio');
 const cors    = require('cors');
+const fs      = require('fs');
+const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
+
+// ── Persistencia en disco (best-effort) ───────────────────────────────────────
+// Render Free no garantiza disco persistente entre DEPLOYS (se borra al
+// redesplegar), pero SÍ conserva el filesystem de la misma instancia entre
+// ciclos de sueño/despertar. Esto evita perder el histórico cada vez que el
+// servidor "duerme" por inactividad, que era el caso anterior (solo memoria).
+// Si quieres persistencia garantizada incluso entre redeploys, lo correcto es
+// una base de datos real (ej. Render Postgres free, o Supabase) — avísame si
+// quieres que lo conectemos.
+const DATA_DIR  = path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'estado.json');
+
+function guardarEnDisco() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify({
+      fecha: estado.fecha,
+      historico: estado.historico
+    }));
+  } catch (e) {
+    console.error('⚠️ No se pudo guardar en disco:', e.message);
+  }
+}
+
+function cargarDeDisco() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return null;
+    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('⚠️ No se pudo leer del disco:', e.message);
+    return null;
+  }
+}
 
 app.use(cors({ origin: '*' }));
 app.options('*', cors());
@@ -29,12 +65,32 @@ function horaNumRD() {
 }
 
 // ── Estado en memoria (con histórico persistente) ─────────────────────────────
+const persistido = cargarDeDisco();
+
 let estado = {
   fecha: fechaRD(),
   hora_actualizacion: horaRD(),
   sorteos: crearSorteos(),
-  historico: []
+  cuartetas: crearCuartetas(),
+  // Si el archivo en disco trae historico de una fecha distinta a hoy,
+  // lo restauramos. Si por alguna razón coincide con "hoy" (servidor se
+  // reinició el mismo día), igual lo restauramos: no hace daño, sincronizar()
+  // lo vuelve a actualizar con datos frescos.
+  historico: persistido?.historico || []
 };
+
+if (persistido) {
+  console.log(`💾 Histórico restaurado desde disco: ${estado.historico.length} días`);
+}
+
+function crearCuartetas() {
+  return {
+    cuarteta_m:  { nombre:'La Cuarteta Mañana',    hora:'10:00 AM', numeros:[], estado:'pendiente' },
+    cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM',  numeros:[], estado:'pendiente' },
+    cuarteta_t:  { nombre:'La Cuarteta Tarde',     hora:'6:00 PM',  numeros:[], estado:'pendiente' },
+    cuarteta_n:  { nombre:'La Cuarteta Noche',     hora:'9:00 PM',  numeros:[], estado:'pendiente' }
+  };
+}
 
 function crearSorteos() {
   return {
@@ -132,6 +188,32 @@ const MAPA = {
 function buscarClave(texto) {
   const t = texto.toLowerCase().trim();
   for (const [k, v] of Object.entries(MAPA)) {
+    if (t.includes(k)) return v;
+  }
+  return null;
+}
+
+// ── MAPEO de La Cuarteta (variante de 4 dígitos exclusiva de Anguila) ────────
+// Confirmado vía búsqueda en loteriasdominicanas.com: La Cuarteta tiene 4
+// sorteos diarios pareados con cada horario de Anguila (Mañana/Medio Día/
+// Tarde/Noche). NO existe para las otras 17 loterías.
+const MAPA_CUARTETA = {
+  'la cuarteta mañana':    'cuarteta_m',
+  'la cuarteta manana':    'cuarteta_m',
+  'cuarteta mañana':       'cuarteta_m',
+  'la cuarteta medio día': 'cuarteta_md',
+  'la cuarteta medio dia': 'cuarteta_md',
+  'cuarteta medio día':    'cuarteta_md',
+  'cuarteta medio dia':    'cuarteta_md',
+  'la cuarteta tarde':     'cuarteta_t',
+  'cuarteta tarde':        'cuarteta_t',
+  'la cuarteta noche':     'cuarteta_n',
+  'cuarteta noche':        'cuarteta_n',
+};
+
+function buscarClaveCuarteta(texto) {
+  const t = texto.toLowerCase().trim();
+  for (const [k, v] of Object.entries(MAPA_CUARTETA)) {
     if (t.includes(k)) return v;
   }
   return null;
@@ -287,6 +369,61 @@ async function scrapeLotDominicanas() {
   }
 }
 
+// ── SCRAPER: La Cuarteta (Anguila, 4 dígitos sin orden) ───────────────────────
+// Mismo HTML/selector que scrapeLotDominicanas (.game-block / .game-title /
+// .game-scores.ball-mode), pero aquí esperamos 4 bolas en vez de 3.
+// ⚠️ Igual que con los otros scrapers: si loteriasdominicanas.com cambia su
+// HTML, revisa /api/debug2 para confirmar que sigue encontrando los bloques.
+async function scrapeCuartetaLotDominicanas() {
+  try {
+    console.log('📡 Raspando La Cuarteta (loteriasdominicanas.com)...');
+    const res = await axios.get('https://loteriasdominicanas.com/', {
+      headers: HEADERS, timeout: 10000
+    });
+    const $ = cheerio.load(res.data);
+    let conteo = 0;
+
+    $('.game-block').each((i, bloque) => {
+      const tituloWeb = $(bloque).find('.game-title span').text().trim();
+      if (!tituloWeb) return;
+
+      const clave = buscarClaveCuarteta(tituloWeb);
+      if (!clave || !estado.cuartetas[clave]) return;
+      if (estado.cuartetas[clave].numeros.length >= 4) return;
+
+      const contenedorBolas = $(bloque).find('.game-scores.ball-mode');
+      if (contenedorBolas.length === 0) {
+        console.log(`  ⏭️  [Cuarteta] ${tituloWeb}: sin .ball-mode aún`);
+        return;
+      }
+
+      const nums = [];
+      contenedorBolas.first().find('span.score').each((j, span) => {
+        if (nums.length >= 4) return false;
+        const raw = $(span).text().trim();
+        if (!/^\d{1,2}$/.test(raw)) return;
+        const n = parseInt(raw, 10);
+        if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
+      });
+
+      if (nums.length === 4) {
+        estado.cuartetas[clave].numeros = nums;
+        estado.cuartetas[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [Cuarteta] ${estado.cuartetas[clave].nombre}: ${nums.join('-')}`);
+      } else {
+        console.log(`  ⏭️  [Cuarteta] ${tituloWeb}: solo ${nums.length}/4 números válidos`);
+      }
+    });
+
+    console.log(`✅ La Cuarteta: ${conteo} sorteos`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ La Cuarteta ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
 // ── SCRAPER RESPALDO: quinielasrd.com ──────────────────────────────────────────
 // ⚠️ DESACTIVADO TEMPORALMENTE: está capturando datos basura (0-99-0) en vez de
 // números reales de sorteo. Probablemente está leyendo paginación, años o IDs.
@@ -340,12 +477,18 @@ async function sincronizar() {
 
   // Nuevo día → guardar histórico (NO se borra, se preserva)
   if (hoy !== estado.fecha) {
-    const snapshot = { fecha: estado.fecha, sorteos: JSON.parse(JSON.stringify(estado.sorteos)) };
+    const snapshot = {
+      fecha: estado.fecha,
+      sorteos: JSON.parse(JSON.stringify(estado.sorteos)),
+      cuartetas: JSON.parse(JSON.stringify(estado.cuartetas))
+    };
     estado.historico.unshift(snapshot);
     if (estado.historico.length > 90) estado.historico.pop();
     estado.sorteos = crearSorteos();
+    estado.cuartetas = crearCuartetas();
     estado.fecha = hoy;
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
+    guardarEnDisco();
   }
 
   // Intentar fuente primaria: API JSON de conectate
@@ -358,9 +501,15 @@ async function sincronizar() {
   pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 8) await scrapeQuinielasRD();
 
+  // La Cuarteta (Anguila, 4 dígitos)
+  const pendCuarteta = Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length;
+  if (pendCuarteta > 0) await scrapeCuartetaLotDominicanas();
+
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
-  console.log(`📊 RESULTADO: ${disp}/18 sorteos con números\n`);
+  const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
+  console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas\n`);
+  guardarEnDisco();
 }
 
 // Auto-sync cada 15 minutos
@@ -373,7 +522,8 @@ app.get('/api/hoy', async (req, res) => {
   res.json({
     fecha: estado.fecha,
     hora_actualizacion: estado.hora_actualizacion,
-    sorteos: estado.sorteos
+    sorteos: estado.sorteos,
+    cuartetas: estado.cuartetas
   });
 });
 
@@ -383,7 +533,8 @@ app.get('/api/radar', async (req, res) => {
   res.json({
     fecha: estado.fecha,
     hora_actualizacion: estado.hora_actualizacion,
-    sorteos: estado.sorteos
+    sorteos: estado.sorteos,
+    cuartetas: estado.cuartetas
   });
 });
 
@@ -394,17 +545,19 @@ app.get('/api/historico', (req, res) => {
 app.get('/api/consultar', (req, res) => {
   const { loteria, fecha_inicio, fecha_fin } = req.query;
   const todos = [
-    { fecha: estado.fecha, sorteos: estado.sorteos },
-    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: h.sorteos }))
+    { fecha: estado.fecha, sorteos: { ...estado.sorteos, ...estado.cuartetas } },
+    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: { ...h.sorteos, ...(h.cuartetas || {}) } }))
   ];
+  const todasLasClaves = [...Object.keys(estado.sorteos), ...Object.keys(estado.cuartetas)];
   const resultados = [];
   for (const dia of todos) {
     if (fecha_inicio && dia.fecha < fecha_inicio) continue;
     if (fecha_fin   && dia.fecha > fecha_fin)     continue;
-    const lotes = (loteria && loteria !== 'todas') ? [loteria] : Object.keys(estado.sorteos);
+    const lotes = (loteria && loteria !== 'todas') ? [loteria] : todasLasClaves;
     for (const k of lotes) {
       const s = dia.sorteos[k];
-      if (s && s.numeros && s.numeros.length >= 3) {
+      const minNum = k.startsWith('cuarteta_') ? 4 : 3;
+      if (s && s.numeros && s.numeros.length >= minNum) {
         resultados.push({ fecha: dia.fecha, clave: k, nombre: s.nombre, numeros: s.numeros });
       }
     }
@@ -422,7 +575,7 @@ app.get('/api/estadisticas', (req, res) => {
   let total = 0;
   for (const dia of todos) {
     const lotes = (loteria && loteria !== 'todas')
-      ? [loteria] : ['gana_mas','leidsa','nacional','loteka'];
+      ? [loteria] : Object.keys(estado.sorteos);
     for (const k of lotes) {
       const s = dia.sorteos[k];
       if (!s || s.numeros.length < 3) continue;
@@ -483,7 +636,8 @@ app.get('/api/debug2', async (req, res) => {
       const scores = [];
       $(b).find('.game-scores.ball-mode span.score').each((j, s) => scores.push($(s).text().trim()));
       const clave = buscarClave(titulo);
-      bloques.push({ titulo, clave, tieneBallMode, scores });
+      const claveCuarteta = buscarClaveCuarteta(titulo);
+      bloques.push({ titulo, clave, claveCuarteta, tieneBallMode, scores });
     });
     res.json({ total_bloques: bloques.length, bloques });
   } catch (e) {
@@ -493,19 +647,22 @@ app.get('/api/debug2', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v6.2-TODAY-STRICT',
+    version: 'v7.0-CUARTETA-PERSIST',
     status: 'ok',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
+    cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     historico_dias: estado.historico.length,
     endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug', '/api/debug2']
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v6.2-TODAY-STRICT en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v7.0-CUARTETA-PERSIST en puerto ${PORT}`);
   console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
+  console.log(`🎲 Ahora también rastrea La Cuarteta (Anguila, 4 dígitos)`);
+  console.log(`💾 Histórico se guarda en disco en cada sync (data/estado.json)`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
   sincronizar();
 });
