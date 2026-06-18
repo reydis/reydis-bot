@@ -64,6 +64,76 @@ function horaNumRD() {
   }).format(new Date()), 10);
 }
 
+// ── Persistencia REMOTA: Supabase (sobrevive a redeploys) ────────────────────
+// Si SUPABASE_URL y SUPABASE_KEY están configuradas como variables de entorno
+// en Render, el histórico se guarda ahí (permanente). Si no están configuradas,
+// el sistema sigue funcionando con solo el disco local (como antes) — no se
+// rompe nada si todavía no las has puesto.
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+const SUPABASE_ACTIVO = !!(SUPABASE_URL && SUPABASE_KEY);
+
+async function guardarEnSupabase(snapshot) {
+  if (!SUPABASE_ACTIVO) return false;
+  try {
+    await axios.post(
+      `${SUPABASE_URL}/rest/v1/historico?on_conflict=fecha`,
+      { fecha: snapshot.fecha, sorteos: snapshot.sorteos, cuartetas: snapshot.cuartetas },
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=merge-duplicates'
+        },
+        timeout: 10000
+      }
+    );
+    return true;
+  } catch (e) {
+    console.error('⚠️ Supabase guardar ERROR:', e.response?.data?.message || e.message);
+    return false;
+  }
+}
+
+async function cargarDeSupabase() {
+  if (!SUPABASE_ACTIVO) return null;
+  try {
+    const res = await axios.get(
+      `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas&order=fecha.desc&limit=90`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 10000 }
+    );
+    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas }));
+  } catch (e) {
+    console.error('⚠️ Supabase cargar ERROR:', e.response?.data?.message || e.message);
+    return null;
+  }
+}
+
+// Al iniciar: si Supabase tiene datos, manda — es la fuente más durable.
+// Si Supabase está vacío pero había algo en disco/SEMILLA, lo sube una vez
+// (migración inicial), para no perder lo que ya tenías acumulado.
+async function inicializarPersistenciaRemota() {
+  if (!SUPABASE_ACTIVO) {
+    console.log('ℹ️  Supabase no configurado (faltan SUPABASE_URL/SUPABASE_KEY). Usando solo disco local por ahora.');
+    return;
+  }
+  console.log('🔌 Conectando a Supabase...');
+  const remoto = await cargarDeSupabase();
+  if (remoto === null) {
+    console.log('⚠️ No se pudo leer Supabase (revisa la URL/key). Sigo con disco/memoria mientras tanto.');
+    return;
+  }
+  if (remoto.length > 0) {
+    estado.historico = remoto.filter(r => r.fecha !== estado.fecha);
+    console.log(`💾 Histórico restaurado desde Supabase: ${estado.historico.length} días (excluyendo hoy)`);
+  } else if (estado.historico.length > 0) {
+    console.log(`⬆️  Supabase está vacío. Subiendo ${estado.historico.length} días que ya tenía...`);
+    for (const dia of estado.historico) await guardarEnSupabase(dia);
+    console.log('✅ Migración inicial a Supabase completa.');
+  }
+}
+
 // ── Estado en memoria (con histórico persistente) ─────────────────────────────
 const persistido = cargarDeDisco();
 
@@ -489,6 +559,7 @@ async function sincronizar() {
     estado.fecha = hoy;
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
     guardarEnDisco();
+    await guardarEnSupabase(snapshot);
   }
 
   // Intentar fuente primaria: API JSON de conectate
@@ -510,6 +581,7 @@ async function sincronizar() {
   const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
   console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas\n`);
   guardarEnDisco();
+  await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas });
 }
 
 // Auto-sync cada 15 minutos
@@ -645,24 +717,37 @@ app.get('/api/debug2', async (req, res) => {
   }
 });
 
+app.get('/api/debug-db', async (req, res) => {
+  if (!SUPABASE_ACTIVO) {
+    return res.json({ activo: false, mensaje: 'SUPABASE_URL / SUPABASE_KEY no configuradas en Render todavía.' });
+  }
+  const datos = await cargarDeSupabase();
+  if (datos === null) {
+    return res.json({ activo: true, conectado: false, mensaje: 'Variables configuradas pero la conexión falló. Revisa la URL y la service_role key.' });
+  }
+  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d => d.fecha) });
+});
+
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.0-CUARTETA-PERSIST',
+    version: 'v7.1-SUPABASE',
     status: 'ok',
+    persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local (no sobrevive redeploys)',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug', '/api/debug2']
+    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug', '/api/debug2', '/api/debug-db']
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 Reydis Engine v7.0-CUARTETA-PERSIST en puerto ${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`\n🚀 Reydis Engine v7.1-SUPABASE en puerto ${PORT}`);
   console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
   console.log(`🎲 Ahora también rastrea La Cuarteta (Anguila, 4 dígitos)`);
-  console.log(`💾 Histórico se guarda en disco en cada sync (data/estado.json)`);
+  console.log(`💾 Persistencia: ${SUPABASE_ACTIVO ? 'Supabase (permanente, sobrevive redeploys)' : 'solo disco local (configura SUPABASE_URL/SUPABASE_KEY para hacerla permanente)'}`);
   console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
+  await inicializarPersistenciaRemota();
   sincronizar();
 });
