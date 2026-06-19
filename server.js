@@ -7,6 +7,57 @@ const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3000;
 
+// ── TELEGRAM BOT — Alertas en tiempo real ────────────────────────────────────
+// Variables de entorno en Render:
+//   TELEGRAM_TOKEN  = token del bot (de BotFather)
+//   TELEGRAM_CHAT_ID = tu chat ID personal
+// Si no están configuradas, las alertas se ignoran silenciosamente.
+const TG_TOKEN   = process.env.TELEGRAM_TOKEN   || '';
+const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+const TG_ACTIVO  = !!(TG_TOKEN && TG_CHAT_ID);
+
+// Registro de sorteos ya notificados hoy (clave → true)
+// Se reinicia al cambiar de día junto con estado.sorteos
+const yaNotificado = {};
+
+async function enviarTelegram(mensaje) {
+  if (!TG_ACTIVO) return;
+  try {
+    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      chat_id: TG_CHAT_ID,
+      text: mensaje,
+      parse_mode: 'HTML'
+    }, { timeout: 8000 });
+  } catch (e) {
+    console.error('⚠️ Telegram ERROR:', e.message);
+  }
+}
+
+// Notifica todos los sorteos nuevos que aparecieron en este sync
+async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
+  if (!TG_ACTIVO) return;
+  const nuevos = [];
+
+  for (const [k, s] of Object.entries(estado.sorteos)) {
+    if (s.numeros.length >= 3 && !yaNotificado[k]) {
+      yaNotificado[k] = true;
+      nuevos.push(`🎯 <b>${s.nombre}</b> (${s.hora})\n🔢 <b>${s.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+    }
+  }
+  for (const [k, c] of Object.entries(estado.cuartetas)) {
+    if (c.numeros.length >= 4 && !yaNotificado[k]) {
+      yaNotificado[k] = true;
+      nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora})\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+    }
+  }
+
+  if (nuevos.length > 0) {
+    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + nuevos.join('\n\n');
+    await enviarTelegram(msg);
+    console.log(`📱 Telegram: ${nuevos.length} alerta(s) enviada(s)`);
+  }
+}
+
 // ── Persistencia en disco (best-effort) ───────────────────────────────────────
 // Render Free no garantiza disco persistente entre DEPLOYS (se borra al
 // redesplegar), pero SÍ conserva el filesystem de la misma instancia entre
@@ -554,9 +605,24 @@ async function sincronizar() {
     };
     estado.historico.unshift(snapshot);
     if (estado.historico.length > 90) estado.historico.pop();
+
+    // Resumen nocturno antes de reiniciar
+    const totalDia = Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length;
+    const totalCuarteta = Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length;
+    await enviarTelegram(
+      `🌙 <b>RESUMEN DEL DÍA ${estado.fecha}</b>\n\n` +
+      `✅ Sorteos capturados: <b>${totalDia}/18</b>\n` +
+      `🎲 Cuartetas capturadas: <b>${totalCuarteta}/4</b>\n\n` +
+      `💾 Histórico guardado en Supabase.\n🔄 Iniciando nuevo día: <b>${hoy}</b>`
+    );
+
+    // Reiniciar estado del día
     estado.sorteos = crearSorteos();
     estado.cuartetas = crearCuartetas();
     estado.fecha = hoy;
+    // Limpiar notificados del día anterior
+    Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
     guardarEnDisco();
     await guardarEnSupabase(snapshot);
@@ -582,6 +648,7 @@ async function sincronizar() {
   console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas\n`);
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas });
+  await notificarNuevosSorteos();
 }
 
 // Auto-sync cada 15 minutos
@@ -730,24 +797,45 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.1-SUPABASE',
+    version: 'v7.2-TELEGRAM',
     status: 'ok',
-    persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local (no sobrevive redeploys)',
+    persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
+    telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy', '/api/radar', '/api/consultar', '/api/estadisticas', '/api/historico', '/api/debug', '/api/debug2', '/api/debug-db']
+    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram']
   });
 });
 
+// Endpoint para probar el bot manualmente
+app.get('/api/test-telegram', async (req, res) => {
+  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_ID en Render.' });
+  await enviarTelegram(
+    `✅ <b>REYDIS RADAR PRO</b> — Test de conexión\n\n` +
+    `🤖 Bot conectado correctamente.\n` +
+    `📅 Fecha RD: ${fechaRD()} ${horaRD()}\n` +
+    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/18`
+  );
+  res.json({ activo: true, mensaje: '¡Mensaje de prueba enviado a Telegram! Revisa tu chat.' });
+});
+
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v7.1-SUPABASE en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v7.2-TELEGRAM en puerto ${PORT}`);
   console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
-  console.log(`🎲 Ahora también rastrea La Cuarteta (Anguila, 4 dígitos)`);
-  console.log(`💾 Persistencia: ${SUPABASE_ACTIVO ? 'Supabase (permanente, sobrevive redeploys)' : 'solo disco local (configura SUPABASE_URL/SUPABASE_KEY para hacerla permanente)'}`);
-  console.log(`📋 Respaldo: loteriasdominicanas.com (.game-scores.ball-mode)`);
+  console.log(`🎲 Rastrea La Cuarteta (Anguila, 4 dígitos)`);
+  console.log(`💾 Persistencia: ${SUPABASE_ACTIVO ? 'Supabase ✅' : 'solo disco local'}`);
+  console.log(`📱 Telegram: ${TG_ACTIVO ? 'activo ✅' : 'no configurado'}`);
   await inicializarPersistenciaRemota();
+  if (TG_ACTIVO) {
+    await enviarTelegram(
+      `🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado\n\n` +
+      `📅 ${fechaRD()} ${horaRD()} RD\n` +
+      `💾 Supabase: ${SUPABASE_ACTIVO ? '✅ conectado' : '❌ no configurado'}\n` +
+      `🔄 Sincronizando sorteos...`
+    );
+  }
   sincronizar();
 });
