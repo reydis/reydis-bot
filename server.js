@@ -50,6 +50,13 @@ async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
       nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora})\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
+  for (const [k, e] of Object.entries(estado.especiales)) {
+    if (e.numeros.length > 0 && !yaNotificado[k]) {
+      yaNotificado[k] = true;
+      const emoji = e.tipo === 'pega3' ? '🔢' : e.tipo === 'kino' ? '🎰' : e.tipo === 'loto' ? '🍀' : '🎯';
+      nuevos.push(`${emoji} <b>${e.nombre}</b> [${e.empresa}] (${e.hora})\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+    }
+  }
 
   if (nuevos.length > 0) {
     const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + nuevos.join('\n\n');
@@ -193,10 +200,7 @@ let estado = {
   hora_actualizacion: horaRD(),
   sorteos: crearSorteos(),
   cuartetas: crearCuartetas(),
-  // Si el archivo en disco trae historico de una fecha distinta a hoy,
-  // lo restauramos. Si por alguna razón coincide con "hoy" (servidor se
-  // reinició el mismo día), igual lo restauramos: no hace daño, sincronizar()
-  // lo vuelve a actualizar con datos frescos.
+  especiales: crearJuegosEspeciales(),
   historico: persistido?.historico || []
 };
 
@@ -210,6 +214,24 @@ function crearCuartetas() {
     cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM',  numeros:[], estado:'pendiente' },
     cuarteta_t:  { nombre:'La Cuarteta Tarde',     hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     cuarteta_n:  { nombre:'La Cuarteta Noche',     hora:'9:00 PM',  numeros:[], estado:'pendiente' }
+  };
+}
+
+// ── Juegos especiales (formato diferente a quiniela 3 números) ─────────────────
+// Cada uno tiene su propio rango, cantidad de números y lógica de predicción.
+// tipo: 'pega3' = 3 dígitos 0-9 posicionales
+//       'kino'  = 20 números de 80
+//       'loto'  = 6 números de 38
+//       'lotomas' = 6+1 números de 38+1
+function crearJuegosEspeciales() {
+  return {
+    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',  numeros:[], estado:'pendiente', rango:[0,9],  cant:3  },
+    superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',   numeros:[], estado:'pendiente', rango:[1,80], cant:20 },
+    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',   numeros:[], estado:'pendiente', rango:[1,38], cant:6  },
+    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas',numeros:[], estado:'pendiente', rango:[1,38], cant:7  },
+    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',  numeros:[], estado:'pendiente', rango:[0,9],  cant:3  },
+    megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',   numeros:[], estado:'pendiente', rango:[1,60], cant:15 },
+    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',  numeros:[], estado:'pendiente', rango:[0,9],  cant:4  },
   };
 }
 
@@ -306,6 +328,39 @@ const MAPA = {
   'loto real':            'real_t',
 };
 
+// ── MAPEO de juegos especiales ─────────────────────────────────────────────────
+const MAPA_ESPECIALES = {
+  'pega 3 más':     'pega3mas',
+  'pega 3 mas':     'pega3mas',
+  'pega3más':       'pega3mas',
+  'pega3mas':       'pega3mas',
+  'super kino tv':  'superkino',
+  'super kino':     'superkino',
+  'kino tv':        'superkino',
+  'loto más':       'lotomas',
+  'loto mas':       'lotomas',
+  'lotomas':        'lotomas',
+  'loto':           'loto',
+  'el quemaito':    'quemaito',
+  'quemaito':       'quemaito',
+  'mega chance':    'megachance',
+  'megachance':     'megachance',
+  'pega 4':         'pega4king',
+  'pega4':          'pega4king',
+};
+
+function buscarClaveEspecial(texto) {
+  const t = texto.toLowerCase().trim();
+  // Loto Más debe ir antes que Loto para evitar match corto
+  const orden = ['loto más','loto mas','lotomas','super kino tv','super kino','kino tv',
+    'pega 3 más','pega 3 mas','pega3más','pega3mas','el quemaito','quemaito',
+    'mega chance','megachance','pega 4','pega4','loto'];
+  for (const k of orden) {
+    if (t.includes(k)) return MAPA_ESPECIALES[k];
+  }
+  return null;
+}
+
 function buscarClave(texto) {
   const t = texto.toLowerCase().trim();
   for (const [k, v] of Object.entries(MAPA)) {
@@ -378,41 +433,48 @@ async function scrapeConectateAPI() {
       const nombre = (item.game_title || '').toString().trim();
       if (!nombre) continue;
 
-      const clave = buscarClave(nombre);
-      if (!clave || !estado.sorteos[clave]) {
-        console.log(`  ⚠️  Sin mapeo para: "${nombre}"`);
-        continue;
-      }
-      if (estado.sorteos[clave].numeros.length >= 3) continue;
-
-      // CRÍTICO: solo aceptar resultados marcados como "today: true".
-      // Si today=false, ese número es de un sorteo anterior (ayer u otro día)
-      // y NO debe mostrarse como resultado de hoy.
       if (item.today !== true) {
         console.log(`  ⏭️  ${nombre}: today=false (es de ${item.date || 'fecha anterior'}), aún no salió hoy`);
         continue;
       }
 
-      // score es array de strings ["03","91","75"]
       const scoreArr = item.score;
-      if (!Array.isArray(scoreArr) || scoreArr.length < 3) continue;
+      if (!Array.isArray(scoreArr) || scoreArr.length === 0) continue;
 
-      const nums = scoreArr
-        .slice(0, 3)
-        .map(n => parseInt(n, 10))
-        .filter(n => !isNaN(n) && n >= 0 && n <= 99);
-
-      if (nums.length === 3) {
-        // Rechazar placeholder 0+99
-        if (nums.includes(0) && nums.includes(99)) {
-          console.log(`  ⚠️  ${nombre}: patrón sospechoso ${nums.join('-')} - descartado`);
-          continue;
+      // ── ¿Es quiniela de 3 números? ─────────────────────────────────────────
+      const clave = buscarClave(nombre);
+      if (clave && estado.sorteos[clave] && estado.sorteos[clave].numeros.length < 3 && scoreArr.length >= 3) {
+        const nums = scoreArr.slice(0,3).map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=0&&n<=99);
+        if (nums.length === 3) {
+          if (nums.includes(0) && nums.includes(99)) {
+            console.log(`  ⚠️  ${nombre}: patrón sospechoso ${nums.join('-')} - descartado`);
+          } else {
+            estado.sorteos[clave].numeros = nums;
+            estado.sorteos[clave].estado = 'disponible';
+            conteo++;
+            console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy, ${item.date})`);
+          }
         }
-        estado.sorteos[clave].numeros = nums;
-        estado.sorteos[clave].estado = 'disponible';
-        conteo++;
-        console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy confirmado, fecha:${item.date})`);
+        continue;
       }
+
+      // ── ¿Es juego especial? ────────────────────────────────────────────────
+      const claveEsp = buscarClaveEspecial(nombre);
+      if (claveEsp && estado.especiales[claveEsp]) {
+        const juego = estado.especiales[claveEsp];
+        if (juego.numeros.length >= juego.cant) continue;
+        const [rMin, rMax] = juego.rango;
+        const nums = scoreArr.map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=rMin&&n<=rMax);
+        if (nums.length > 0) {
+          juego.numeros = nums.slice(0, juego.cant);
+          juego.estado = 'disponible';
+          conteo++;
+          console.log(`  ✓ [API] ${juego.nombre}: ${juego.numeros.join('-')} (${juego.tipo})`);
+        }
+        continue;
+      }
+
+      console.log(`  ⚠️  Sin mapeo para: "${nombre}"`);
     }
 
     console.log(`✅ [PRIMARIO] conectate API: ${conteo} sorteos`);
@@ -619,6 +681,7 @@ async function sincronizar() {
     // Reiniciar estado del día
     estado.sorteos = crearSorteos();
     estado.cuartetas = crearCuartetas();
+    estado.especiales = crearJuegosEspeciales();
     estado.fecha = hoy;
     // Limpiar notificados del día anterior
     Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
@@ -645,7 +708,8 @@ async function sincronizar() {
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
   const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
-  console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas\n`);
+  const dispE = Object.values(estado.especiales).filter(e => e.numeros.length > 0).length;
+  console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas · ${dispE}/${Object.keys(estado.especiales).length} especiales\n`);
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas });
   await notificarNuevosSorteos();
@@ -662,18 +726,19 @@ app.get('/api/hoy', async (req, res) => {
     fecha: estado.fecha,
     hora_actualizacion: estado.hora_actualizacion,
     sorteos: estado.sorteos,
-    cuartetas: estado.cuartetas
+    cuartetas: estado.cuartetas,
+    especiales: estado.especiales
   });
 });
 
-// Compatibilidad: también respondemos /api/radar con el mismo formato
 app.get('/api/radar', async (req, res) => {
   await sincronizar();
   res.json({
     fecha: estado.fecha,
     hora_actualizacion: estado.hora_actualizacion,
     sorteos: estado.sorteos,
-    cuartetas: estado.cuartetas
+    cuartetas: estado.cuartetas,
+    especiales: estado.especiales
   });
 });
 
@@ -797,7 +862,7 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.2-TELEGRAM',
+    version: 'v7.3-ESPECIALES',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
@@ -805,6 +870,7 @@ app.get('/', (req, res) => {
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
+    especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
     historico_dias: estado.historico.length,
     endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram']
   });
