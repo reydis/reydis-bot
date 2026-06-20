@@ -100,6 +100,44 @@ function calcularPrediccionCuarteta(clave) {
   return { top4, dias: datos.length };
 }
 
+// ── Predicciones para juegos especiales ─────────────────────────────────────
+// pega3 / pega4: cada posición es un dígito independiente (0-9), se predice
+// el dígito más frecuente EN ESA POSICIÓN exacta (no hay premio por "pale").
+// kino / loto / lotomas: no hay posición, solo importa qué números salen más
+// seguido en general (igual que La Cuarteta mide frecuencia, sin orden).
+const TIPO_PRED_CANT = { kino: 10, loto: 6, lotomas: 7 };
+
+function calcularPrediccionDigitos(clave, cantDigitos) {
+  const datos = estado.historico
+    .filter(h => h.especiales?.[clave]?.numeros?.length >= cantDigitos)
+    .map(h => h.especiales[clave].numeros);
+  if (datos.length < MIN_DIAS_PREDICCION) return null;
+
+  const digitos = [];
+  for (let pos = 0; pos < cantDigitos; pos++) {
+    const freq = {};
+    for (const nums of datos) {
+      const d = nums[pos];
+      if (d !== undefined) freq[d] = (freq[d] || 0) + 1;
+    }
+    const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+    digitos.push(top ? +top[0] : 0);
+  }
+  return { digitos, dias: datos.length };
+}
+
+function calcularPrediccionFrecuenciaEspecial(clave, cantNumeros) {
+  const datos = estado.historico
+    .filter(h => h.especiales?.[clave]?.numeros?.length > 0)
+    .map(h => h.especiales[clave].numeros);
+  if (datos.length < MIN_DIAS_PREDICCION) return null;
+
+  const freq = {};
+  for (const nums of datos) for (const n of nums) freq[n] = (freq[n] || 0) + 1;
+  const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, cantNumeros).map(([n]) => +n);
+  return { top, dias: datos.length };
+}
+
 async function enviarPrediccionesTelegram() {
   if (!TG_ACTIVO) return { enviado: false, motivo: 'Telegram no configurado' };
 
@@ -139,8 +177,32 @@ async function enviarPrediccionesTelegram() {
   }
   await enviarTelegram(msg2);
 
-  console.log(`🔮 Predicciones enviadas a Telegram: ${conDatos}/18 quinielas, ${conDatosC}/4 cuartetas`);
-  return { enviado: true, quinielas_con_datos: conDatos, cuartetas_con_datos: conDatosC, dias_historico: estado.historico.length };
+  // ── Mensaje 3: Juegos especiales ─────────────────────────────────────────
+  let msg3 = `🎰 <b>PREDICCIONES JUEGOS ESPECIALES</b> — ${fechaRD()}\n\n`;
+  let conDatosE = 0;
+  const EMOJI_TIPO = { pega3: '🔢', pega4: '🔢', kino: '🎰', loto: '🍀', lotomas: '🎯' };
+  for (const [k, e] of Object.entries(estado.especiales)) {
+    let texto = null;
+    if (e.tipo === 'pega3' || e.tipo === 'pega4') {
+      const p = calcularPrediccionDigitos(k, e.cant);
+      if (p) texto = `${p.digitos.join(' - ')}  <i>(${p.dias}d hist.)</i>`;
+    } else {
+      const cantPred = TIPO_PRED_CANT[e.tipo] || e.cant;
+      const p = calcularPrediccionFrecuenciaEspecial(k, cantPred);
+      if (p) texto = `${fmtN(p.top)}  <i>(${p.dias}d hist.)</i>`;
+    }
+    if (texto) {
+      msg3 += `${EMOJI_TIPO[e.tipo] || '🎯'} <b>${e.nombre}</b> [${e.empresa}] (${e.hora})\n🔢 ${texto}\n\n`;
+      conDatosE++;
+    }
+  }
+  if (conDatosE === 0) {
+    msg3 += `⏳ Aún no hay suficiente historial para juegos especiales (mínimo ${MIN_DIAS_PREDICCION} días).`;
+  }
+  await enviarTelegram(msg3);
+
+  console.log(`🔮 Predicciones enviadas a Telegram: ${conDatos}/18 quinielas, ${conDatosC}/4 cuartetas, ${conDatosE}/${Object.keys(estado.especiales).length} especiales`);
+  return { enviado: true, quinielas_con_datos: conDatos, cuartetas_con_datos: conDatosC, especiales_con_datos: conDatosE, dias_historico: estado.historico.length };
 }
 
 // Evita reenviar las predicciones más de una vez por día
@@ -227,7 +289,7 @@ async function guardarEnSupabase(snapshot) {
   try {
     await axios.post(
       `${SUPABASE_URL}/rest/v1/historico?on_conflict=fecha`,
-      { fecha: snapshot.fecha, sorteos: snapshot.sorteos, cuartetas: snapshot.cuartetas },
+      { fecha: snapshot.fecha, sorteos: snapshot.sorteos, cuartetas: snapshot.cuartetas, especiales: snapshot.especiales || {} },
       {
         headers: {
           apikey: SUPABASE_KEY,
@@ -249,10 +311,10 @@ async function cargarDeSupabase() {
   if (!SUPABASE_ACTIVO) return null;
   try {
     const res = await axios.get(
-      `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas&order=fecha.desc&limit=90`,
+      `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&order=fecha.desc&limit=90`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 10000 }
     );
-    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas }));
+    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas, especiales: r.especiales || {} }));
   } catch (e) {
     console.error('⚠️ Supabase cargar ERROR:', e.response?.data?.message || e.message);
     return null;
@@ -754,7 +816,8 @@ async function sincronizar() {
     const snapshot = {
       fecha: estado.fecha,
       sorteos: JSON.parse(JSON.stringify(estado.sorteos)),
-      cuartetas: JSON.parse(JSON.stringify(estado.cuartetas))
+      cuartetas: JSON.parse(JSON.stringify(estado.cuartetas)),
+      especiales: JSON.parse(JSON.stringify(estado.especiales))
     };
     estado.historico.unshift(snapshot);
     if (estado.historico.length > 90) estado.historico.pop();
@@ -762,10 +825,12 @@ async function sincronizar() {
     // Resumen nocturno antes de reiniciar
     const totalDia = Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length;
     const totalCuarteta = Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length;
+    const totalEsp = Object.values(estado.especiales).filter(e=>e.numeros.length>0).length;
     await enviarTelegram(
       `🌙 <b>RESUMEN DEL DÍA ${estado.fecha}</b>\n\n` +
       `✅ Sorteos capturados: <b>${totalDia}/18</b>\n` +
-      `🎲 Cuartetas capturadas: <b>${totalCuarteta}/4</b>\n\n` +
+      `🎲 Cuartetas capturadas: <b>${totalCuarteta}/4</b>\n` +
+      `🎰 Especiales capturados: <b>${totalEsp}/${Object.keys(estado.especiales).length}</b>\n\n` +
       `💾 Histórico guardado en Supabase.\n🔄 Iniciando nuevo día: <b>${hoy}</b>`
     );
 
@@ -802,7 +867,7 @@ async function sincronizar() {
   const dispE = Object.values(estado.especiales).filter(e => e.numeros.length > 0).length;
   console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas · ${dispE}/${Object.keys(estado.especiales).length} especiales\n`);
   guardarEnDisco();
-  await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas });
+  await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
   await chequearEnvioAutomaticoPredicciones();
 }
@@ -841,10 +906,10 @@ app.get('/api/historico', (req, res) => {
 app.get('/api/consultar', (req, res) => {
   const { loteria, fecha_inicio, fecha_fin } = req.query;
   const todos = [
-    { fecha: estado.fecha, sorteos: { ...estado.sorteos, ...estado.cuartetas } },
-    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: { ...h.sorteos, ...(h.cuartetas || {}) } }))
+    { fecha: estado.fecha, sorteos: { ...estado.sorteos, ...estado.cuartetas, ...estado.especiales } },
+    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: { ...h.sorteos, ...(h.cuartetas || {}), ...(h.especiales || {}) } }))
   ];
-  const todasLasClaves = [...Object.keys(estado.sorteos), ...Object.keys(estado.cuartetas)];
+  const todasLasClaves = [...Object.keys(estado.sorteos), ...Object.keys(estado.cuartetas), ...Object.keys(estado.especiales)];
   const resultados = [];
   for (const dia of todos) {
     if (fecha_inicio && dia.fecha < fecha_inicio) continue;
@@ -852,7 +917,7 @@ app.get('/api/consultar', (req, res) => {
     const lotes = (loteria && loteria !== 'todas') ? [loteria] : todasLasClaves;
     for (const k of lotes) {
       const s = dia.sorteos[k];
-      const minNum = k.startsWith('cuarteta_') ? 4 : 3;
+      const minNum = k.startsWith('cuarteta_') ? 4 : (estado.especiales[k] ? 1 : 3);
       if (s && s.numeros && s.numeros.length >= minNum) {
         resultados.push({ fecha: dia.fecha, clave: k, nombre: s.nombre, numeros: s.numeros });
       }
@@ -954,7 +1019,7 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.4-PREDICCIONES-TG',
+    version: 'v7.5-ESPECIALES-PRED',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
