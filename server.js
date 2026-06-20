@@ -65,6 +65,97 @@ async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
   }
 }
 
+// ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
+// Mismo método que el frontend: peso por posición 60-8-4 para quinielas
+// (1ra posición vale más porque paga más en la vida real), frecuencia simple
+// para La Cuarteta (no hay orden en ese juego). Usa SOLO días ya cerrados
+// (estado.historico), nunca el día de hoy en progreso, para no hacer trampa.
+const MIN_DIAS_PREDICCION = 5;
+
+function calcularPrediccionQuiniela(clave) {
+  const datos = estado.historico
+    .filter(h => h.sorteos?.[clave]?.numeros?.length >= 3)
+    .map(h => h.sorteos[clave].numeros);
+  if (datos.length < MIN_DIAS_PREDICCION) return null;
+
+  const score = {};
+  for (const nums of datos) {
+    if (nums[0] !== undefined) score[nums[0]] = (score[nums[0]] || 0) + 60;
+    if (nums[1] !== undefined) score[nums[1]] = (score[nums[1]] || 0) + 8;
+    if (nums[2] !== undefined) score[nums[2]] = (score[nums[2]] || 0) + 4;
+  }
+  const top3 = Object.entries(score).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => +n);
+  return { top3, dias: datos.length };
+}
+
+function calcularPrediccionCuarteta(clave) {
+  const datos = estado.historico
+    .filter(h => h.cuartetas?.[clave]?.numeros?.length >= 4)
+    .map(h => h.cuartetas[clave].numeros);
+  if (datos.length < MIN_DIAS_PREDICCION) return null;
+
+  const freq = {};
+  for (const nums of datos) for (const n of nums) freq[n] = (freq[n] || 0) + 1;
+  const top4 = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => +n);
+  return { top4, dias: datos.length };
+}
+
+async function enviarPrediccionesTelegram() {
+  if (!TG_ACTIVO) return { enviado: false, motivo: 'Telegram no configurado' };
+
+  const fmtN = (arr) => arr.map(n => String(n).padStart(2, '0')).join(' - ');
+
+  // ── Mensaje 1: las 18 quinielas ──────────────────────────────────────────
+  let msg1 = `🔮 <b>PREDICCIONES DEL DÍA</b> — ${fechaRD()}\n<i>Top 3 por peso posicional (1ra×60, 2da×8, 3ra×4)</i>\n\n`;
+  let conDatos = 0, sinDatos = 0;
+  for (const [k, s] of Object.entries(estado.sorteos)) {
+    const p = calcularPrediccionQuiniela(k);
+    if (p) {
+      msg1 += `🎯 <b>${s.nombre}</b> (${s.hora})\n🔢 ${fmtN(p.top3)}  <i>(${p.dias}d hist.)</i>\n\n`;
+      conDatos++;
+    } else {
+      sinDatos++;
+    }
+  }
+  if (conDatos === 0) {
+    msg1 += `⏳ Aún no hay suficiente historial (mínimo ${MIN_DIAS_PREDICCION} días cerrados). Días disponibles: ${estado.historico.length}.`;
+  } else if (sinDatos > 0) {
+    msg1 += `<i>(${sinDatos} lotería(s) sin suficiente historial todavía)</i>`;
+  }
+  await enviarTelegram(msg1);
+
+  // ── Mensaje 2: La Cuarteta ───────────────────────────────────────────────
+  let msg2 = `🎲 <b>PREDICCIONES LA CUARTETA</b> — ${fechaRD()}\n<i>Top 4 por frecuencia (sin orden)</i>\n\n`;
+  let conDatosC = 0;
+  for (const [k, c] of Object.entries(estado.cuartetas)) {
+    const p = calcularPrediccionCuarteta(k);
+    if (p) {
+      msg2 += `🎲 <b>${c.nombre}</b> (${c.hora})\n🔢 ${fmtN(p.top4)}  <i>(${p.dias}d hist.)</i>\n\n`;
+      conDatosC++;
+    }
+  }
+  if (conDatosC === 0) {
+    msg2 += `⏳ Aún no hay suficiente historial para La Cuarteta (mínimo ${MIN_DIAS_PREDICCION} días).`;
+  }
+  await enviarTelegram(msg2);
+
+  console.log(`🔮 Predicciones enviadas a Telegram: ${conDatos}/18 quinielas, ${conDatosC}/4 cuartetas`);
+  return { enviado: true, quinielas_con_datos: conDatos, cuartetas_con_datos: conDatosC, dias_historico: estado.historico.length };
+}
+
+// Evita reenviar las predicciones más de una vez por día
+let ultimaPrediccionFecha = null;
+async function chequearEnvioAutomaticoPredicciones() {
+  if (!TG_ACTIVO) return;
+  const [hh] = horaRD().split(':').map(Number);
+  // Envía una sola vez, en la franja de 7:00-7:14 AM hora RD (antes de
+  // que empiecen los sorteos del día, que arrancan ~10:00 AM)
+  if (hh === 7 && ultimaPrediccionFecha !== estado.fecha) {
+    ultimaPrediccionFecha = estado.fecha;
+    await enviarPrediccionesTelegram();
+  }
+}
+
 // ── Persistencia en disco (best-effort) ───────────────────────────────────────
 // Render Free no garantiza disco persistente entre DEPLOYS (se borra al
 // redesplegar), pero SÍ conserva el filesystem de la misma instancia entre
@@ -713,6 +804,7 @@ async function sincronizar() {
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas });
   await notificarNuevosSorteos();
+  await chequearEnvioAutomaticoPredicciones();
 }
 
 // Auto-sync cada 15 minutos
@@ -862,7 +954,7 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.3-ESPECIALES',
+    version: 'v7.4-PREDICCIONES-TG',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
@@ -872,7 +964,7 @@ app.get('/', (req, res) => {
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram']
+    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram']
   });
 });
 
@@ -886,6 +978,12 @@ app.get('/api/test-telegram', async (req, res) => {
     `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/18`
   );
   res.json({ activo: true, mensaje: '¡Mensaje de prueba enviado a Telegram! Revisa tu chat.' });
+});
+
+// Envía las predicciones del día manualmente, sin esperar a las 7 AM
+app.get('/api/predicciones-telegram', async (req, res) => {
+  const resultado = await enviarPrediccionesTelegram();
+  res.json(resultado);
 });
 
 app.listen(PORT, async () => {
