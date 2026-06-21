@@ -201,7 +201,7 @@ async function enviarPrediccionesTelegram() {
   }
   await enviarTelegram(msg3);
 
-  console.log(`🔮 Predicciones enviadas a Telegram: ${conDatos}/18 quinielas, ${conDatosC}/4 cuartetas, ${conDatosE}/${Object.keys(estado.especiales).length} especiales`);
+  console.log(`🔮 Predicciones enviadas a Telegram: ${conDatos}/${Object.keys(estado.sorteos).length} quinielas, ${conDatosC}/4 cuartetas, ${conDatosE}/${Object.keys(estado.especiales).length} especiales`);
   return { enviado: true, quinielas_con_datos: conDatos, cuartetas_con_datos: conDatosC, especiales_con_datos: conDatosE, dias_historico: estado.historico.length };
 }
 
@@ -399,6 +399,7 @@ function crearSorteos() {
     anguila_t:   { nombre:'Anguila 1:00 PM',  hora:'1:00 PM',  numeros:[], estado:'pendiente' },
     gana_mas:    { nombre:'Gana Más',          hora:'2:30 PM',  numeros:[], estado:'pendiente' },
     new_york_t:  { nombre:'New York Tarde',    hora:'2:30 PM',  numeros:[], estado:'pendiente' },
+    florida_d:   { nombre:'Florida Día',       hora:'2:00 PM',  numeros:[], estado:'pendiente' },
     suerte_t2:   { nombre:'La Suerte Tarde',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     anguila_n:   { nombre:'Anguila 6:00 PM',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
     king_n:      { nombre:'King Noche',        hora:'7:00 PM',  numeros:[], estado:'pendiente' },
@@ -407,7 +408,8 @@ function crearSorteos() {
     leidsa:      { nombre:'Leidsa',            hora:'8:55 PM',  numeros:[], estado:'pendiente' },
     nacional:    { nombre:'Lotería Nacional',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
     anguila_nn:  { nombre:'Anguila 9:00 PM',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
-    new_york_n:  { nombre:'New York Noche',    hora:'10:30 PM', numeros:[], estado:'pendiente' }
+    new_york_n:  { nombre:'New York Noche',    hora:'10:30 PM', numeros:[], estado:'pendiente' },
+    florida_n:   { nombre:'Florida Noche',     hora:'10:30 PM', numeros:[], estado:'pendiente' }
   };
 }
 
@@ -459,12 +461,19 @@ const MAPA = {
   'la suerte 6pm':        'suerte_t2',   // ← "La Suerte 6PM"
   'la suerte md':         'suerte',      // ← "La Suerte MD" (mediodía)
   'new york 3:30':        'new_york_t',  // ← "New York 3:30"
-  'florida día':          'new_york_t',  // ← "Florida Día" = New York Tarde americana
-  'florida dia':          'new_york_t',
-  'florida noche':        'new_york_n',  // ← "Florida Noche" = New York Noche
   'new york 11:30':       'new_york_t',
   'new york 2:30':        'new_york_t',
   'nueva york':           'new_york_t',
+  // BUGFIX: Florida y New York son loterías AMERICANAS DISTINTAS (Florida
+  // Lottery vs New York Lottery), ambas jugadas en RD. Antes "Florida Día"
+  // apuntaba al mismo identificador que "New York Tarde", así que la que
+  // llegara primero en el sync borraba/ocultaba a la otra. Ahora cada una
+  // tiene su propia clave (florida_d / florida_n).
+  'florida día':          'florida_d',
+  'florida dia':          'florida_d',
+  'florida 2:00':         'florida_d',
+  'florida noche':        'florida_n',
+  'florida 10:30':        'florida_n',
   'primera noche':        'laprimera_n',
   'la primera noche':     'laprimera_n',
   'la primera 12:00':     'laprimera',
@@ -617,12 +626,29 @@ async function scrapeConectateAPI() {
         const juego = estado.especiales[claveEsp];
         if (juego.numeros.length >= juego.cant) continue;
         const [rMin, rMax] = juego.rango;
-        const nums = scoreArr.map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=rMin&&n<=rMax);
-        if (nums.length > 0) {
+
+        let nums;
+        const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+        if (esDigitos && scoreArr.length < juego.cant) {
+          // BUGFIX: para Pega 3/Pega 4 la API a veces manda el número
+          // combinado en un solo elemento (ej. "004" en vez de ["0","0","4"]),
+          // lo que antes se interpretaba como un único dígito (4) y perdía
+          // los ceros a la izquierda. Aquí lo separamos carácter por carácter.
+          const raw = scoreArr.join('').replace(/\D/g, '');
+          nums = raw.split('').map(d => parseInt(d, 10)).filter(n => !isNaN(n));
+        } else {
+          nums = scoreArr.map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=rMin&&n<=rMax);
+        }
+
+        if (nums.length >= juego.cant) {
           juego.numeros = nums.slice(0, juego.cant);
           juego.estado = 'disponible';
           conteo++;
           console.log(`  ✓ [API] ${juego.nombre}: ${juego.numeros.join('-')} (${juego.tipo})`);
+        } else if (nums.length > 0) {
+          // Resultado incompleto todavía (ej. solo salió 1 de 3 dígitos) —
+          // NO se guarda a medias; se espera al próximo sync con el dato completo.
+          console.log(`  ⏭️  ${juego.nombre}: solo ${nums.length}/${juego.cant} número(s) detectado(s) aún, esperando más`);
         }
         continue;
       }
@@ -828,7 +854,7 @@ async function sincronizar() {
     const totalEsp = Object.values(estado.especiales).filter(e=>e.numeros.length>0).length;
     await enviarTelegram(
       `🌙 <b>RESUMEN DEL DÍA ${estado.fecha}</b>\n\n` +
-      `✅ Sorteos capturados: <b>${totalDia}/18</b>\n` +
+      `✅ Sorteos capturados: <b>${totalDia}/${Object.keys(estado.sorteos).length}</b>\n` +
       `🎲 Cuartetas capturadas: <b>${totalCuarteta}/4</b>\n` +
       `🎰 Especiales capturados: <b>${totalEsp}/${Object.keys(estado.especiales).length}</b>\n\n` +
       `💾 Histórico guardado en Supabase.\n🔄 Iniciando nuevo día: <b>${hoy}</b>`
@@ -865,7 +891,7 @@ async function sincronizar() {
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
   const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
   const dispE = Object.values(estado.especiales).filter(e => e.numeros.length > 0).length;
-  console.log(`📊 RESULTADO: ${disp}/18 sorteos · ${dispC}/4 cuartetas · ${dispE}/${Object.keys(estado.especiales).length} especiales\n`);
+  console.log(`📊 RESULTADO: ${disp}/${Object.keys(estado.sorteos).length} sorteos · ${dispC}/4 cuartetas · ${dispE}/${Object.keys(estado.especiales).length} especiales\n`);
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
@@ -1019,7 +1045,7 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.5-ESPECIALES-PRED',
+    version: 'v7.6-FIX-PEGA3DIGITOS',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
@@ -1040,7 +1066,7 @@ app.get('/api/test-telegram', async (req, res) => {
     `✅ <b>REYDIS RADAR PRO</b> — Test de conexión\n\n` +
     `🤖 Bot conectado correctamente.\n` +
     `📅 Fecha RD: ${fechaRD()} ${horaRD()}\n` +
-    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/18`
+    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/${Object.keys(estado.sorteos).length}`
   );
   res.json({ activo: true, mensaje: '¡Mensaje de prueba enviado a Telegram! Revisa tu chat.' });
 });
