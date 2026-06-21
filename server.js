@@ -33,7 +33,11 @@ async function enviarTelegram(mensaje) {
   }
 }
 
-// Notifica todos los sorteos nuevos que aparecieron en este sync
+// Notifica todos los sorteos nuevos que aparecieron en este sync.
+// IMPORTANTE: estos mensajes son RESULTADOS REALES ya confirmados (el
+// sorteo ya salió). Se marcan explícitamente con ✅ RESULTADO REAL para que
+// nunca se puedan confundir con los mensajes de predicción (que usan 🔮 y
+// se mandan ANTES de que el sorteo ocurra).
 async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
   if (!TG_ACTIVO) return;
   const nuevos = [];
@@ -41,20 +45,19 @@ async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
   for (const [k, s] of Object.entries(estado.sorteos)) {
     if (s.numeros.length >= 3 && !yaNotificado[k]) {
       yaNotificado[k] = true;
-      nuevos.push(`🎯 <b>${s.nombre}</b> (${s.hora})\n🔢 <b>${s.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      nuevos.push(`✅ <b>${s.nombre}</b> (${s.hora}) — RESULTADO REAL\n🔢 <b>${s.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     if (c.numeros.length >= 4 && !yaNotificado[k]) {
       yaNotificado[k] = true;
-      nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora})\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      nuevos.push(`✅ <b>${c.nombre}</b> (${c.hora}) — RESULTADO REAL\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
     if (e.numeros.length > 0 && !yaNotificado[k]) {
       yaNotificado[k] = true;
-      const emoji = e.tipo === 'pega3' ? '🔢' : e.tipo === 'kino' ? '🎰' : e.tipo === 'loto' ? '🍀' : '🎯';
-      nuevos.push(`${emoji} <b>${e.nombre}</b> [${e.empresa}] (${e.hora})\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      nuevos.push(`✅ <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — RESULTADO REAL\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
 
@@ -142,14 +145,17 @@ async function enviarPrediccionesTelegram() {
   if (!TG_ACTIVO) return { enviado: false, motivo: 'Telegram no configurado' };
 
   const fmtN = (arr) => arr.map(n => String(n).padStart(2, '0')).join(' - ');
+  // IMPORTANTE: cada línea de predicción dice explícitamente "predicción" y
+  // usa 🔮 (nunca ✅, que está reservado para resultados reales en
+  // notificarNuevosSorteos). Así nunca se confunden ambos tipos de mensaje.
 
-  // ── Mensaje 1: las 18 quinielas ──────────────────────────────────────────
-  let msg1 = `🔮 <b>PREDICCIONES DEL DÍA</b> — ${fechaRD()}\n<i>Top 3 por peso posicional (1ra×60, 2da×8, 3ra×4)</i>\n\n`;
+  // ── Mensaje 1: las quinielas ──────────────────────────────────────────────
+  let msg1 = `🔮 <b>PREDICCIONES DEL DÍA</b> — ${fechaRD()}\n⚠️ <i>Esto es una predicción para HOY, generada con datos de días anteriores. NO es un resultado real todavía.</i>\n<i>Top 3 por peso posicional (1ra×60, 2da×8, 3ra×4)</i>\n\n`;
   let conDatos = 0, sinDatos = 0;
   for (const [k, s] of Object.entries(estado.sorteos)) {
     const p = calcularPrediccionQuiniela(k);
     if (p) {
-      msg1 += `🎯 <b>${s.nombre}</b> (${s.hora})\n🔢 ${fmtN(p.top3)}  <i>(${p.dias}d hist.)</i>\n\n`;
+      msg1 += `🔮 <b>${s.nombre}</b> (${s.hora}) — predicción\n🔢 ${fmtN(p.top3)}  <i>(${p.dias}d hist.)</i>\n\n`;
       conDatos++;
     } else {
       sinDatos++;
@@ -163,12 +169,12 @@ async function enviarPrediccionesTelegram() {
   await enviarTelegram(msg1);
 
   // ── Mensaje 2: La Cuarteta ───────────────────────────────────────────────
-  let msg2 = `🎲 <b>PREDICCIONES LA CUARTETA</b> — ${fechaRD()}\n<i>Top 4 por frecuencia (sin orden)</i>\n\n`;
+  let msg2 = `🔮 <b>PREDICCIONES LA CUARTETA</b> — ${fechaRD()}\n⚠️ <i>Predicción para hoy, no es resultado real.</i>\n<i>Top 4 por frecuencia (sin orden)</i>\n\n`;
   let conDatosC = 0;
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     const p = calcularPrediccionCuarteta(k);
     if (p) {
-      msg2 += `🎲 <b>${c.nombre}</b> (${c.hora})\n🔢 ${fmtN(p.top4)}  <i>(${p.dias}d hist.)</i>\n\n`;
+      msg2 += `🔮 <b>${c.nombre}</b> (${c.hora}) — predicción\n🔢 ${fmtN(p.top4)}  <i>(${p.dias}d hist.)</i>\n\n`;
       conDatosC++;
     }
   }
@@ -178,9 +184,8 @@ async function enviarPrediccionesTelegram() {
   await enviarTelegram(msg2);
 
   // ── Mensaje 3: Juegos especiales ─────────────────────────────────────────
-  let msg3 = `🎰 <b>PREDICCIONES JUEGOS ESPECIALES</b> — ${fechaRD()}\n\n`;
+  let msg3 = `🔮 <b>PREDICCIONES JUEGOS ESPECIALES</b> — ${fechaRD()}\n⚠️ <i>Predicción para hoy, no es resultado real.</i>\n\n`;
   let conDatosE = 0;
-  const EMOJI_TIPO = { pega3: '🔢', pega4: '🔢', kino: '🎰', loto: '🍀', lotomas: '🎯' };
   for (const [k, e] of Object.entries(estado.especiales)) {
     let texto = null;
     if (e.tipo === 'pega3' || e.tipo === 'pega4') {
@@ -192,7 +197,7 @@ async function enviarPrediccionesTelegram() {
       if (p) texto = `${fmtN(p.top)}  <i>(${p.dias}d hist.)</i>`;
     }
     if (texto) {
-      msg3 += `${EMOJI_TIPO[e.tipo] || '🎯'} <b>${e.nombre}</b> [${e.empresa}] (${e.hora})\n🔢 ${texto}\n\n`;
+      msg3 += `🔮 <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — predicción\n🔢 ${texto}\n\n`;
       conDatosE++;
     }
   }
@@ -1045,7 +1050,7 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.6-FIX-PEGA3DIGITOS',
+    version: 'v7.7-FIX-FLORIDA-MSG',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
