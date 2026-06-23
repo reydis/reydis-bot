@@ -9,12 +9,16 @@ const PORT    = process.env.PORT || 3000;
 
 // ── TELEGRAM BOT — Alertas en tiempo real ────────────────────────────────────
 // Variables de entorno en Render:
-//   TELEGRAM_TOKEN  = token del bot (de BotFather)
-//   TELEGRAM_CHAT_ID = tu chat ID personal
+//   TELEGRAM_TOKEN    = token del bot (de BotFather)
+//   TELEGRAM_CHAT_IDS = chat IDs separados por coma (ej: 8490682294,123456789)
+//                       (también acepta TELEGRAM_CHAT_ID para compatibilidad)
 // Si no están configuradas, las alertas se ignoran silenciosamente.
-const TG_TOKEN   = process.env.TELEGRAM_TOKEN   || '';
-const TG_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
-const TG_ACTIVO  = !!(TG_TOKEN && TG_CHAT_ID);
+const TG_TOKEN   = process.env.TELEGRAM_TOKEN || '';
+const TG_CHAT_IDS = (() => {
+  const raw = process.env.TELEGRAM_CHAT_IDS || process.env.TELEGRAM_CHAT_ID || '';
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+})();
+const TG_ACTIVO = !!(TG_TOKEN && TG_CHAT_IDS.length);
 
 // Registro de sorteos ya notificados hoy (clave → true)
 // Se reinicia al cambiar de día junto con estado.sorteos
@@ -22,15 +26,15 @@ const yaNotificado = {};
 
 async function enviarTelegram(mensaje) {
   if (!TG_ACTIVO) return;
-  try {
-    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-      chat_id: TG_CHAT_ID,
+  // Manda el mismo mensaje a TODOS los chat IDs configurados en paralelo.
+  // Si uno falla, los demás igual reciben el mensaje.
+  await Promise.allSettled(TG_CHAT_IDS.map(chatId =>
+    axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      chat_id: chatId,
       text: mensaje,
       parse_mode: 'HTML'
-    }, { timeout: 8000 });
-  } catch (e) {
-    console.error('⚠️ Telegram ERROR:', e.message);
-  }
+    }, { timeout: 8000 }).catch(e => console.error(`⚠️ Telegram ERROR (chat ${chatId}):`, e.message))
+  ));
 }
 
 // Notifica todos los sorteos nuevos que aparecieron en este sync.
@@ -1055,10 +1059,10 @@ app.get('/api/debug-db', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.8-FIX-MINDIAS',
+    version: 'v7.9-MULTIDESTINATARIO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
-    telegram: TG_ACTIVO ? 'activo ✅' : 'no configurado',
+    telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
     sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
@@ -1071,14 +1075,15 @@ app.get('/', (req, res) => {
 
 // Endpoint para probar el bot manualmente
 app.get('/api/test-telegram', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_ID en Render.' });
+  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_IDS en Render.' });
   await enviarTelegram(
     `✅ <b>REYDIS RADAR PRO</b> — Test de conexión\n\n` +
     `🤖 Bot conectado correctamente.\n` +
+    `👥 Destinatarios: <b>${TG_CHAT_IDS.length}</b>\n` +
     `📅 Fecha RD: ${fechaRD()} ${horaRD()}\n` +
     `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/${Object.keys(estado.sorteos).length}`
   );
-  res.json({ activo: true, mensaje: '¡Mensaje de prueba enviado a Telegram! Revisa tu chat.' });
+  res.json({ activo: true, destinatarios: TG_CHAT_IDS.length, mensaje: `¡Mensaje enviado a ${TG_CHAT_IDS.length} destinatario(s)!` });
 });
 
 // Envía las predicciones del día manualmente, sin esperar a las 7 AM
@@ -1092,7 +1097,7 @@ app.listen(PORT, async () => {
   console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
   console.log(`🎲 Rastrea La Cuarteta (Anguila, 4 dígitos)`);
   console.log(`💾 Persistencia: ${SUPABASE_ACTIVO ? 'Supabase ✅' : 'solo disco local'}`);
-  console.log(`📱 Telegram: ${TG_ACTIVO ? 'activo ✅' : 'no configurado'}`);
+  console.log(`📱 Telegram: ${TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado'}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) {
     await enviarTelegram(
