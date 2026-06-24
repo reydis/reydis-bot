@@ -1126,9 +1126,16 @@ app.get('/api/debug2', async (req, res) => {
 app.get('/api/debug-db', async (req, res) => {
   if (!SUPABASE_ACTIVO) {
     return res.json({ activo: false, mensaje: 'SUPABASE_URL / SUPABASE_KEY no configuradas en Render todavía.' });
+  }
+  const datos = await cargarDeSupabase();
+  if (datos === null) {
+    return res.json({ activo: true, conectado: false, mensaje: 'Variables configuradas pero la conexión falló.' });
+  }
+  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d => d.fecha) });
+});
 
 // Ver exactamente lo que manda la API de conectate.com.do para cualquier juego
-// Útil para diagnosticar: /api/debug-api?filtro=pega  (filtra por nombre)
+// Uso: /api/debug-api?filtro=pega  (filtra por nombre)
 app.get('/api/debug-api', async (req, res) => {
   try {
     const r = await axios.get('https://conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
@@ -1149,17 +1156,10 @@ app.get('/api/debug-api', async (req, res) => {
     res.status(200).json({ error: e.message });
   }
 });
-  }
-  const datos = await cargarDeSupabase();
-  if (datos === null) {
-    return res.json({ activo: true, conectado: false, mensaje: 'Variables configuradas pero la conexión falló. Revisa la URL y la service_role key.' });
-  }
-  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d => d.fecha) });
-});
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.11-PRED-MEJORADA',
+    version: 'v7.12-STABLE',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1192,13 +1192,23 @@ app.get('/api/predicciones-telegram', async (req, res) => {
   res.json(resultado);
 });
 
+// ── Protección anti-crash global ──────────────────────────────────────────────
+// Captura errores no manejados para que el servidor NO se caiga. Los loguea
+// en consola sin detener el proceso — así los sorteos siguen capturándose.
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ [uncaughtException]', err.stack || err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ [unhandledRejection]', reason?.stack || reason);
+});
+
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v7.2-TELEGRAM en puerto ${PORT}`);
-  console.log(`✅ Solo acepta resultados con today:true (rechaza datos de ayer)`);
-  console.log(`🎲 Rastrea La Cuarteta (Anguila, 4 dígitos)`);
-  console.log(`💾 Persistencia: ${SUPABASE_ACTIVO ? 'Supabase ✅' : 'solo disco local'}`);
-  console.log(`📱 Telegram: ${TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado'}`);
+  console.log(`\n🚀 Reydis Engine v7.12-STABLE en puerto ${PORT}`);
+  console.log(`💾 Supabase: ${SUPABASE_ACTIVO ? '✅' : '❌ no configurado'}`);
+  console.log(`📱 Telegram: ${TG_ACTIVO ? `✅ (${TG_CHAT_IDS.length} destinatario(s))` : '❌ no configurado'}`);
+
   await inicializarPersistenciaRemota();
+
   if (TG_ACTIVO) {
     await enviarTelegram(
       `🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado\n\n` +
@@ -1207,5 +1217,20 @@ app.listen(PORT, async () => {
       `🔄 Sincronizando sorteos...`
     );
   }
-  sincronizar();
+
+  await sincronizar();
+
+  // ── Self-ping para evitar que Render duerma el servicio ──────────────────
+  // Render free tier duerme el servidor tras ~15 min sin peticiones HTTP.
+  // Cuando duerme, pierde todos los resultados en memoria y reinicia —
+  // por eso aparecen tantos "Servidor iniciado" en Telegram.
+  // Este ping propio cada 14 minutos mantiene el servidor despierto.
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  setInterval(async () => {
+    try {
+      await axios.get(`${SELF_URL}/`, { timeout: 5000 });
+    } catch (_) { /* silencioso — no es crítico */ }
+  }, 14 * 60 * 1000);
+
+  console.log(`🏓 Self-ping activo cada 14 min → ${SELF_URL}`);
 });
