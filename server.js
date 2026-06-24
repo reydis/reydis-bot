@@ -724,6 +724,15 @@ async function scrapeConectateAPI() {
             estado.sorteos[clave].estado = 'disponible';
             conteo++;
             console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy, ${item.date})`);
+            // Notificar inmediatamente — no esperar al final del sync
+            if (!yaNotificado[clave]) {
+              yaNotificado[clave] = true;
+              const s = estado.sorteos[clave];
+              const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
+                `✅ <b>${s.nombre}</b> (${s.hora}) — RESULTADO REAL\n` +
+                `🔢 <b>${nums.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`;
+              enviarTelegram(msg).catch(e => console.error('TG error:', e.message));
+            }
           }
         }
         continue;
@@ -1181,7 +1190,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.14-DEBUG-NOTIF',
+    version: 'v7.15-NOTIF-INMEDIATA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
