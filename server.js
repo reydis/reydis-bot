@@ -27,14 +27,19 @@ const yaNotificado = {};
 async function enviarTelegram(mensaje) {
   if (!TG_ACTIVO) return;
   // Manda el mismo mensaje a TODOS los chat IDs configurados en paralelo.
-  // Si uno falla, los demás igual reciben el mensaje.
-  await Promise.allSettled(TG_CHAT_IDS.map(chatId =>
+  const resultados = await Promise.allSettled(TG_CHAT_IDS.map(chatId =>
     axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: mensaje,
       parse_mode: 'HTML'
-    }, { timeout: 8000 }).catch(e => console.error(`⚠️ Telegram ERROR (chat ${chatId}):`, e.message))
+    }, { timeout: 8000 })
   ));
+  resultados.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      const err = r.reason?.response?.data || r.reason?.message;
+      console.error(`  ⚠️ Telegram ERROR (chat ${TG_CHAT_IDS[i]}):`, JSON.stringify(err));
+    }
+  });
 }
 
 // Notifica todos los sorteos nuevos que aparecieron en este sync.
@@ -43,40 +48,50 @@ async function enviarTelegram(mensaje) {
 // nunca se puedan confundir con los mensajes de predicción (que usan 🔮 y
 // se mandan ANTES de que el sorteo ocurra).
 async function notificarNuevosSorteos() {
-  if (!TG_ACTIVO) return;
+  if (!TG_ACTIVO) {
+    console.log('📱 Telegram inactivo — no se notifica (faltan TOKEN o CHAT_IDS)');
+    return;
+  }
   const nuevos = [];
 
   for (const [k, s] of Object.entries(estado.sorteos)) {
     if (s.numeros.length >= 3 && !yaNotificado[k]) {
       yaNotificado[k] = true;
       nuevos.push(`✅ <b>${s.nombre}</b> (${s.hora}) — RESULTADO REAL\n🔢 <b>${s.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      console.log(`  📬 Nuevo para notificar: ${s.nombre} → ${s.numeros.join('-')}`);
     }
   }
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     if (c.numeros.length >= 4 && !yaNotificado[k]) {
       yaNotificado[k] = true;
       nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora}) — RESULTADO REAL\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      console.log(`  📬 Cuarteta para notificar: ${c.nombre}`);
     }
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
     if (e.numeros.length > 0 && !yaNotificado[k]) {
       yaNotificado[k] = true;
       nuevos.push(`🎰 <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — RESULTADO REAL\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      console.log(`  📬 Especial para notificar: ${e.nombre}`);
     }
   }
 
-  if (nuevos.length === 0) return;
+  if (nuevos.length === 0) {
+    console.log(`  📭 Sin sorteos nuevos para notificar (yaNotificado: ${Object.keys(yaNotificado).length} loterías)`);
+    return;
+  }
+
+  console.log(`  📱 Enviando ${nuevos.length} resultado(s) a Telegram (${TG_CHAT_IDS.length} destinatario(s))...`);
 
   // Telegram tiene límite de 4096 chars por mensaje.
-  // Enviamos en lotes de máximo 8 sorteos para evitar que el mensaje
-  // sea rechazado silenciosamente cuando llegan muchos resultados juntos.
+  // Enviamos en lotes de máximo 8 sorteos para evitar rechazo silencioso.
   const LOTE = 8;
   for (let i = 0; i < nuevos.length; i += LOTE) {
     const bloque = nuevos.slice(i, i + LOTE);
     const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + bloque.join('\n\n');
     await enviarTelegram(msg);
   }
-  console.log(`📱 Telegram: ${nuevos.length} resultado(s) notificado(s)`);
+  console.log(`  ✅ Telegram: ${nuevos.length} resultado(s) notificado(s) correctamente`);
 }
 
 // ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
@@ -1166,7 +1181,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.13-FIX-NOTIF',
+    version: 'v7.14-DEBUG-NOTIF',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
