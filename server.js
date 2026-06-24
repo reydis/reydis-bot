@@ -42,7 +42,7 @@ async function enviarTelegram(mensaje) {
 // sorteo ya salió). Se marcan explícitamente con ✅ RESULTADO REAL para que
 // nunca se puedan confundir con los mensajes de predicción (que usan 🔮 y
 // se mandan ANTES de que el sorteo ocurra).
-async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
+async function notificarNuevosSorteos() {
   if (!TG_ACTIVO) return;
   const nuevos = [];
 
@@ -55,21 +55,28 @@ async function notificarNuevosSorteos(sorteosPrevios, cuaretasPrevias) {
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     if (c.numeros.length >= 4 && !yaNotificado[k]) {
       yaNotificado[k] = true;
-      nuevos.push(`✅ <b>${c.nombre}</b> (${c.hora}) — RESULTADO REAL\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora}) — RESULTADO REAL\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
     if (e.numeros.length > 0 && !yaNotificado[k]) {
       yaNotificado[k] = true;
-      nuevos.push(`✅ <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — RESULTADO REAL\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
+      nuevos.push(`🎰 <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — RESULTADO REAL\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
     }
   }
 
-  if (nuevos.length > 0) {
-    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + nuevos.join('\n\n');
+  if (nuevos.length === 0) return;
+
+  // Telegram tiene límite de 4096 chars por mensaje.
+  // Enviamos en lotes de máximo 8 sorteos para evitar que el mensaje
+  // sea rechazado silenciosamente cuando llegan muchos resultados juntos.
+  const LOTE = 8;
+  for (let i = 0; i < nuevos.length; i += LOTE) {
+    const bloque = nuevos.slice(i, i + LOTE);
+    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + bloque.join('\n\n');
     await enviarTelegram(msg);
-    console.log(`📱 Telegram: ${nuevos.length} alerta(s) enviada(s)`);
   }
+  console.log(`📱 Telegram: ${nuevos.length} resultado(s) notificado(s)`);
 }
 
 // ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
@@ -1159,7 +1166,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.12-STABLE',
+    version: 'v7.13-FIX-NOTIF',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1225,11 +1232,14 @@ app.listen(PORT, async () => {
   // Cuando duerme, pierde todos los resultados en memoria y reinicia —
   // por eso aparecen tantos "Servidor iniciado" en Telegram.
   // Este ping propio cada 14 minutos mantiene el servidor despierto.
-  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
   setInterval(async () => {
     try {
       await axios.get(`${SELF_URL}/`, { timeout: 5000 });
-    } catch (_) { /* silencioso — no es crítico */ }
+      // ping silencioso — solo loguea si falla
+    } catch (e) {
+      console.log(`⚠️ Self-ping falló: ${e.message}`);
+    }
   }, 14 * 60 * 1000);
 
   console.log(`🏓 Self-ping activo cada 14 min → ${SELF_URL}`);
