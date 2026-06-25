@@ -26,7 +26,6 @@ const yaNotificado = {};
 
 async function enviarTelegram(mensaje) {
   if (!TG_ACTIVO) return;
-  // Manda el mismo mensaje a TODOS los chat IDs configurados en paralelo.
   const resultados = await Promise.allSettled(TG_CHAT_IDS.map(chatId =>
     axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
       chat_id: chatId,
@@ -37,7 +36,10 @@ async function enviarTelegram(mensaje) {
   resultados.forEach((r, i) => {
     if (r.status === 'rejected') {
       const err = r.reason?.response?.data || r.reason?.message;
-      console.error(`  ⚠️ Telegram ERROR (chat ${TG_CHAT_IDS[i]}):`, JSON.stringify(err));
+      console.error(`  ⚠️ Telegram REJECTED (chat ${TG_CHAT_IDS[i]}):`, JSON.stringify(err));
+    } else if (r.value?.data?.ok === false) {
+      // HTTP 200 pero Telegram rechazó el mensaje (ej. HTML inválido, chat no iniciado)
+      console.error(`  ⚠️ Telegram OK:false (chat ${TG_CHAT_IDS[i]}):`, JSON.stringify(r.value.data));
     }
   });
 }
@@ -1190,7 +1192,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.15-NOTIF-INMEDIATA',
+    version: 'v7.16-TEST-NOTIF',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1221,6 +1223,42 @@ app.get('/api/test-telegram', async (req, res) => {
 app.get('/api/predicciones-telegram', async (req, res) => {
   const resultado = await enviarPrediccionesTelegram();
   res.json(resultado);
+});
+
+// Prueba completa de notificación de resultado — muestra la respuesta exacta de Telegram
+app.get('/api/test-resultado', async (req, res) => {
+  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Telegram no configurado' });
+  const resultados = [];
+  for (const chatId of TG_CHAT_IDS) {
+    try {
+      const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
+        `✅ <b>Gana Más</b> (2:30 PM) — RESULTADO REAL\n` +
+        `🔢 <b>41 - 58 - 89</b>\n\n` +
+        `<i>Este es un mensaje de prueba para verificar que las notificaciones llegan correctamente.</i>`;
+      const r = await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+        chat_id: chatId, text: msg, parse_mode: 'HTML'
+      }, { timeout: 8000 });
+      resultados.push({ chat_id: chatId, ok: r.data.ok, message_id: r.data.result?.message_id });
+    } catch(e) {
+      resultados.push({ chat_id: chatId, ok: false, error: e.response?.data || e.message });
+    }
+  }
+  res.json({ resultados, chats_configurados: TG_CHAT_IDS });
+});
+
+// Ver estado actual de yaNotificado (qué loterías ya fueron notificadas hoy)
+app.get('/api/status-notif', (req, res) => {
+  const sorteosConResultado = Object.entries(estado.sorteos)
+    .filter(([,s]) => s.numeros.length >= 3)
+    .map(([k,s]) => ({ clave: k, nombre: s.nombre, numeros: s.numeros, notificado: !!yaNotificado[k] }));
+  res.json({
+    telegram_activo: TG_ACTIVO,
+    chat_ids: TG_CHAT_IDS,
+    ya_notificados: Object.keys(yaNotificado),
+    sorteos_con_resultado: sorteosConResultado,
+    total_capturados: sorteosConResultado.length,
+    total_notificados: sorteosConResultado.filter(s => s.notificado).length
+  });
 });
 
 // ── Protección anti-crash global ──────────────────────────────────────────────
