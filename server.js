@@ -50,50 +50,50 @@ async function enviarTelegram(mensaje) {
 // nunca se puedan confundir con los mensajes de predicción (que usan 🔮 y
 // se mandan ANTES de que el sorteo ocurra).
 async function notificarNuevosSorteos() {
-  if (!TG_ACTIVO) {
-    console.log('📱 Telegram inactivo — no se notifica (faltan TOKEN o CHAT_IDS)');
-    return;
-  }
-  const nuevos = [];
+  if (!TG_ACTIVO) return;
 
+  // Recopilar todos los resultados nuevos (no notificados aún)
+  const nuevos = [];
   for (const [k, s] of Object.entries(estado.sorteos)) {
     if (s.numeros.length >= 3 && !yaNotificado[k]) {
-      yaNotificado[k] = true;
-      nuevos.push(`✅ <b>${s.nombre}</b> (${s.hora}) — RESULTADO REAL\n🔢 <b>${s.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
-      console.log(`  📬 Nuevo para notificar: ${s.nombre} → ${s.numeros.join('-')}`);
+      nuevos.push({ tipo: 'sorteo', clave: k, nombre: s.nombre, hora: s.hora, numeros: s.numeros });
     }
   }
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     if (c.numeros.length >= 4 && !yaNotificado[k]) {
-      yaNotificado[k] = true;
-      nuevos.push(`🎲 <b>${c.nombre}</b> (${c.hora}) — RESULTADO REAL\n🔢 <b>${c.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
-      console.log(`  📬 Cuarteta para notificar: ${c.nombre}`);
+      nuevos.push({ tipo: 'cuarteta', clave: k, nombre: c.nombre, hora: c.hora, numeros: c.numeros });
     }
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
     if (e.numeros.length > 0 && !yaNotificado[k]) {
-      yaNotificado[k] = true;
-      nuevos.push(`🎰 <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) — RESULTADO REAL\n🔢 <b>${e.numeros.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`);
-      console.log(`  📬 Especial para notificar: ${e.nombre}`);
+      nuevos.push({ tipo: 'especial', clave: k, nombre: e.nombre, hora: e.hora, numeros: e.numeros, empresa: e.empresa });
     }
   }
 
-  if (nuevos.length === 0) {
-    console.log(`  📭 Sin sorteos nuevos para notificar (yaNotificado: ${Object.keys(yaNotificado).length} loterías)`);
-    return;
-  }
+  if (nuevos.length === 0) return;
 
-  console.log(`  📱 Enviando ${nuevos.length} resultado(s) a Telegram (${TG_CHAT_IDS.length} destinatario(s))...`);
+  console.log(`📱 Notificando ${nuevos.length} resultado(s) a Telegram con pausa de 1.2s entre cada uno...`);
 
-  // Telegram tiene límite de 4096 chars por mensaje.
-  // Enviamos en lotes de máximo 8 sorteos para evitar rechazo silencioso.
-  const LOTE = 8;
-  for (let i = 0; i < nuevos.length; i += LOTE) {
-    const bloque = nuevos.slice(i, i + LOTE);
-    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` + bloque.join('\n\n');
+  // Marcar todos como notificados ANTES de enviar para evitar duplicados
+  // si el servidor es llamado de nuevo antes de que terminen los envíos
+  for (const n of nuevos) yaNotificado[n.clave] = true;
+
+  // Enviar UNO POR UNO con pausa — Telegram permite ~1 msg/seg al mismo chat
+  for (let i = 0; i < nuevos.length; i++) {
+    const n = nuevos[i];
+    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
+    const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
+    const extra = n.empresa ? ` [${n.empresa}]` : '';
+    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
+      `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora}) — RESULTADO REAL\n` +
+      `🔢 <b>${nums}</b>`;
     await enviarTelegram(msg);
+    console.log(`  ✅ Enviado: ${n.nombre} → ${n.numeros.join('-')}`);
+    // Pausa de 1.2 segundos entre mensajes para respetar el límite de Telegram
+    if (i < nuevos.length - 1) await new Promise(r => setTimeout(r, 1200));
   }
-  console.log(`  ✅ Telegram: ${nuevos.length} resultado(s) notificado(s) correctamente`);
+
+  console.log(`📱 Completado: ${nuevos.length} resultado(s) notificado(s)`);
 }
 
 // ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
@@ -726,15 +726,6 @@ async function scrapeConectateAPI() {
             estado.sorteos[clave].estado = 'disponible';
             conteo++;
             console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy, ${item.date})`);
-            // Notificar inmediatamente — no esperar al final del sync
-            if (!yaNotificado[clave]) {
-              yaNotificado[clave] = true;
-              const s = estado.sorteos[clave];
-              const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
-                `✅ <b>${s.nombre}</b> (${s.hora}) — RESULTADO REAL\n` +
-                `🔢 <b>${nums.map(n=>String(n).padStart(2,'0')).join(' - ')}</b>`;
-              enviarTelegram(msg).catch(e => console.error('TG error:', e.message));
-            }
           }
         }
         continue;
@@ -1192,7 +1183,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.16-TEST-NOTIF',
+    version: 'v7.17-NOTIF-PAUSADA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
