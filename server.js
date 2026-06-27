@@ -284,15 +284,11 @@ async function enviarPrediccionesTelegram() {
   const pendientes3 = [];
 
   for (const [k, e] of Object.entries(estado.especiales)) {
-    let pred = null;
-    if (e.tipo === 'pega3' || e.tipo === 'pega4') {
-      const p = calcularPrediccionDigitos(k, e.cant);
-      if (p) pred = { texto: p.digitos.join(' - '), dias: p.dias };
-    } else {
-      const cant = TIPO_PRED_CANT[e.tipo] || e.cant;
-      const p = calcularPrediccionFrecuenciaEspecial(k, cant);
-      if (p) pred = { texto: fmtN(p.top), dias: p.dias };
-    }
+    // Todos los juegos especiales usan predicción por frecuencia con recencia
+    // (pega3/pega4 ya NO son dígitos posicionales — rango real es 00-99)
+    const cantPred = TIPO_PRED_CANT[e.tipo] || e.cant;
+    const p = calcularPrediccionFrecuenciaEspecial(k, cantPred);
+    let pred = p ? { texto: fmtN(p.top), dias: p.dias } : null;
     if (pred) {
       msg3 += `${confianzaIcon(pred.dias)} <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) <i>(${pred.dias}d)</i>\n`;
       msg3 += `🔢 <code>${pred.texto}</code>\n\n`;
@@ -488,14 +484,22 @@ function crearCuartetas() {
 //       'loto'  = 6 números de 38
 //       'lotomas' = 6+1 números de 38+1
 function crearJuegosEspeciales() {
+  // Rangos correctos según las reglas reales de cada juego:
+  // Pega 3 Más  → 3 números del 00-99 (igual que quiniela, NO dígitos 0-9)
+  // El Quemaito → 3 números del 00-99
+  // Pega 4      → 4 números del 00-99
+  // Super Kino  → 20 de 80 bolas (1-80)
+  // Mega Chance → 15 de 60 bolas (1-60)
+  // Loto        → 6 de 38 (1-38)
+  // Loto Más    → 6+1 especial de 38 (1-38)
   return {
-    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',  numeros:[], estado:'pendiente', rango:[0,9],  cant:3  },
-    superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',   numeros:[], estado:'pendiente', rango:[1,80], cant:20 },
-    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',   numeros:[], estado:'pendiente', rango:[1,38], cant:6  },
-    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas',numeros:[], estado:'pendiente', rango:[1,38], cant:7  },
-    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',  numeros:[], estado:'pendiente', rango:[0,9],  cant:3  },
-    megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',   numeros:[], estado:'pendiente', rango:[1,60], cant:15 },
-    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',  numeros:[], estado:'pendiente', rango:[0,9],  cant:4  },
+    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,99],  cant:3  },
+    superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
+    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,38],  cant:6  },
+    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,38],  cant:7  },
+    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,99],  cant:3  },
+    megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,60],  cant:15 },
+    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,99],  cant:4  },
   };
 }
 
@@ -739,20 +743,19 @@ async function scrapeConectateAPI() {
         const [rMin, rMax] = juego.rango;
 
         let nums;
-        const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
-        if (esDigitos) {
-          // La API de Pega 3/Pega 4 puede mandar el resultado en varios formatos:
-          //   ["0","0","4"]  → 3 elementos separados (ideal)
-          //   ["004"]        → un solo string combinado de 3 chars
-          //   ["04"]         → 2 chars (falta un cero al inicio)
-          //   ["4"]          → 1 char (faltan dos ceros al inicio)
-          // Solución: unir todo, rellenar con ceros a la izquierda hasta
-          // llegar a juego.cant dígitos, y luego separar uno a uno.
-          const raw = scoreArr.join('').replace(/\D/g, '');
-          const padded = raw.padStart(juego.cant, '0');
-          nums = padded.slice(-juego.cant).split('').map(d => parseInt(d, 10));
-        } else {
-          nums = scoreArr.map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=rMin&&n<=rMax);
+        const esDigitos = false; // Ya no tratamos Pega3/4 como dígitos — rango real es 0-99
+        {
+          // Todos los especiales usan el mismo parser: array de números en su rango
+          const [rMin, rMax] = juego.rango;
+          // Si el API manda un solo string combinado (ej "041"), separarlo en pares
+          if (scoreArr.length === 1 && typeof scoreArr[0] === 'string' && scoreArr[0].length >= 2) {
+            const raw = scoreArr[0].replace(/\D/g, '');
+            // Intentar separar en grupos de 2 dígitos (ej "041520" → 04,15,20)
+            const grupos = raw.match(/.{1,2}/g) || [];
+            nums = grupos.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= rMin && n <= rMax);
+          } else {
+            nums = scoreArr.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= rMin && n <= rMax);
+          }
         }
 
         if (nums.length >= juego.cant) {
@@ -1183,7 +1186,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.17-NOTIF-PAUSADA',
+    version: 'v7.18-FIX-ESPECIALES',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
