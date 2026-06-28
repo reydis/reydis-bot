@@ -710,9 +710,20 @@ async function scrapeConectateAPI() {
       const nombre = (item.game_title || '').toString().trim();
       if (!nombre) continue;
 
-      if (item.today !== true) {
-        console.log(`  ⏭️  ${nombre}: today=false (es de ${item.date || 'fecha anterior'}), aún no salió hoy`);
+      // Verificar si el resultado es de hoy usando AMBOS métodos:
+      // 1. item.today === true  (campo directo de la API)
+      // 2. item.date === "DD-MM" de hoy (fallback si el API cambia)
+      const [año, mes, dia] = estado.fecha.split('-');
+      const fechaHoyDDMM = `${dia}-${mes}`; // ej: "27-06"
+      const esFechaHoy = item.date === fechaHoyDDMM;
+      const esHoy = item.today === true || item.today === 1 || String(item.today).toLowerCase() === 'true' || esFechaHoy;
+
+      if (!esHoy) {
+        console.log(`  ⏭️  ${nombre}: hoy=false (today=${JSON.stringify(item.today)}, fecha=${item.date}, esperada=${fechaHoyDDMM})`);
         continue;
+      }
+      if (!item.today && esFechaHoy) {
+        console.log(`  ⚠️  ${nombre}: today=${JSON.stringify(item.today)} pero fecha ${item.date} es hoy — aceptando por fecha`);
       }
 
       const scoreArr = item.score;
@@ -951,7 +962,15 @@ async function scrapeQuinielasRD_DESACTIVADO() {
 }
 
 // ── Sincronización principal ───────────────────────────────────────────────────
+let sincronizando = false;
+
 async function sincronizar() {
+  if (sincronizando) {
+    console.log('⏭️  Sync ya en curso, saltando...');
+    return;
+  }
+  sincronizando = true;
+  try {
   const hoy = fechaRD();
   console.log(`\n🔄 [${horaRD()} RD] Sincronizando... (${hoy})`);
 
@@ -1014,6 +1033,11 @@ async function sincronizar() {
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
   await chequearEnvioAutomaticoPredicciones();
+  } catch(e) {
+    console.error('⚠️ Error en sincronizar:', e.message);
+  } finally {
+    sincronizando = false;
+  }
 }
 
 // Auto-sync cada 15 minutos
@@ -1186,7 +1210,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.18-FIX-ESPECIALES',
+    version: 'v7.20-FIX-TODAY-CHECK',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1238,6 +1262,21 @@ app.get('/api/test-resultado', async (req, res) => {
     }
   }
   res.json({ resultados, chats_configurados: TG_CHAT_IDS });
+});
+
+// Fuerza el envío de notificaciones de TODOS los sorteos que ya tienen
+// resultado hoy — útil si algo falló durante el día
+app.get('/api/forzar-notif', async (req, res) => {
+  if (!TG_ACTIVO) return res.json({ activo: false });
+  // Limpiar yaNotificado para forzar reenvío
+  Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+  await notificarNuevosSorteos();
+  res.json({
+    enviado: true,
+    sorteos_con_resultado: Object.entries(estado.sorteos)
+      .filter(([,s]) => s.numeros.length >= 3)
+      .map(([k,s]) => ({ k, nombre: s.nombre, numeros: s.numeros }))
+  });
 });
 
 // Ver estado actual de yaNotificado (qué loterías ya fueron notificadas hoy)
