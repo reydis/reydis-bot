@@ -284,11 +284,15 @@ async function enviarPrediccionesTelegram() {
   const pendientes3 = [];
 
   for (const [k, e] of Object.entries(estado.especiales)) {
-    // Todos los juegos especiales usan predicción por frecuencia con recencia
-    // (pega3/pega4 ya NO son dígitos posicionales — rango real es 00-99)
-    const cantPred = TIPO_PRED_CANT[e.tipo] || e.cant;
-    const p = calcularPrediccionFrecuenciaEspecial(k, cantPred);
-    let pred = p ? { texto: fmtN(p.top), dias: p.dias } : null;
+    let pred = null;
+    if (e.tipo === 'pega3' || e.tipo === 'pega4') {
+      const p = calcularPrediccionDigitos(k, e.cant);
+      if (p) pred = { texto: p.digitos.join(' - '), dias: p.dias };
+    } else {
+      const cant = TIPO_PRED_CANT[e.tipo] || e.cant;
+      const p = calcularPrediccionFrecuenciaEspecial(k, cant);
+      if (p) pred = { texto: fmtN(p.top), dias: p.dias };
+    }
     if (pred) {
       msg3 += `${confianzaIcon(pred.dias)} <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) <i>(${pred.dias}d)</i>\n`;
       msg3 += `🔢 <code>${pred.texto}</code>\n\n`;
@@ -484,22 +488,14 @@ function crearCuartetas() {
 //       'loto'  = 6 números de 38
 //       'lotomas' = 6+1 números de 38+1
 function crearJuegosEspeciales() {
-  // Rangos correctos según las reglas reales de cada juego:
-  // Pega 3 Más  → 3 números del 00-99 (igual que quiniela, NO dígitos 0-9)
-  // El Quemaito → 3 números del 00-99
-  // Pega 4      → 4 números del 00-99
-  // Super Kino  → 20 de 80 bolas (1-80)
-  // Mega Chance → 15 de 60 bolas (1-60)
-  // Loto        → 6 de 38 (1-38)
-  // Loto Más    → 6+1 especial de 38 (1-38)
   return {
-    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,99],  cant:3  },
+    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
     superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
     loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,38],  cant:6  },
     lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,38],  cant:7  },
-    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,99],  cant:3  },
+    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
     megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,60],  cant:15 },
-    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,99],  cant:4  },
+    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
   };
 }
 
@@ -754,19 +750,21 @@ async function scrapeConectateAPI() {
         const [rMin, rMax] = juego.rango;
 
         let nums;
-        const esDigitos = false; // Ya no tratamos Pega3/4 como dígitos — rango real es 0-99
-        {
-          // Todos los especiales usan el mismo parser: array de números en su rango
-          const [rMin, rMax] = juego.rango;
-          // Si el API manda un solo string combinado (ej "041"), separarlo en pares
-          if (scoreArr.length === 1 && typeof scoreArr[0] === 'string' && scoreArr[0].length >= 2) {
-            const raw = scoreArr[0].replace(/\D/g, '');
-            // Intentar separar en grupos de 2 dígitos (ej "041520" → 04,15,20)
-            const grupos = raw.match(/.{1,2}/g) || [];
-            nums = grupos.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= rMin && n <= rMax);
-          } else {
-            nums = scoreArr.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= rMin && n <= rMax);
-          }
+        const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+        if (esDigitos) {
+          // Pega 3 / Pega 4 / El Quemaito: resultado son dígitos individuales 0-9
+          // La API puede mandar en varios formatos:
+          //   ["0","4","2"]  → 3 dígitos separados
+          //   ["042"]        → string combinado
+          //   ["42"]         → falta el 0 inicial → debe ser "042"
+          //   ["4"]          → solo el último dígito → "004"
+          // Solución robusta: unir todo, extraer solo dígitos,
+          // rellenar con ceros a la izquierda hasta llegar a cant
+          const raw = scoreArr.map(x => String(x)).join('').replace(/\D/g, '');
+          const padded = raw.padStart(juego.cant, '0').slice(-juego.cant);
+          nums = padded.split('').map(d => parseInt(d, 10));
+        } else {
+          nums = scoreArr.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= juego.rango[0] && n <= juego.rango[1]);
         }
 
         if (nums.length >= juego.cant) {
@@ -924,6 +922,57 @@ async function scrapeQuinielasRD() {
   return 0;
 }
 
+// ── SCRAPER ESPECIALES: leidsa.com ─────────────────────────────────────────────
+// Fuente oficial de LEIDSA para Pega 3 Más, Super Kino TV, Loto y Loto Más.
+// Se activa solo cuando el conectate.com.do no ha capturado estos juegos todavía.
+async function scrapeLeidsa() {
+  try {
+    const pendE = Object.entries(estado.especiales)
+      .filter(([k, e]) => e.empresa === 'LEIDSA' && e.numeros.length === 0);
+    if (pendE.length === 0) return 0;
+
+    console.log('📡 Raspando leidsa.com para especiales...');
+    const res = await axios.get('https://www.leidsa.com/', {
+      headers: { ...HEADERS, 'Accept': 'text/html,application/xhtml+xml,*/*' },
+      timeout: 12000
+    });
+    const $ = cheerio.load(res.data);
+    let conteo = 0;
+
+    // Buscar resultados en la página principal de leidsa.com
+    // El HTML contiene bloques de juego con números
+    $('[class*="result"], [class*="number"], [class*="kino"], [class*="pega"], [class*="loto"]').each((i, el) => {
+      const texto = $(el).text().trim();
+      const nums = texto.match(/\d+/g);
+      if (!nums || nums.length === 0) return;
+
+      const textoNorm = texto.toLowerCase();
+      let clave = null;
+      if (textoNorm.includes('pega 3') || textoNorm.includes('pega3')) clave = 'pega3mas';
+      else if (textoNorm.includes('super kino') || textoNorm.includes('kino')) clave = 'superkino';
+      else if (textoNorm.includes('loto más') || textoNorm.includes('loto mas')) clave = 'lotomas';
+      else if (textoNorm.includes('loto')) clave = 'loto';
+
+      if (clave && estado.especiales[clave] && estado.especiales[clave].numeros.length === 0) {
+        const juego = estado.especiales[clave];
+        const validos = nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= juego.rango[0] && n <= juego.rango[1]);
+        if (validos.length >= juego.cant) {
+          juego.numeros = validos.slice(0, juego.cant);
+          juego.estado = 'disponible';
+          conteo++;
+          console.log(`  ✓ [leidsa.com] ${juego.nombre}: ${juego.numeros.join('-')}`);
+        }
+      }
+    });
+
+    console.log(`✅ leidsa.com especiales: ${conteo} capturado(s)`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ leidsa.com ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
 async function scrapeQuinielasRD_DESACTIVADO() {
   try {
     console.log('📡 [respaldo] Raspando quinielasrd.com...');
@@ -1023,6 +1072,9 @@ async function sincronizar() {
   // La Cuarteta (Anguila, 4 dígitos)
   const pendCuarteta = Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length;
   if (pendCuarteta > 0) await scrapeCuartetaLotDominicanas();
+
+  const pendEsp = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
+  if (pendEsp > 0) await scrapeLeidsa();
 
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
@@ -1210,7 +1262,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.20-FIX-TODAY-CHECK',
+    version: 'v7.21-FIX-PEGA3-LEIDSA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
