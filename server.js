@@ -1241,7 +1241,10 @@ app.get('/api/debug-db', async (req, res) => {
 // Uso: /api/debug-api?filtro=pega  (filtra por nombre, vacío = todos)
 app.get('/api/debug-api', async (req, res) => {
   try {
-    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
+    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
+      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+      timeout: 10000
+    });
     const items = r.data?.response?.data || r.data?.data || r.data || [];
     const filtro = (req.query.filtro || '').toLowerCase();
     const resultado = items
@@ -1256,13 +1259,18 @@ app.get('/api/debug-api', async (req, res) => {
       }));
     res.json({ total_items_api: items.length, filtrados: resultado.length, resultado });
   } catch(e) {
-    res.status(200).json({ error: e.message, url_usada: 'https://www.conectate.com.do/loterias/api/widget' });
+    res.status(200).json({
+      error: e.message,
+      status_real: e.response?.status,
+      data_real: e.response?.data,
+      url_usada: 'https://www.conectate.com.do/loterias/api/widget'
+    });
   }
 });
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.22-FIX-DEBUG-URL',
+    version: 'v7.23-FIX-DEBUG-HEADERS',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
