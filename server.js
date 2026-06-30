@@ -1238,10 +1238,10 @@ app.get('/api/debug-db', async (req, res) => {
 });
 
 // Ver exactamente lo que manda la API de conectate.com.do para cualquier juego
-// Uso: /api/debug-api?filtro=pega  (filtra por nombre)
+// Uso: /api/debug-api?filtro=pega  (filtra por nombre, vacío = todos)
 app.get('/api/debug-api', async (req, res) => {
   try {
-    const r = await axios.get('https://conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
+    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
     const items = r.data?.response?.data || r.data?.data || r.data || [];
     const filtro = (req.query.filtro || '').toLowerCase();
     const resultado = items
@@ -1254,15 +1254,15 @@ app.get('/api/debug-api', async (req, res) => {
         score_tipo: Array.isArray(i.score) ? `array[${i.score.length}]` : typeof i.score,
         mapeado_como: buscarClave(i.game_title || '') || buscarClaveEspecial(i.game_title || '') || '⚠️ sin mapeo'
       }));
-    res.json({ total: items.length, filtrados: resultado.length, resultado });
+    res.json({ total_items_api: items.length, filtrados: resultado.length, resultado });
   } catch(e) {
-    res.status(200).json({ error: e.message });
+    res.status(200).json({ error: e.message, url_usada: 'https://www.conectate.com.do/loterias/api/widget' });
   }
 });
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.21-FIX-PEGA3-LEIDSA',
+    version: 'v7.22-FIX-DEBUG-URL',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
