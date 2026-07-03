@@ -1133,6 +1133,148 @@ async function scrapeQuinielasRD_DESACTIVADO() {
 // ── Sincronización principal ───────────────────────────────────────────────────
 let sincronizando = false;
 
+// ── SCRAPER RESPALDO 2: enloteria.com ──────────────────────────────────────────
+// Rails con SSR: los números SÍ vienen en el HTML (sin el problema Nuxt de
+// loteriasdominicanas.com). Portada: /resultados-loterias-hoy (también -ayer
+// y -antes-de-ayer para backfill).
+// El parser NO depende de clases CSS: busca enlaces /resultados-{slug},
+// sube al contenedor con fecha en español y extrae los números.
+// Los slugs se identifican con reglas regex (ENLOTERIA_REGLAS) porque los
+// slugs exactos del sitio no están confirmados — usar /api/test-enloteria
+// para ver qué captura y ajustar.
+
+const ENLOTERIA_REGLAS = [
+  // [regex sobre el slug normalizado, clave interna]
+  [/anguil+a.*10.*am/,        'anguila_m'],
+  [/anguil+a.*1.*pm/,         'anguila_t'],
+  [/anguil+a.*6.*pm/,         'anguila_n'],
+  [/anguil+a.*9.*pm/,         'anguila_nn'],
+  [/primera.*noche/,          'laprimera_n'],
+  [/primera/,                 'laprimera'],
+  [/lotedom/,                 'lotedom'],
+  [/suerte.*(6|18|tarde)/,    'suerte_t2'],
+  [/suerte/,                  'suerte'],
+  [/king.*(noche|7)/,         'king_n'],
+  [/king/,                    'king_t'],
+  [/real/,                    'real_t'],
+  [/gana.*mas/,               'gana_mas'],
+  [/(new.*york|nueva.*york).*(noche|10)/, 'new_york_n'],
+  [/(new.*york|nueva.*york)/, 'new_york_t'],
+  [/florida.*(noche|10)/,     'florida_n'],
+  [/florida/,                 'florida_d'],
+  [/loteka/,                  'loteka'],
+  [/leidsa/,                  'leidsa'],
+  [/nacional/,                'nacional'],
+];
+
+function claveEnloteria(slug) {
+  const s = slug.toLowerCase().replace(/-/g, ' ');
+  for (const [re, clave] of ENLOTERIA_REGLAS) {
+    if (re.test(s)) return clave;
+  }
+  return null;
+}
+
+const MESES_ES = {
+  enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
+  julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12'
+};
+
+// "Jue 02 de julio, 2026" -> "2026-07-02"
+function fechaEnloteria(texto) {
+  const m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(\d{4})/i);
+  if (!m) return null;
+  const mes = MESES_ES[m[2].toLowerCase()];
+  return mes ? `${m[3]}-${mes}-${String(m[1]).padStart(2,'0')}` : null;
+}
+
+// Parser genérico de la portada de enloteria.com.
+// Devuelve TODAS las tarjetas encontradas (mapeadas o no) para debug.
+function parsearEnloteria(html) {
+  const $ = cheerio.load(html);
+  const tarjetas = [];
+  const vistos = new Set();
+
+  $('a[href*="/resultados-"]').each((_, a) => {
+    const href = $(a).attr('href') || '';
+    const m = href.match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer)?$/);
+    if (!m) return;
+    const slug = m[1];
+    if (slug === 'loterias') return; // enlaces de navegación
+
+    // Subir hasta el contenedor con fecha en español (máx 6 niveles)
+    let $card = $(a).parent();
+    let fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) {
+      fecha = fechaEnloteria($card.text());
+      if (fecha) break;
+      $card = $card.parent();
+    }
+    if (!fecha) return;
+
+    const textoCard = $card.text();
+    if (/Avísame cuando salga/i.test(textoCard)) return; // pendiente
+
+    // Números: nodos de texto que son exactamente 1-2 dígitos
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type !== 'text') return;
+      const t = $(node).text().trim();
+      if (/^\d{1,2}$/.test(t)) {
+        const n = parseInt(t, 10);
+        if (n >= 0 && n <= 99) nums.push(n);
+      }
+    });
+    if (nums.length < 3) return;
+
+    const key = `${slug}|${fecha}`;
+    if (vistos.has(key)) return; // tarjeta repetida en portada
+    vistos.add(key);
+
+    tarjetas.push({ slug, clave: claveEnloteria(slug), fecha, numeros: nums.slice(0, 6) });
+  });
+
+  return tarjetas;
+}
+
+async function scrapeEnloteria() {
+  let conteo = 0;
+  const pendientes = Object.entries(estado.sorteos)
+    .filter(([, s]) => s.numeros.length < 3).length;
+  if (pendientes === 0) return 0;
+
+  console.log(`📡 [RESPALDO 2] enloteria.com — ${pendientes} loterías pendientes...`);
+  try {
+    const res = await axios.get('https://enloteria.com/resultados-loterias-hoy', {
+      headers: HEADERS, timeout: 15000
+    });
+    const tarjetas = parsearEnloteria(res.data);
+    const hoy = fechaRD();
+
+    for (const t of tarjetas) {
+      if (!t.clave || !estado.sorteos[t.clave]) continue;
+      if (estado.sorteos[t.clave].numeros.length >= 3) continue;
+      if (t.fecha !== hoy) continue; // solo resultados de HOY (honestidad)
+
+      const nums = t.numeros.slice(0, 3);
+      // Guard anti-placeholder (como el bug de quinielasrd: 0-99-0)
+      if (nums.every(n => n === nums[0])) {
+        console.log(`  ⏭️  [enloteria] ${t.slug}: patrón sospechoso ${nums.join('-')}`);
+        continue;
+      }
+      estado.sorteos[t.clave].numeros = nums;
+      estado.sorteos[t.clave].estado = 'disponible';
+      conteo++;
+      console.log(`  ✓ [enloteria] ${estado.sorteos[t.clave].nombre}: ${nums.join('-')}`);
+    }
+    console.log(`✅ [RESPALDO 2] enloteria.com: ${conteo} sorteos`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ [RESPALDO 2] enloteria.com ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1185,6 +1327,10 @@ async function sincronizar() {
   // Si faltan, intentar HTML de loteriasdominicanas.com
   let pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 0) await scrapeLotDominicanas();
+
+  // Si aún faltan, intentar enloteria.com (SSR, números en el HTML)
+  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes > 0) await scrapeEnloteria();
 
   pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 8) await scrapeQuinielasRD();
@@ -1390,7 +1536,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.25-PAYLOAD-SCRAPER',
+    version: 'v7.26-ENLOTERIA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1400,8 +1546,32 @@ app.get('/', (req, res) => {
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram']
+    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram','/api/test-enloteria']
   });
+});
+
+// Endpoint de prueba: ver TODO lo que enloteria.com devuelve (mapeado o no)
+// Uso: /api/test-enloteria          → resultados de hoy
+//      /api/test-enloteria?dia=ayer → resultados de ayer
+//      /api/test-enloteria?dia=antes-de-ayer
+app.get('/api/test-enloteria', async (req, res) => {
+  try {
+    const dia = ['ayer','antes-de-ayer'].includes(req.query.dia) ? req.query.dia : 'hoy';
+    const r = await axios.get(`https://enloteria.com/resultados-loterias-${dia}`, {
+      headers: HEADERS, timeout: 15000
+    });
+    const tarjetas = parsearEnloteria(r.data);
+    res.json({
+      dia,
+      fecha_rd: fechaRD(),
+      total: tarjetas.length,
+      mapeadas: tarjetas.filter(t => t.clave).length,
+      sin_mapear: tarjetas.filter(t => !t.clave).map(t => t.slug),
+      tarjetas
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Endpoint para probar el bot manualmente
