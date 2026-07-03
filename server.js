@@ -798,64 +798,55 @@ async function scrapeConectateAPI() {
 //     <span class="score ">67</span><span class="score ">66</span><span class="score ">37</span>
 //   </div>
 async function scrapeLotDominicanas() {
-  try {
-    console.log('📡 Raspando loteriasdominicanas.com...');
-    const res = await axios.get('https://loteriasdominicanas.com/', {
-      headers: HEADERS, timeout: 10000
-    });
-    const $ = cheerio.load(res.data);
-    let conteo = 0;
+  // Mapa de páginas individuales por lotería — estas páginas SÍ devuelven
+  // los números en el HTML estático sin necesitar JavaScript
+  const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) =>
+    estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
+  );
+  if (pendientesMap.length === 0) return 0;
 
-    $('.game-block').each((i, bloque) => {
-      const tituloWeb = $(bloque).find('.game-title span').text().trim();
-      if (!tituloWeb) return;
+  console.log(`📡 [RESPALDO] loteriasdominicanas.com — ${pendientesMap.length} loterías pendientes...`);
+  let conteo = 0;
 
-      const clave = buscarClave(tituloWeb);
-      if (!clave || !estado.sorteos[clave]) return;
-      if (estado.sorteos[clave].numeros.length >= 3) return; // ya tenemos
+  for (const [path, clave] of pendientesMap) {
+    try {
+      const url = `https://loteriasdominicanas.com/${path}`;
+      const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
+      const $ = cheerio.load(res.data);
 
-      // ESTRICTO: solo el contenedor .game-scores.ball-mode (modo quiniela 3 bolas)
-      // Esto evita capturar Pega 3 Más, Mega Chance, Loto, etc. que tienen otros formatos
-      const contenedorBolas = $(bloque).find('.game-scores.ball-mode');
-      if (contenedorBolas.length === 0) {
-        console.log(`  ⏭️  ${tituloWeb}: sin .ball-mode (probablemente sin resultado aún o formato distinto)`);
-        return;
-      }
-
+      // Los números aparecen en el HTML como texto tras "General"
+      // Ejemplo: "General\n1\n3\n6" o en elements con clase num/score
       const nums = [];
-      contenedorBolas.first().find('span.score').each((j, span) => {
+
+      // Buscar spans o elementos con 1-2 dígitos cerca de "General"
+      $('span, td, div, strong, b').each((i, el) => {
         if (nums.length >= 3) return false;
-        const raw = $(span).text().trim();
-        // Validar que sea solo dígitos (rechazar vacíos, "--", "?", etc.)
-        if (!/^\d{1,2}$/.test(raw)) return;
-        const n = parseInt(raw, 10);
-        if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
+        const txt = $(el).text().trim();
+        if (/^\d{1,2}$/.test(txt)) {
+          const n = parseInt(txt, 10);
+          if (n >= 0 && n <= 99) nums.push(n);
+        }
       });
 
-      // Rechazar patrones sospechosos: 00-99 + algo, o menos de 3 números válidos
-      if (nums.length === 3) {
-        // Filtro adicional: si los 3 números son exactamente 0, 99 y otro, es sospechoso
-        // (probablemente placeholder / sin sorteo todavía)
-        const sospechoso = nums.includes(0) && nums.includes(99);
-        if (sospechoso) {
-          console.log(`  ⚠️  ${tituloWeb}: patrón sospechoso ${nums.join('-')} (0 y 99 juntos) - descartado`);
-          return;
+      if (nums.length >= 3) {
+        const tres = nums.slice(0, 3);
+        const sospechoso = tres.includes(0) && tres.includes(99);
+        if (!sospechoso) {
+          estado.sorteos[clave].numeros = tres;
+          estado.sorteos[clave].estado = 'disponible';
+          conteo++;
+          console.log(`  ✓ [lotDom] ${estado.sorteos[clave].nombre}: ${tres.join('-')}`);
         }
-        estado.sorteos[clave].numeros = nums;
-        estado.sorteos[clave].estado = 'disponible';
-        conteo++;
-        console.log(`  ✓ ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
-      } else {
-        console.log(`  ⏭️  ${tituloWeb}: solo ${nums.length} números válidos encontrados`);
       }
-    });
 
-    console.log(`✅ loteriasdominicanas.com: ${conteo} sorteos`);
-    return conteo;
-  } catch (e) {
-    console.error(`⚠️ loteriasdominicanas.com ERROR: ${e.message}`);
-    return 0;
+      await new Promise(r => setTimeout(r, 500));
+    } catch (e) {
+      console.log(`  ⚠️ [lotDom] ${clave}: ${e.message}`);
+    }
   }
+
+  console.log(`✅ loteriasdominicanas.com: ${conteo}/${pendientesMap.length} capturadas`);
+  return conteo;
 }
 
 // ── SCRAPER: La Cuarteta (Anguila, 4 dígitos sin orden) ───────────────────────
@@ -917,6 +908,96 @@ async function scrapeCuartetaLotDominicanas() {
 // ⚠️ DESACTIVADO TEMPORALMENTE: está capturando datos basura (0-99-0) en vez de
 // números reales de sorteo. Probablemente está leyendo paginación, años o IDs.
 // No lo usamos hasta corregir el parser.
+// ── SCRAPER PRIMARIO ALTERNATIVO: loteriasdominicanas.com ─────────────────────
+// Se activa cuando conectate.com.do está caído.
+// Esta página devuelve los números en el HTML estático (sin JS requerido).
+// IDs: Anguila Mañana=2, La Primera Día=1, etc. (fuente: CarlsRemy/LotteryScraping-RD)
+const LOTS_SCRAPER_MAP = [
+  // [url_path, clave_interna]
+  ['anguila/anguila-manana',         'anguila_m'],
+  ['anguila/anguila-medio-dia',      'anguila_t'],
+  ['anguila/anguila-tarde',          'anguila_n'],
+  ['anguila/anguila-noche',          'anguila_nn'],
+  ['la-primera/la-primera-dia',      'laprimera_d'],
+  ['lotedom',                        'lotedom'],
+  ['la-suerte-dominicana/la-suerte-12-30', 'suerte_m'],
+  ['king-lottery/king-tarde',        'king_t'],
+  ['loto-real/real-tarde',           'real_t'],
+  ['la-primera/gana-mas',            'gana_mas'],
+  ['nueva-york/new-york-tarde',      'new_york_t'],
+  ['loteria-de-florida/florida-dia', 'florida_d'],
+  ['la-suerte-dominicana/la-suerte-tarde', 'suerte_t2'],
+  ['king-lottery/king-noche',        'king_n'],
+  ['loteka',                         'loteka'],
+  ['la-primera/la-primera-noche',    'laprimera_n'],
+  ['leidsa',                         'leidsa'],
+  ['loteria-nacional',               'nacional'],
+  ['nueva-york/new-york-noche',      'new_york_n'],
+  ['loteria-de-florida/florida-noche','florida_n'],
+];
+
+async function scrapeLoteriasDominicanas() {
+  let conteo = 0;
+  const pendientes = LOTS_SCRAPER_MAP.filter(([, k]) =>
+    estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
+  );
+  if (pendientes.length === 0) return 0;
+
+  console.log(`📡 [RESPALDO] loteriasdominicanas.com — ${pendientes.length} loterías pendientes...`);
+
+  for (const [path, clave] of pendientes) {
+    try {
+      const url = `https://loteriasdominicanas.com/${path}`;
+      const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
+      const $ = cheerio.load(res.data);
+
+      // Los números aparecen en el HTML como: General | 1 | 2 | 3 | num1 | num2 | num3
+      // La estructura es: texto "General" seguido de los 3 números en spans/divs
+      let nums = [];
+
+      // Método 1: buscar en el contenido del body texto con patrón numérico de 2 dígitos
+      const bodyText = $('body').text();
+      // Buscar patrón: "General" seguido de números
+      const generalMatch = bodyText.match(/General[\s\S]{1,50}?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/);
+      if (generalMatch) {
+        nums = [+generalMatch[1], +generalMatch[2], +generalMatch[3]];
+      }
+
+      // Método 2: buscar en elementos que contengan números del 00-99
+      if (nums.length < 3) {
+        const candidatos = [];
+        $('strong, b, .numero, .result, [class*="num"], [class*="result"], td, span').each((i, el) => {
+          const txt = $(el).text().trim();
+          if (/^\d{1,2}$/.test(txt)) {
+            const n = parseInt(txt, 10);
+            if (n >= 0 && n <= 99) candidatos.push(n);
+          }
+        });
+        // Tomar los primeros 3 únicos que aparecen cerca de "General"
+        if (candidatos.length >= 3) nums = candidatos.slice(0, 3);
+      }
+
+      if (nums.length === 3 && estado.sorteos[clave]) {
+        // Verificar que no sea el resultado de ayer (pattern: todos iguales o cero)
+        if (!(nums[0] === 0 && nums[1] === 0 && nums[2] === 0)) {
+          estado.sorteos[clave].numeros = nums;
+          estado.sorteos[clave].estado = 'disponible';
+          conteo++;
+          console.log(`  ✓ [loteriasdominicanas] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+        }
+      }
+
+      // Pausa para no saturar el sitio
+      await new Promise(r => setTimeout(r, 800));
+    } catch (e) {
+      console.log(`  ⚠️ [loteriasdominicanas] ${clave}: ${e.message}`);
+    }
+  }
+
+  console.log(`✅ loteriasdominicanas.com: ${conteo}/${pendientes.length} capturadas`);
+  return conteo;
+}
+
 async function scrapeQuinielasRD() {
   console.log('⏭️  quinielasrd.com DESACTIVADO (genera datos basura 0-99-0)');
   return 0;
@@ -1270,7 +1351,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.23-FIX-DEBUG-HEADERS',
+    version: 'v7.24-SCRAPER-LOTDOM',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
