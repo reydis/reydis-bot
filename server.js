@@ -798,50 +798,89 @@ async function scrapeConectateAPI() {
 //     <span class="score ">67</span><span class="score ">66</span><span class="score ">37</span>
 //   </div>
 async function scrapeLotDominicanas() {
-  // Mapa de páginas individuales por lotería — estas páginas SÍ devuelven
-  // los números en el HTML estático sin necesitar JavaScript
+  // loteriasdominicanas.com usa Nuxt.js — los resultados NO están en el HTML,
+  // se cargan vía JS. Sin embargo, Nuxt SSR expone los datos en _payload.json.
+  // Usamos ese endpoint JSON directamente para cada lotería pendiente.
+
   const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) =>
     estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
   );
   if (pendientesMap.length === 0) return 0;
 
-  console.log(`📡 [RESPALDO] loteriasdominicanas.com — ${pendientesMap.length} loterías pendientes...`);
+  console.log(`📡 [RESPALDO] loteriasdominicanas.com _payload.json — ${pendientesMap.length} loterías pendientes...`);
   let conteo = 0;
 
-  for (const [path, clave] of pendientesMap) {
-    try {
-      const url = `https://loteriasdominicanas.com/${path}`;
-      const res = await axios.get(url, { headers: HEADERS, timeout: 10000 });
-      const $ = cheerio.load(res.data);
+  // Primero intentar la página principal (tiene todos los sorteos del día)
+  try {
+    const payloadUrl = 'https://loteriasdominicanas.com/_payload.json';
+    const res = await axios.get(payloadUrl, {
+      headers: { ...HEADERS, 'Accept': 'application/json' },
+      timeout: 12000
+    });
 
-      // Los números aparecen en el HTML como texto tras "General"
-      // Ejemplo: "General\n1\n3\n6" o en elements con clase num/score
-      const nums = [];
+    // El payload.json de Nuxt es un array dehydratado — buscar scores
+    const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    const rawStr = JSON.stringify(raw);
 
-      // Buscar spans o elementos con 1-2 dígitos cerca de "General"
-      $('span, td, div, strong, b').each((i, el) => {
-        if (nums.length >= 3) return false;
-        const txt = $(el).text().trim();
-        if (/^\d{1,2}$/.test(txt)) {
-          const n = parseInt(txt, 10);
-          if (n >= 0 && n <= 99) nums.push(n);
+    // Buscar patrones de scores: arrays de 3 números entre 0-99
+    const matches = [];
+    if (Array.isArray(raw)) {
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        if (Array.isArray(item) && item.length === 3) {
+          const nums = item.map(Number);
+          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) && !(nums[0]===0&&nums[1]===0&&nums[2]===0)) {
+            matches.push({ idx: i, nums });
+          }
         }
+      }
+    }
+
+    if (matches.length > 0) {
+      console.log(`  📊 Encontrados ${matches.length} posibles resultados en payload.json`);
+      // Por ahora logueamos — necesitamos confirmar la estructura
+      matches.slice(0, 5).forEach(m => console.log(`    [${m.idx}] = ${m.nums.join('-')}`));
+    } else {
+      console.log(`  ⚠️  payload.json no tiene resultados en formato esperado`);
+    }
+  } catch (e) {
+    console.log(`  ⚠️  _payload.json: ${e.message} — intentando páginas individuales`);
+  }
+
+  // Fallback: páginas individuales con el payload específico de cada una
+  for (const [path, clave] of pendientesMap.slice(0, 5)) { // límite 5 para no saturar
+    try {
+      const payloadUrl = `https://loteriasdominicanas.com/${path}/_payload.json`;
+      const res = await axios.get(payloadUrl, {
+        headers: { ...HEADERS, 'Accept': 'application/json' },
+        timeout: 10000
       });
 
-      if (nums.length >= 3) {
-        const tres = nums.slice(0, 3);
-        const sospechoso = tres.includes(0) && tres.includes(99);
-        if (!sospechoso) {
-          estado.sorteos[clave].numeros = tres;
-          estado.sorteos[clave].estado = 'disponible';
-          conteo++;
-          console.log(`  ✓ [lotDom] ${estado.sorteos[clave].nombre}: ${tres.join('-')}`);
+      const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!Array.isArray(raw)) continue;
+
+      // Buscar en el array del payload arrays de 3 números válidos
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        if (Array.isArray(item) && item.length === 3) {
+          const nums = item.map(Number);
+          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) &&
+              !(nums.includes(0) && nums.includes(99))) {
+            // Verificar que es un resultado real (aparece después de metadata)
+            if (i > 10) { // los primeros índices son navegación/config
+              estado.sorteos[clave].numeros = nums;
+              estado.sorteos[clave].estado = 'disponible';
+              conteo++;
+              console.log(`  ✓ [payload] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+              break;
+            }
+          }
         }
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 600));
     } catch (e) {
-      console.log(`  ⚠️ [lotDom] ${clave}: ${e.message}`);
+      console.log(`  ⚠️  [payload] ${clave}: ${e.message}`);
     }
   }
 
@@ -1351,7 +1390,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.24-SCRAPER-LOTDOM',
+    version: 'v7.25-PAYLOAD-SCRAPER',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
