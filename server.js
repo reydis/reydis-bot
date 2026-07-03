@@ -1145,10 +1145,8 @@ let sincronizando = false;
 
 const ENLOTERIA_REGLAS = [
   // [regex sobre el slug normalizado, clave interna]
-  [/anguil+a.*10.*am/,        'anguila_m'],
-  [/anguil+a.*1.*pm/,         'anguila_t'],
-  [/anguil+a.*6.*pm/,         'anguila_n'],
-  [/anguil+a.*9.*pm/,         'anguila_nn'],
+  // (Anguila se maneja aparte en claveEnloteria con token exacto de hora,
+  //  porque /1.*pm/ matcheaba también "12pm" y contaminaba anguila_t)
   [/primera.*noche/,          'laprimera_n'],
   [/primera/,                 'laprimera'],
   [/lotedom/,                 'lotedom'],
@@ -1167,8 +1165,23 @@ const ENLOTERIA_REGLAS = [
   [/nacional/,                'nacional'],
 ];
 
+// Sorteos horarios de Anguila en enloteria.com → solo mapeamos los 4
+// clásicos que rastrea el sistema. Los demás (8am, 9am, 11am, 12pm,
+// 2pm...) quedan sin mapear a propósito (visibles en /api/test-enloteria).
+const ANGUILA_HORAS = {
+  '10am': 'anguila_m',
+  '1pm':  'anguila_t',
+  '6pm':  'anguila_n',
+  '9pm':  'anguila_nn',
+};
+
 function claveEnloteria(slug) {
   const s = slug.toLowerCase().replace(/-/g, ' ');
+  // Anguila: extraer token exacto de hora ("1pm" NO matchea "12pm")
+  const ang = s.match(/anguil+a\s+(\d{1,2})\s*(am|pm)/);
+  if (ang) return ANGUILA_HORAS[ang[1] + ang[2]] || null;
+  if (/anguil/.test(s)) return null; // otras variantes anguila: no adivinar
+
   for (const [re, clave] of ENLOTERIA_REGLAS) {
     if (re.test(s)) return clave;
   }
@@ -1536,7 +1549,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.26-ENLOTERIA',
+    version: 'v7.26.1-ENLOTERIA-FIX',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
