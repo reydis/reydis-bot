@@ -1154,14 +1154,14 @@ const ENLOTERIA_REGLAS = [
   [/suerte/,                  'suerte'],
   [/king.*(noche|7)/,         'king_n'],
   [/king/,                    'king_t'],
-  [/real/,                    'real_t'],
+  [/^(quiniela )?real$/,      'real_t'],   // exacto: NO chance-real ni loto-real
   [/gana.*mas/,               'gana_mas'],
   [/(new.*york|nueva.*york).*(noche|10)/, 'new_york_n'],
   [/(new.*york|nueva.*york)/, 'new_york_t'],
   [/florida.*(noche|10)/,     'florida_n'],
   [/florida/,                 'florida_d'],
-  [/loteka/,                  'loteka'],
-  [/leidsa/,                  'leidsa'],
+  [/^(quiniela )?loteka$/,    'loteka'],   // exacto: NO lotto-loteka
+  [/^(quiniela )?leidsa$/,    'leidsa'],   // exacto: NO otros juegos leidsa
   [/nacional/,                'nacional'],
 ];
 
@@ -1794,7 +1794,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.28-BACKFILL',
+    version: 'v7.28.1-ANTICOLISION',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
