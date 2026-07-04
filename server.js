@@ -493,8 +493,8 @@ function crearJuegosEspeciales() {
     superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
     loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,40],  cant:6  },
     lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40],  cant:7  },
-    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
-    megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,60],  cant:15 },
+    quemaito:  { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, // FIX: era Loteka/3 dígitos, es LoteDom/1 número,
+    megachance:{ nombre:'Mega Chance',   empresa:'LOTEKA',  hora:'7:55 PM',  tipo:'chance',  numeros:[], estado:'pendiente', rango:[0,99],  cant:5  }, // FIX: 5 de 00-99, no 15 de 1-60,
     pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
   };
 }
@@ -1318,6 +1318,7 @@ const ESPECIALES_ENLOTERIA_RE = {
   megachance: /mega\s*chance/i,
   pega3mas:   /pega\s*3/i,
   pega4king:  /pega\s*4/i,
+  quemaito:   /quemaito/i,
 };
 
 // Parser de página por juego: NO depende de anclas (la tarjeta de HOY no
@@ -1794,7 +1795,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.28.1-ANTICOLISION',
+    version: 'v7.29-QUEMAITO-MEGACHANCE',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
