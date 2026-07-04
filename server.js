@@ -1303,10 +1303,7 @@ const ESPECIALES_ENLOTERIA = {
   megachance: 'megachance',
   pega3mas:   'pega-3-mas',  // slug no confirmado en el menú: si da 404 se ignora
   pega4king:  'pega-4',      // slug no confirmado: si da 404 se ignora
-  // quemaito: SIN MAPEAR a propósito. Tu config dice "El Quemaito / Loteka /
-  // 3 dígitos", pero en enloteria el juego de 3 dígitos de Loteka es "toca-3"
-  // y "el-quemaito-mayor" es de LoteDom. Hay que confirmar cuál es el tuyo
-  // antes de mapear — mezclar juegos distintos sería meter datos falsos.
+  quemaito:   'el-quemaito-mayor', // RESUELTO: LoteDom, 1 número 00-99, 1:55 PM
 };
 
 // Filtro por nombre: en páginas con varias tarjetas evita capturar el juego
@@ -1795,7 +1792,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.29-QUEMAITO-MEGACHANCE',
+    version: 'v7.29.1-QUEMAITO-MAPA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
