@@ -1210,7 +1210,7 @@ function parsearEnloteria(html) {
 
   $('a[href*="/resultados-"]').each((_, a) => {
     const href = $(a).attr('href') || '';
-    const m = href.match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer)?$/);
+    const m = href.match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer|-\d{4}-\d{2}-\d{2})?$/);
     if (!m) return;
     const slug = m[1];
     if (slug === 'loterias') return; // enlaces de navegación
@@ -1403,6 +1403,130 @@ async function scrapeEspecialesEnloteria() {
   }
   console.log(`✅ [RESPALDO 2] enloteria especiales: ${conteo}`);
   return conteo;
+}
+
+
+// ── BACKFILL histórico desde enloteria.com ─────────────────────────────────
+// Rellena el hueco de la caída de conectate (jun 23 - jul 1).
+// NUNCA pisa datos existentes: solo llena sorteos vacíos.
+let estadoBackfill = { activo: false, inicio: null, log: [], resumen: null };
+
+function logBF(msg) {
+  console.log(`[BACKFILL] ${msg}`);
+  estadoBackfill.log.push(msg);
+  if (estadoBackfill.log.length > 200) estadoBackfill.log.shift();
+}
+
+function listaFechas(desde, hasta) {
+  const fechas = [];
+  let d = new Date(desde + 'T12:00:00Z');
+  const fin = new Date(hasta + 'T12:00:00Z');
+  while (d <= fin && fechas.length < 15) {
+    fechas.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return fechas;
+}
+
+async function ejecutarBackfill(desde, hasta, guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    const fechas = listaFechas(desde, hasta);
+    logBF(`Rango: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} dias) - guardar=${guardar}`);
+
+    // 1) Leer lo que YA existe en Supabase para no pisarlo
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    // 2) Quinielas: pagina por fecha /resultados-loterias-YYYY-MM-DD
+    const quinielasPorDia = {};
+    for (const f of fechas) {
+      quinielasPorDia[f] = {};
+      try {
+        const res = await axios.get(`https://enloteria.com/resultados-loterias-${f}`, { headers: HEADERS, timeout: 15000 });
+        const tarjetas = parsearEnloteria(res.data);
+        let n = 0;
+        for (const t of tarjetas) {
+          if (t.fecha !== f || !t.clave) continue;
+          const nums = t.numeros.slice(0, 3);
+          if (nums.length < 3 || nums.every(x => x === nums[0])) continue;
+          quinielasPorDia[f][t.clave] = nums; n++;
+        }
+        logBF(`${f}: ${n} quinielas`);
+      } catch (e) {
+        logBF(`${f}: AVISO ${e.response?.status || e.message} (pagina por fecha no disponible?)`);
+      }
+      await pausa(1300);
+    }
+
+    // 3) Especiales: una pagina por juego (traen ~10 dias de historial)
+    const especialesPorDia = {};
+    for (const f of fechas) especialesPorDia[f] = {};
+    const plantilla = crearJuegosEspeciales();
+    const cachePag = {};
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego) continue;
+      try {
+        const re = ESPECIALES_ENLOTERIA_RE[clave];
+        const ck = slug + '|' + (re ? re.source : '');
+        if (!cachePag[ck]) {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}`, { headers: HEADERS, timeout: 15000 });
+          cachePag[ck] = parsearPaginaJuegoEnloteria(res.data, re);
+          await pausa(1300);
+        }
+        let n = 0;
+        for (const t of cachePag[ck]) {
+          if (!especialesPorDia[t.fecha]) continue; // fuera de rango
+          const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+          const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+          const usar = esDig ? validos : [...new Set(validos)];
+          if (usar.length >= juego.cant) { especialesPorDia[t.fecha][clave] = usar.slice(0, juego.cant); n++; }
+        }
+        logBF(`especial ${clave} (${slug}): ${n} dias en rango`);
+      } catch (e) {
+        logBF(`especial ${clave} (${slug}): AVISO ${e.response?.status || e.message}`);
+      }
+    }
+
+    // 4) Fusionar SIN pisar datos + guardar
+    const resumen = [];
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const [clave, nums] of Object.entries(quinielasPorDia[f] || {})) {
+        const s = base.sorteos[clave];
+        if (s && (!s.numeros || s.numeros.length < 3)) { s.numeros = nums; s.estado = 'disponible'; nuevos++; }
+      }
+      for (const [clave, nums] of Object.entries(especialesPorDia[f] || {})) {
+        const j = base.especiales[clave];
+        if (j && (!j.numeros || j.numeros.length === 0)) { j.numeros = nums; j.estado = 'disponible'; nuevos++; }
+      }
+      let guardado = false;
+      if (guardar && nuevos > 0) guardado = await guardarEnSupabase(base);
+      resumen.push({ fecha: f, existia: !!existentes[f], nuevos, guardado });
+      logBF(`${f}: +${nuevos} sorteos nuevos${guardar ? (guardado ? ' -> GUARDADO' : (nuevos > 0 ? ' -> ERROR al guardar' : '')) : ' (simulacion)'}`);
+    }
+    estadoBackfill.resumen = resumen;
+    logBF('LISTO Backfill terminado');
+  } catch (e) {
+    logBF(`ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
 }
 
 async function sincronizar() {
@@ -1670,7 +1794,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.27.1-PEGA3-FIX',
+    version: 'v7.28-BACKFILL',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1683,6 +1807,34 @@ app.get('/', (req, res) => {
     endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram','/api/test-enloteria']
   });
 });
+
+
+// Backfill historico (corre en segundo plano, no bloquea el sync)
+// 1) Simulacion: /api/backfill-enloteria?desde=2026-06-23&hasta=2026-07-01
+// 2) Guardar:    agrega &guardar=1
+// 3) Progreso:   /api/backfill-estado
+app.get('/api/backfill-enloteria', (req, res) => {
+  const { desde, hasta } = req.query;
+  const reF = /^\d{4}-\d{2}-\d{2}$/;
+  if (!reF.test(desde || '') || !reF.test(hasta || '')) {
+    return res.status(400).json({ error: 'Usa ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD (max 15 dias)' });
+  }
+  if (hasta >= fechaRD()) {
+    return res.status(400).json({ error: 'Solo dias pasados: hasta debe ser menor que hoy (el dia de hoy lo maneja el sync normal)' });
+  }
+  if (estadoBackfill.activo) {
+    return res.status(409).json({ error: 'Ya hay un backfill corriendo', ver: '/api/backfill-estado' });
+  }
+  const guardar = req.query.guardar === '1';
+  ejecutarBackfill(desde, hasta, guardar); // sin await: segundo plano
+  res.json({
+    iniciado: true, desde, hasta,
+    modo: guardar ? 'GUARDAR EN SUPABASE' : 'SIMULACION (agrega &guardar=1 para guardar de verdad)',
+    progreso: '/api/backfill-estado'
+  });
+});
+
+app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
 
 // Endpoint de prueba: ver TODO lo que enloteria.com devuelve (mapeado o no)
 // Uso: /api/test-enloteria          → resultados de hoy
