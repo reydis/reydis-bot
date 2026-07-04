@@ -491,8 +491,8 @@ function crearJuegosEspeciales() {
   return {
     pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
     superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
-    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,38],  cant:6  },
-    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,38],  cant:7  },
+    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,40],  cant:6  },
+    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40],  cant:7  },
     quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
     megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,60],  cant:15 },
     pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
@@ -1288,6 +1288,123 @@ async function scrapeEnloteria() {
   }
 }
 
+// ── ESPECIALES desde enloteria.com (páginas por juego, SSR) ────────────────────
+// Cada juego tiene su página /resultados-{slug} con la tarjeta de HOY primero
+// y el historial con URLs por fecha (/resultados-{slug}-YYYY-MM-DD).
+// NOTA HONESTIDAD: solo se mapean juegos inequívocos.
+//  - pega3mas: NO existe en enloteria (Leidsa solo tiene quiniela/loto/kino/pool)
+//  - quemaito: ambiguo (enloteria tiene "toca-3" en Loteka y
+//    "el-quemaito-mayor" en LoteDom) — inspeccionar con
+//    /api/test-enloteria?juego=toca-3 antes de mapear.
+const ESPECIALES_ENLOTERIA = {
+  superkino:  'super-kino-tv',
+  loto:       'loto',
+  lotomas:    'loto',        // misma página: Loto + Más (se toman 7 válidos)
+  megachance: 'megachance',
+  pega3mas:   'pega-3-mas',  // slug no confirmado en el menú: si da 404 se ignora
+  pega4king:  'pega-4',      // slug no confirmado: si da 404 se ignora
+  // quemaito: SIN MAPEAR a propósito. Tu config dice "El Quemaito / Loteka /
+  // 3 dígitos", pero en enloteria el juego de 3 dígitos de Loteka es "toca-3"
+  // y "el-quemaito-mayor" es de LoteDom. Hay que confirmar cuál es el tuyo
+  // antes de mapear — mezclar juegos distintos sería meter datos falsos.
+};
+
+// Filtro por nombre: en páginas con varias tarjetas evita capturar el juego
+// equivocado (ej. que la quiniela Leidsa se cuele como Pega 3)
+const ESPECIALES_ENLOTERIA_RE = {
+  superkino:  /kino/i,
+  loto:       /loto/i,
+  lotomas:    /loto/i,
+  megachance: /mega\s*chance/i,
+  pega3mas:   /pega\s*3/i,
+  pega4king:  /pega\s*4/i,
+};
+
+// Parser de página por juego: NO depende de anclas (la tarjeta de HOY no
+// tiene link a sí misma). Busca cada <h5> del juego y sube hasta el
+// contenedor con UNA sola fecha en español.
+function parsearPaginaJuegoEnloteria(html, nombreRe) {
+  const $ = cheerio.load(html);
+  const tarjetas = [];
+
+  $('h5').each((_, h) => {
+    if (nombreRe && !nombreRe.test($(h).text())) return; // otro juego
+    let $card = $(h).parent();
+    let fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) {
+      fecha = fechaEnloteria($card.text());
+      if (fecha) break;
+      $card = $card.parent();
+    }
+    if (!fecha) return;
+
+    const texto = $card.text();
+    // Si el contenedor tiene más de una fecha, nos pasamos de nivel: descartar
+    const fechas = texto.match(/\d{1,2}\s+de\s+[a-záéíóú]+,?\s+\d{4}/gi) || [];
+    if (fechas.length !== 1) return;
+    if (/Avísame cuando salga/i.test(texto)) return; // pendiente
+
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type !== 'text') return;
+      const t = $(node).text().trim();
+      if (/^\d{1,2}$/.test(t)) nums.push(parseInt(t, 10));
+    });
+    if (nums.length === 0) return;
+
+    tarjetas.push({ fecha, numeros: nums });
+  });
+
+  return tarjetas;
+}
+
+async function scrapeEspecialesEnloteria() {
+  const pendientes = Object.entries(estado.especiales)
+    .filter(([k, e]) => e.numeros.length === 0 && ESPECIALES_ENLOTERIA[k]);
+  if (pendientes.length === 0) return 0;
+
+  console.log(`📡 [RESPALDO 2] enloteria.com especiales — ${pendientes.map(([k]) => k).join(', ')}...`);
+  const hoy = fechaRD();
+  let conteo = 0;
+  const cachePaginas = {}; // loto y lotomas comparten página
+
+  for (const [clave, juego] of pendientes) {
+    const slug = ESPECIALES_ENLOTERIA[clave];
+    try {
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      const cacheKey = slug + '|' + (re ? re.source : '');
+      if (!cachePaginas[cacheKey]) {
+        const res = await axios.get(`https://enloteria.com/resultados-${slug}`, {
+          headers: HEADERS, timeout: 15000
+        });
+        cachePaginas[cacheKey] = parsearPaginaJuegoEnloteria(res.data, re);
+        await new Promise(r => setTimeout(r, 1200)); // pausa entre páginas
+      }
+      const tarjetaHoy = cachePaginas[cacheKey].find(t => t.fecha === hoy);
+      if (!tarjetaHoy) continue; // aún no sale o no publicado: NO inventar
+
+      // Validar contra rango del juego
+      const validos = tarjetaHoy.numeros.filter(n => n >= juego.rango[0] && n <= juego.rango[1]);
+      // Kino/loto exigen números únicos; pega3/pega4 permiten dígitos repetidos
+      const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+      const usar = esDigitos ? validos : [...new Set(validos)];
+
+      if (usar.length >= juego.cant) {
+        juego.numeros = usar.slice(0, juego.cant);
+        juego.estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [enloteria] ${juego.nombre}: ${juego.numeros.join('-')}`);
+      } else {
+        console.log(`  ⏭️  [enloteria] ${juego.nombre}: solo ${usar.length}/${juego.cant} números válidos, descartado`);
+      }
+    } catch (e) {
+      console.error(`  ⚠️ [enloteria] ${clave} ERROR: ${e.message}`);
+    }
+  }
+  console.log(`✅ [RESPALDO 2] enloteria especiales: ${conteo}`);
+  return conteo;
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1354,6 +1471,10 @@ async function sincronizar() {
 
   const pendEsp = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
   if (pendEsp > 0) await scrapeLeidsa();
+
+  // Especiales que leidsa.com no cubrió: enloteria.com (kino, loto, megachance)
+  const pendEsp2 = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
+  if (pendEsp2 > 0) await scrapeEspecialesEnloteria();
 
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
@@ -1549,7 +1670,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.26.1-ENLOTERIA-FIX',
+    version: 'v7.27-ESPECIALES',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -1569,6 +1690,17 @@ app.get('/', (req, res) => {
 //      /api/test-enloteria?dia=antes-de-ayer
 app.get('/api/test-enloteria', async (req, res) => {
   try {
+    // Modo juego: /api/test-enloteria?juego=super-kino-tv (o toca-3,
+    // el-quemaito-mayor, loto, megachance...) — inspecciona la página del juego
+    if (req.query.juego) {
+      const slug = String(req.query.juego).replace(/[^a-z0-9-]/g, '');
+      const r = await axios.get(`https://enloteria.com/resultados-${slug}`, {
+        headers: HEADERS, timeout: 15000
+      });
+      const tarjetas = parsearPaginaJuegoEnloteria(r.data);
+      return res.json({ juego: slug, fecha_rd: fechaRD(), total: tarjetas.length, tarjetas });
+    }
+
     const dia = ['ayer','antes-de-ayer'].includes(req.query.dia) ? req.query.dia : 'hoy';
     const r = await axios.get(`https://enloteria.com/resultados-loterias-${dia}`, {
       headers: HEADERS, timeout: 15000
