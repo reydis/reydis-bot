@@ -1,9 +1,33 @@
-const express = require('express');
-const axios   = require('axios');
-const cheerio = require('cheerio');
-const cors    = require('cors');
-const fs      = require('fs');
-const path    = require('path');
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>server.js v7.31-SEED</title>
+<style>
+  body { background:#0a0e17; color:#e0e0e0; font-family:monospace; margin:0; padding:16px; }
+  .top { position:sticky; top:0; background:#0a0e17; padding:12px 0; border-bottom:1px solid #1f2a3d; }
+  h1 { color:#00ffc8; font-size:18px; margin:0 0 4px 0; }
+  .info { color:#8899aa; font-size:12px; margin-bottom:10px; }
+  button { background:#00ffc8; color:#0a0e17; border:none; padding:14px 28px; font-size:16px;
+           font-weight:bold; border-radius:8px; cursor:pointer; font-family:monospace; }
+  button:active { transform:scale(.97); }
+  #ok { color:#00ffc8; margin-left:12px; font-size:14px; display:none; }
+  textarea { width:100%; height:70vh; background:#0d1420; color:#c8d6e5; border:1px solid #1f2a3d;
+             border-radius:8px; padding:10px; font-size:11px; margin-top:14px; box-sizing:border-box; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>⚡ REYDIS RADAR PRO — server.js v7.31-SEED</h1>
+  <div class="info">2255 líneas · 244 sorteos históricos embebidos (4 Cuartetas + Pega 3 Más, 23 abr - 11 jun) · GitHub: Ctrl+A → pegar → commit</div>
+  <button onclick="copiar()">📋 COPIAR TODO EL SERVER.JS</button><span id="ok">✓ ¡Copiado! Ahora pégalo en GitHub</span>
+</div>
+<textarea id="code" readonly spellcheck="false">const express = require(&#x27;express&#x27;);
+const axios   = require(&#x27;axios&#x27;);
+const cheerio = require(&#x27;cheerio&#x27;);
+const cors    = require(&#x27;cors&#x27;);
+const fs      = require(&#x27;fs&#x27;);
+const path    = require(&#x27;path&#x27;);
 const app     = express();
 const PORT    = process.env.PORT || 3000;
 
@@ -13,12 +37,12 @@ const PORT    = process.env.PORT || 3000;
 //   TELEGRAM_CHAT_IDS = chat IDs separados por coma (ej: 8490682294,123456789)
 //                       (también acepta TELEGRAM_CHAT_ID para compatibilidad)
 // Si no están configuradas, las alertas se ignoran silenciosamente.
-const TG_TOKEN   = process.env.TELEGRAM_TOKEN || '';
-const TG_CHAT_IDS = (() => {
-  const raw = process.env.TELEGRAM_CHAT_IDS || process.env.TELEGRAM_CHAT_ID || '';
-  return raw.split(',').map(s => s.trim()).filter(Boolean);
+const TG_TOKEN   = process.env.TELEGRAM_TOKEN || &#x27;&#x27;;
+const TG_CHAT_IDS = (() =&gt; {
+  const raw = process.env.TELEGRAM_CHAT_IDS || process.env.TELEGRAM_CHAT_ID || &#x27;&#x27;;
+  return raw.split(&#x27;,&#x27;).map(s =&gt; s.trim()).filter(Boolean);
 })();
-const TG_ACTIVO = !!(TG_TOKEN && TG_CHAT_IDS.length);
+const TG_ACTIVO = !!(TG_TOKEN &amp;&amp; TG_CHAT_IDS.length);
 
 // Registro de sorteos ya notificados hoy (clave → true)
 // Se reinicia al cambiar de día junto con estado.sorteos
@@ -26,15 +50,15 @@ const yaNotificado = {};
 
 async function enviarTelegram(mensaje) {
   if (!TG_ACTIVO) return;
-  const resultados = await Promise.allSettled(TG_CHAT_IDS.map(chatId =>
+  const resultados = await Promise.allSettled(TG_CHAT_IDS.map(chatId =&gt;
     axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: mensaje,
-      parse_mode: 'HTML'
+      parse_mode: &#x27;HTML&#x27;
     }, { timeout: 8000 })
   ));
-  resultados.forEach((r, i) => {
-    if (r.status === 'rejected') {
+  resultados.forEach((r, i) =&gt; {
+    if (r.status === &#x27;rejected&#x27;) {
       const err = r.reason?.response?.data || r.reason?.message;
       console.error(`  ⚠️ Telegram REJECTED (chat ${TG_CHAT_IDS[i]}):`, JSON.stringify(err));
     } else if (r.value?.data?.ok === false) {
@@ -55,18 +79,18 @@ async function notificarNuevosSorteos() {
   // Recopilar todos los resultados nuevos (no notificados aún)
   const nuevos = [];
   for (const [k, s] of Object.entries(estado.sorteos)) {
-    if (s.numeros.length >= 3 && !yaNotificado[k]) {
-      nuevos.push({ tipo: 'sorteo', clave: k, nombre: s.nombre, hora: s.hora, numeros: s.numeros });
+    if (s.numeros.length &gt;= 3 &amp;&amp; !yaNotificado[k]) {
+      nuevos.push({ tipo: &#x27;sorteo&#x27;, clave: k, nombre: s.nombre, hora: s.hora, numeros: s.numeros });
     }
   }
   for (const [k, c] of Object.entries(estado.cuartetas)) {
-    if (c.numeros.length >= 4 && !yaNotificado[k]) {
-      nuevos.push({ tipo: 'cuarteta', clave: k, nombre: c.nombre, hora: c.hora, numeros: c.numeros });
+    if (c.numeros.length &gt;= 4 &amp;&amp; !yaNotificado[k]) {
+      nuevos.push({ tipo: &#x27;cuarteta&#x27;, clave: k, nombre: c.nombre, hora: c.hora, numeros: c.numeros });
     }
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
-    if (e.numeros.length > 0 && !yaNotificado[k]) {
-      nuevos.push({ tipo: 'especial', clave: k, nombre: e.nombre, hora: e.hora, numeros: e.numeros, empresa: e.empresa });
+    if (e.numeros.length &gt; 0 &amp;&amp; !yaNotificado[k]) {
+      nuevos.push({ tipo: &#x27;especial&#x27;, clave: k, nombre: e.nombre, hora: e.hora, numeros: e.numeros, empresa: e.empresa });
     }
   }
 
@@ -79,18 +103,18 @@ async function notificarNuevosSorteos() {
   for (const n of nuevos) yaNotificado[n.clave] = true;
 
   // Enviar UNO POR UNO con pausa — Telegram permite ~1 msg/seg al mismo chat
-  for (let i = 0; i < nuevos.length; i++) {
+  for (let i = 0; i &lt; nuevos.length; i++) {
     const n = nuevos[i];
-    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
-    const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
-    const extra = n.empresa ? ` [${n.empresa}]` : '';
-    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
-      `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora}) — RESULTADO REAL\n` +
-      `🔢 <b>${nums}</b>`;
+    const nums = n.numeros.map(x =&gt; String(x).padStart(2, &#x27;0&#x27;)).join(&#x27; - &#x27;);
+    const etiqueta = n.tipo === &#x27;cuarteta&#x27; ? &#x27;🎲&#x27; : n.tipo === &#x27;especial&#x27; ? &#x27;🎰&#x27; : &#x27;✅&#x27;;
+    const extra = n.empresa ? ` [${n.empresa}]` : &#x27;&#x27;;
+    const msg = `🇩🇴 &lt;b&gt;REYDIS RADAR PRO&lt;/b&gt; — ${fechaRD()}\n\n` +
+      `${etiqueta} &lt;b&gt;${n.nombre}&lt;/b&gt;${extra} (${n.hora}) — RESULTADO REAL\n` +
+      `🔢 &lt;b&gt;${nums}&lt;/b&gt;`;
     await enviarTelegram(msg);
-    console.log(`  ✅ Enviado: ${n.nombre} → ${n.numeros.join('-')}`);
+    console.log(`  ✅ Enviado: ${n.nombre} → ${n.numeros.join(&#x27;-&#x27;)}`);
     // Pausa de 1.2 segundos entre mensajes para respetar el límite de Telegram
-    if (i < nuevos.length - 1) await new Promise(r => setTimeout(r, 1200));
+    if (i &lt; nuevos.length - 1) await new Promise(r =&gt; setTimeout(r, 1200));
   }
 
   console.log(`📱 Completado: ${nuevos.length} resultado(s) notificado(s)`);
@@ -106,24 +130,24 @@ async function notificarNuevosSorteos() {
 const MIN_DIAS_PREDICCION = 2;
 
 // Helper para formatear dígitos a 2 posiciones
-const p2s = n => String(n).padStart(2, '0');
+const p2s = n =&gt; String(n).padStart(2, &#x27;0&#x27;);
 // Indicador de confianza basado en días de historial
-const confianzaIcon = d => d >= 10 ? '🟢' : d >= 5 ? '🟡' : '🔴';
+const confianzaIcon = d =&gt; d &gt;= 10 ? &#x27;🟢&#x27; : d &gt;= 5 ? &#x27;🟡&#x27; : &#x27;🔴&#x27;;
 
 // ── Predicción de quiniela (3 números) ──────────────────────────────────────
 // Mejoras vs versión anterior:
 //   1. RECENCIA: días más recientes cuentan más (peso = posición inversa)
 //   2. PALE: los 2 números con mayor frecuencia total (independiente de posición)
 //   3. FRÍO: número con historial que NO salió en los últimos 3 sorteos
-//   4. Confianza: 🟢 ≥10d / 🟡 ≥5d / 🔴 <5d
+//   4. Confianza: 🟢 ≥10d / 🟡 ≥5d / 🔴 &lt;5d
 function calcularPrediccionQuiniela(clave) {
   const datos = estado.historico
-    .filter(h => h.sorteos?.[clave]?.numeros?.length >= 3)
-    .map(h => h.sorteos[clave].numeros);
-  if (datos.length < MIN_DIAS_PREDICCION) return null;
+    .filter(h =&gt; h.sorteos?.[clave]?.numeros?.length &gt;= 3)
+    .map(h =&gt; h.sorteos[clave].numeros);
+  if (datos.length &lt; MIN_DIAS_PREDICCION) return null;
 
   const scorePond = {}, freqTotal = {};
-  datos.forEach((nums, idx) => {
+  datos.forEach((nums, idx) =&gt; {
     // datos[0] = más reciente; le damos peso mayor
     const recencia = Math.max(1, datos.length - idx);
     if (nums[0] !== undefined) {
@@ -140,22 +164,22 @@ function calcularPrediccionQuiniela(clave) {
     }
   });
 
-  const sortedPond = Object.entries(scorePond).sort((a, b) => b[1] - a[1]);
-  const top3 = sortedPond.slice(0, 3).map(([n]) => +n);
+  const sortedPond = Object.entries(scorePond).sort((a, b) =&gt; b[1] - a[1]);
+  const top3 = sortedPond.slice(0, 3).map(([n]) =&gt; +n);
 
   // Pale: top 2 por frecuencia total (no importa posición)
   const topPale = Object.entries(freqTotal)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) =&gt; b[1] - a[1])
     .slice(0, 2)
-    .map(([n]) => +n);
+    .map(([n]) =&gt; +n);
 
   // Frío: tiene historial pero no salió en la ventana reciente
   const ventana = Math.min(4, datos.length);
   const recientes = new Set(datos.slice(0, ventana).flat());
   const candidatosFrios = Object.entries(freqTotal)
-    .filter(([n]) => !recientes.has(+n))
-    .sort((a, b) => b[1] - a[1]);
-  const topFrio = candidatosFrios.length > 0 ? +candidatosFrios[0][0] : null;
+    .filter(([n]) =&gt; !recientes.has(+n))
+    .sort((a, b) =&gt; b[1] - a[1]);
+  const topFrio = candidatosFrios.length &gt; 0 ? +candidatosFrios[0][0] : null;
 
   return {
     top3,       // Super Pale ponderado (top 3 con recencia)
@@ -170,35 +194,35 @@ function calcularPrediccionQuiniela(clave) {
 // ── Predicción de La Cuarteta (4 números sin orden) ──────────────────────────
 function calcularPrediccionCuarteta(clave) {
   const datos = estado.historico
-    .filter(h => h.cuartetas?.[clave]?.numeros?.length >= 4)
-    .map(h => h.cuartetas[clave].numeros);
-  if (datos.length < MIN_DIAS_PREDICCION) return null;
+    .filter(h =&gt; h.cuartetas?.[clave]?.numeros?.length &gt;= 4)
+    .map(h =&gt; h.cuartetas[clave].numeros);
+  if (datos.length &lt; MIN_DIAS_PREDICCION) return null;
 
   const freq = {};
-  datos.forEach((nums, idx) => {
+  datos.forEach((nums, idx) =&gt; {
     const w = Math.max(1, datos.length - idx);
     for (const n of nums) freq[n] = (freq[n] || 0) + w;
   });
-  const top4 = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => +n);
+  const top4 = Object.entries(freq).sort((a, b) =&gt; b[1] - a[1]).slice(0, 4).map(([n]) =&gt; +n);
   return { top4, dias: datos.length, icon: confianzaIcon(datos.length) };
 }
 
 // ── Predicción dígitos posicionales (Pega 3, Pega 4, El Quemaito) ──────────
 function calcularPrediccionDigitos(clave, cantDigitos) {
   const datos = estado.historico
-    .filter(h => h.especiales?.[clave]?.numeros?.length >= cantDigitos)
-    .map(h => h.especiales[clave].numeros);
-  if (datos.length < MIN_DIAS_PREDICCION) return null;
+    .filter(h =&gt; h.especiales?.[clave]?.numeros?.length &gt;= cantDigitos)
+    .map(h =&gt; h.especiales[clave].numeros);
+  if (datos.length &lt; MIN_DIAS_PREDICCION) return null;
 
   const digitos = [];
-  for (let pos = 0; pos < cantDigitos; pos++) {
+  for (let pos = 0; pos &lt; cantDigitos; pos++) {
     const freq = {};
-    datos.forEach((nums, idx) => {
+    datos.forEach((nums, idx) =&gt; {
       const w = Math.max(1, datos.length - idx);
       const d = nums[pos];
       if (d !== undefined) freq[d] = (freq[d] || 0) + w;
     });
-    const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+    const top = Object.entries(freq).sort((a, b) =&gt; b[1] - a[1])[0];
     digitos.push(top ? +top[0] : 0);
   }
   return { digitos, dias: datos.length };
@@ -207,16 +231,16 @@ function calcularPrediccionDigitos(clave, cantDigitos) {
 // ── Predicción por frecuencia general (Super Kino, Loto, Mega Chance) ───────
 function calcularPrediccionFrecuenciaEspecial(clave, cantNumeros) {
   const datos = estado.historico
-    .filter(h => h.especiales?.[clave]?.numeros?.length > 0)
-    .map(h => h.especiales[clave].numeros);
-  if (datos.length < MIN_DIAS_PREDICCION) return null;
+    .filter(h =&gt; h.especiales?.[clave]?.numeros?.length &gt; 0)
+    .map(h =&gt; h.especiales[clave].numeros);
+  if (datos.length &lt; MIN_DIAS_PREDICCION) return null;
 
   const freq = {};
-  datos.forEach((nums, idx) => {
+  datos.forEach((nums, idx) =&gt; {
     const w = Math.max(1, datos.length - idx);
     for (const n of nums) freq[n] = (freq[n] || 0) + w;
   });
-  const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, cantNumeros).map(([n]) => +n);
+  const top = Object.entries(freq).sort((a, b) =&gt; b[1] - a[1]).slice(0, cantNumeros).map(([n]) =&gt; +n);
   return { top, dias: datos.length };
 }
 
@@ -224,86 +248,86 @@ function calcularPrediccionFrecuenciaEspecial(clave, cantNumeros) {
 const TIPO_PRED_CANT = { kino: 10, loto: 6, lotomas: 7 };
 
 async function enviarPrediccionesTelegram() {
-  if (!TG_ACTIVO) return { enviado: false, motivo: 'Telegram no configurado' };
+  if (!TG_ACTIVO) return { enviado: false, motivo: &#x27;Telegram no configurado&#x27; };
 
-  const fmtN = arr => arr.map(n => p2s(n)).join(' - ');
+  const fmtN = arr =&gt; arr.map(n =&gt; p2s(n)).join(&#x27; - &#x27;);
 
   // ── Mensaje 1: Quinielas ──────────────────────────────────────────────────
   // Formato por lotería:
   //   🟢 Gana Más (2:30 PM)  — predicción (6d)
   //   🎯 Punto: 34  |  ↩️ Pale: 34-12  |  🎲 34-12-67  |  ❄️ Frío: 08
-  let msg1 = `🔮 <b>PREDICCIONES QUINIELAS — ${fechaRD()}</b>\n<i>⚠️ Predicción, NO resultado real. 🟢=alta confianza 🟡=media 🔴=pocos datos</i>\n\n`;
+  let msg1 = `🔮 &lt;b&gt;PREDICCIONES QUINIELAS — ${fechaRD()}&lt;/b&gt;\n&lt;i&gt;⚠️ Predicción, NO resultado real. 🟢=alta confianza 🟡=media 🔴=pocos datos&lt;/i&gt;\n\n`;
   let conDatos = 0;
   const pendientes1 = [];
 
   for (const [k, s] of Object.entries(estado.sorteos)) {
     const p = calcularPrediccionQuiniela(k);
     if (p) {
-      msg1 += `${p.icon} <b>${s.nombre}</b> (${s.hora}) <i>(${p.dias}d)</i>\n`;
-      msg1 += `🎯 <code>${p2s(p.top1)}</code>  ↩️ <code>${fmtN(p.topPale)}</code>  🎲 <code>${fmtN(p.top3)}</code>`;
-      if (p.topFrio !== null) msg1 += `  ❄️ <code>${p2s(p.topFrio)}</code>`;
+      msg1 += `${p.icon} &lt;b&gt;${s.nombre}&lt;/b&gt; (${s.hora}) &lt;i&gt;(${p.dias}d)&lt;/i&gt;\n`;
+      msg1 += `🎯 &lt;code&gt;${p2s(p.top1)}&lt;/code&gt;  ↩️ &lt;code&gt;${fmtN(p.topPale)}&lt;/code&gt;  🎲 &lt;code&gt;${fmtN(p.top3)}&lt;/code&gt;`;
+      if (p.topFrio !== null) msg1 += `  ❄️ &lt;code&gt;${p2s(p.topFrio)}&lt;/code&gt;`;
       msg1 += `\n\n`;
       conDatos++;
     } else {
       // Cuenta cuántos días tiene aunque no llegue al mínimo
-      const diasDisp = estado.historico.filter(h => h.sorteos?.[k]?.numeros?.length >= 3).length;
+      const diasDisp = estado.historico.filter(h =&gt; h.sorteos?.[k]?.numeros?.length &gt;= 3).length;
       pendientes1.push(`${s.nombre}: ${diasDisp}/${MIN_DIAS_PREDICCION}d`);
     }
   }
   if (conDatos === 0) {
     msg1 += `⏳ Sin datos suficientes aún. Días en historial: ${estado.historico.length}`;
   }
-  if (pendientes1.length > 0) {
-    msg1 += `\n⏳ <i>Pronto: ${pendientes1.join(', ')}</i>`;
+  if (pendientes1.length &gt; 0) {
+    msg1 += `\n⏳ &lt;i&gt;Pronto: ${pendientes1.join(&#x27;, &#x27;)}&lt;/i&gt;`;
   }
   await enviarTelegram(msg1);
 
   // ── Mensaje 2: La Cuarteta ───────────────────────────────────────────────
-  let msg2 = `🔮 <b>PREDICCIONES LA CUARTETA — ${fechaRD()}</b>\n<i>⚠️ Predicción, NO resultado real. Top 4 con recencia.</i>\n\n`;
+  let msg2 = `🔮 &lt;b&gt;PREDICCIONES LA CUARTETA — ${fechaRD()}&lt;/b&gt;\n&lt;i&gt;⚠️ Predicción, NO resultado real. Top 4 con recencia.&lt;/i&gt;\n\n`;
   let conDatosC = 0;
   const pendientes2 = [];
 
   for (const [k, c] of Object.entries(estado.cuartetas)) {
     const p = calcularPrediccionCuarteta(k);
     if (p) {
-      msg2 += `${p.icon} <b>${c.nombre}</b> (${c.hora}) <i>(${p.dias}d)</i>\n`;
-      msg2 += `🎲 <code>${fmtN(p.top4)}</code>\n\n`;
+      msg2 += `${p.icon} &lt;b&gt;${c.nombre}&lt;/b&gt; (${c.hora}) &lt;i&gt;(${p.dias}d)&lt;/i&gt;\n`;
+      msg2 += `🎲 &lt;code&gt;${fmtN(p.top4)}&lt;/code&gt;\n\n`;
       conDatosC++;
     } else {
-      const d = estado.historico.filter(h => h.cuartetas?.[k]?.numeros?.length >= 4).length;
+      const d = estado.historico.filter(h =&gt; h.cuartetas?.[k]?.numeros?.length &gt;= 4).length;
       pendientes2.push(`${c.nombre}: ${d}/${MIN_DIAS_PREDICCION}d`);
     }
   }
   if (conDatosC === 0) msg2 += `⏳ Sin datos suficientes para La Cuarteta todavía.`;
-  if (pendientes2.length > 0) msg2 += `\n⏳ <i>Pronto: ${pendientes2.join(', ')}</i>`;
+  if (pendientes2.length &gt; 0) msg2 += `\n⏳ &lt;i&gt;Pronto: ${pendientes2.join(&#x27;, &#x27;)}&lt;/i&gt;`;
   await enviarTelegram(msg2);
 
   // ── Mensaje 3: Juegos especiales ─────────────────────────────────────────
-  let msg3 = `🔮 <b>PREDICCIONES JUEGOS ESPECIALES — ${fechaRD()}</b>\n<i>⚠️ Predicción, NO resultado real.</i>\n\n`;
+  let msg3 = `🔮 &lt;b&gt;PREDICCIONES JUEGOS ESPECIALES — ${fechaRD()}&lt;/b&gt;\n&lt;i&gt;⚠️ Predicción, NO resultado real.&lt;/i&gt;\n\n`;
   let conDatosE = 0;
   const pendientes3 = [];
 
   for (const [k, e] of Object.entries(estado.especiales)) {
     let pred = null;
-    if (e.tipo === 'pega3' || e.tipo === 'pega4') {
+    if (e.tipo === &#x27;pega3&#x27; || e.tipo === &#x27;pega4&#x27;) {
       const p = calcularPrediccionDigitos(k, e.cant);
-      if (p) pred = { texto: p.digitos.join(' - '), dias: p.dias };
+      if (p) pred = { texto: p.digitos.join(&#x27; - &#x27;), dias: p.dias };
     } else {
       const cant = TIPO_PRED_CANT[e.tipo] || e.cant;
       const p = calcularPrediccionFrecuenciaEspecial(k, cant);
       if (p) pred = { texto: fmtN(p.top), dias: p.dias };
     }
     if (pred) {
-      msg3 += `${confianzaIcon(pred.dias)} <b>${e.nombre}</b> [${e.empresa}] (${e.hora}) <i>(${pred.dias}d)</i>\n`;
-      msg3 += `🔢 <code>${pred.texto}</code>\n\n`;
+      msg3 += `${confianzaIcon(pred.dias)} &lt;b&gt;${e.nombre}&lt;/b&gt; [${e.empresa}] (${e.hora}) &lt;i&gt;(${pred.dias}d)&lt;/i&gt;\n`;
+      msg3 += `🔢 &lt;code&gt;${pred.texto}&lt;/code&gt;\n\n`;
       conDatosE++;
     } else {
-      const d = estado.historico.filter(h => (h.especiales?.[k]?.numeros?.length || 0) > 0).length;
+      const d = estado.historico.filter(h =&gt; (h.especiales?.[k]?.numeros?.length || 0) &gt; 0).length;
       pendientes3.push(`${e.nombre}: ${d}/${MIN_DIAS_PREDICCION}d`);
     }
   }
   if (conDatosE === 0) msg3 += `⏳ Sin datos suficientes para juegos especiales todavía.`;
-  if (pendientes3.length > 0) msg3 += `\n⏳ <i>Pronto: ${pendientes3.join(', ')}</i>`;
+  if (pendientes3.length &gt; 0) msg3 += `\n⏳ &lt;i&gt;Pronto: ${pendientes3.join(&#x27;, &#x27;)}&lt;/i&gt;`;
   await enviarTelegram(msg3);
 
   console.log(`🔮 Predicciones TG: ${conDatos}/${Object.keys(estado.sorteos).length} quinielas · ${conDatosC}/4 cuartetas · ${conDatosE}/${Object.keys(estado.especiales).length} especiales`);
@@ -320,10 +344,10 @@ async function enviarPrediccionesTelegram() {
 let ultimaPrediccionFecha = null;
 async function chequearEnvioAutomaticoPredicciones() {
   if (!TG_ACTIVO) return;
-  const [hh] = horaRD().split(':').map(Number);
+  const [hh] = horaRD().split(&#x27;:&#x27;).map(Number);
   // Envía una sola vez, en la franja de 7:00-7:14 AM hora RD (antes de
   // que empiecen los sorteos del día, que arrancan ~10:00 AM)
-  if (hh === 7 && ultimaPrediccionFecha !== estado.fecha) {
+  if (hh === 7 &amp;&amp; ultimaPrediccionFecha !== estado.fecha) {
     ultimaPrediccionFecha = estado.fecha;
     await enviarPrediccionesTelegram();
   }
@@ -333,12 +357,12 @@ async function chequearEnvioAutomaticoPredicciones() {
 // Render Free no garantiza disco persistente entre DEPLOYS (se borra al
 // redesplegar), pero SÍ conserva el filesystem de la misma instancia entre
 // ciclos de sueño/despertar. Esto evita perder el histórico cada vez que el
-// servidor "duerme" por inactividad, que era el caso anterior (solo memoria).
+// servidor &quot;duerme&quot; por inactividad, que era el caso anterior (solo memoria).
 // Si quieres persistencia garantizada incluso entre redeploys, lo correcto es
 // una base de datos real (ej. Render Postgres free, o Supabase) — avísame si
 // quieres que lo conectemos.
-const DATA_DIR  = path.join(__dirname, 'data');
-const DATA_FILE = path.join(DATA_DIR, 'estado.json');
+const DATA_DIR  = path.join(__dirname, &#x27;data&#x27;);
+const DATA_FILE = path.join(DATA_DIR, &#x27;estado.json&#x27;);
 
 function guardarEnDisco() {
   try {
@@ -348,41 +372,41 @@ function guardarEnDisco() {
       historico: estado.historico
     }));
   } catch (e) {
-    console.error('⚠️ No se pudo guardar en disco:', e.message);
+    console.error(&#x27;⚠️ No se pudo guardar en disco:&#x27;, e.message);
   }
 }
 
 function cargarDeDisco() {
   try {
     if (!fs.existsSync(DATA_FILE)) return null;
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    const raw = fs.readFileSync(DATA_FILE, &#x27;utf8&#x27;);
     return JSON.parse(raw);
   } catch (e) {
-    console.error('⚠️ No se pudo leer del disco:', e.message);
+    console.error(&#x27;⚠️ No se pudo leer del disco:&#x27;, e.message);
     return null;
   }
 }
 
-app.use(cors({ origin: '*' }));
-app.options('*', cors());
+app.use(cors({ origin: &#x27;*&#x27; }));
+app.options(&#x27;*&#x27;, cors());
 app.use(express.json());
 
 // ── Zona horaria RD ──────────────────────────────────────────────────────────
 function fechaRD() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Santo_Domingo',
-    year: 'numeric', month: '2-digit', day: '2-digit'
+  return new Intl.DateTimeFormat(&#x27;en-CA&#x27;, {
+    timeZone: &#x27;America/Santo_Domingo&#x27;,
+    year: &#x27;numeric&#x27;, month: &#x27;2-digit&#x27;, day: &#x27;2-digit&#x27;
   }).format(new Date());
 }
 function horaRD() {
-  return new Intl.DateTimeFormat('es-DO', {
-    timeZone: 'America/Santo_Domingo',
-    hour: '2-digit', minute: '2-digit', hour12: false
+  return new Intl.DateTimeFormat(&#x27;es-DO&#x27;, {
+    timeZone: &#x27;America/Santo_Domingo&#x27;,
+    hour: &#x27;2-digit&#x27;, minute: &#x27;2-digit&#x27;, hour12: false
   }).format(new Date());
 }
 function horaNumRD() {
-  return parseInt(new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Santo_Domingo', hour: '2-digit', hour12: false
+  return parseInt(new Intl.DateTimeFormat(&#x27;en-US&#x27;, {
+    timeZone: &#x27;America/Santo_Domingo&#x27;, hour: &#x27;2-digit&#x27;, hour12: false
   }).format(new Date()), 10);
 }
 
@@ -391,9 +415,9 @@ function horaNumRD() {
 // en Render, el histórico se guarda ahí (permanente). Si no están configuradas,
 // el sistema sigue funcionando con solo el disco local (como antes) — no se
 // rompe nada si todavía no las has puesto.
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
-const SUPABASE_ACTIVO = !!(SUPABASE_URL && SUPABASE_KEY);
+const SUPABASE_URL = (process.env.SUPABASE_URL || &#x27;&#x27;).replace(/\/$/, &#x27;&#x27;);
+const SUPABASE_KEY = process.env.SUPABASE_KEY || &#x27;&#x27;;
+const SUPABASE_ACTIVO = !!(SUPABASE_URL &amp;&amp; SUPABASE_KEY);
 
 async function guardarEnSupabase(snapshot) {
   if (!SUPABASE_ACTIVO) return false;
@@ -405,15 +429,15 @@ async function guardarEnSupabase(snapshot) {
         headers: {
           apikey: SUPABASE_KEY,
           Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-          Prefer: 'resolution=merge-duplicates'
+          &#x27;Content-Type&#x27;: &#x27;application/json&#x27;,
+          Prefer: &#x27;resolution=merge-duplicates&#x27;
         },
         timeout: 10000
       }
     );
     return true;
   } catch (e) {
-    console.error('⚠️ Supabase guardar ERROR:', e.response?.data?.message || e.message);
+    console.error(&#x27;⚠️ Supabase guardar ERROR:&#x27;, e.response?.data?.message || e.message);
     return false;
   }
 }
@@ -422,12 +446,12 @@ async function cargarDeSupabase() {
   if (!SUPABASE_ACTIVO) return null;
   try {
     const res = await axios.get(
-      `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&order=fecha.desc&limit=90`,
+      `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&amp;order=fecha.desc&amp;limit=90`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 10000 }
     );
-    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas, especiales: r.especiales || {} }));
+    return res.data.map(r =&gt; ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas, especiales: r.especiales || {} }));
   } catch (e) {
-    console.error('⚠️ Supabase cargar ERROR:', e.response?.data?.message || e.message);
+    console.error(&#x27;⚠️ Supabase cargar ERROR:&#x27;, e.response?.data?.message || e.message);
     return null;
   }
 }
@@ -437,22 +461,22 @@ async function cargarDeSupabase() {
 // (migración inicial), para no perder lo que ya tenías acumulado.
 async function inicializarPersistenciaRemota() {
   if (!SUPABASE_ACTIVO) {
-    console.log('ℹ️  Supabase no configurado (faltan SUPABASE_URL/SUPABASE_KEY). Usando solo disco local por ahora.');
+    console.log(&#x27;ℹ️  Supabase no configurado (faltan SUPABASE_URL/SUPABASE_KEY). Usando solo disco local por ahora.&#x27;);
     return;
   }
-  console.log('🔌 Conectando a Supabase...');
+  console.log(&#x27;🔌 Conectando a Supabase...&#x27;);
   const remoto = await cargarDeSupabase();
   if (remoto === null) {
-    console.log('⚠️ No se pudo leer Supabase (revisa la URL/key). Sigo con disco/memoria mientras tanto.');
+    console.log(&#x27;⚠️ No se pudo leer Supabase (revisa la URL/key). Sigo con disco/memoria mientras tanto.&#x27;);
     return;
   }
-  if (remoto.length > 0) {
-    estado.historico = remoto.filter(r => r.fecha !== estado.fecha);
+  if (remoto.length &gt; 0) {
+    estado.historico = remoto.filter(r =&gt; r.fecha !== estado.fecha);
     console.log(`💾 Histórico restaurado desde Supabase: ${estado.historico.length} días (excluyendo hoy)`);
-  } else if (estado.historico.length > 0) {
+  } else if (estado.historico.length &gt; 0) {
     console.log(`⬆️  Supabase está vacío. Subiendo ${estado.historico.length} días que ya tenía...`);
     for (const dia of estado.historico) await guardarEnSupabase(dia);
-    console.log('✅ Migración inicial a Supabase completa.');
+    console.log(&#x27;✅ Migración inicial a Supabase completa.&#x27;);
   }
 }
 
@@ -474,53 +498,53 @@ if (persistido) {
 
 function crearCuartetas() {
   return {
-    cuarteta_m:  { nombre:'La Cuarteta Mañana',    hora:'10:00 AM', numeros:[], estado:'pendiente' },
-    cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM',  numeros:[], estado:'pendiente' },
-    cuarteta_t:  { nombre:'La Cuarteta Tarde',     hora:'6:00 PM',  numeros:[], estado:'pendiente' },
-    cuarteta_n:  { nombre:'La Cuarteta Noche',     hora:'9:00 PM',  numeros:[], estado:'pendiente' }
+    cuarteta_m:  { nombre:&#x27;La Cuarteta Mañana&#x27;,    hora:&#x27;10:00 AM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    cuarteta_md: { nombre:&#x27;La Cuarteta Medio Día&#x27;, hora:&#x27;1:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    cuarteta_t:  { nombre:&#x27;La Cuarteta Tarde&#x27;,     hora:&#x27;6:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    cuarteta_n:  { nombre:&#x27;La Cuarteta Noche&#x27;,     hora:&#x27;9:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; }
   };
 }
 
 // ── Juegos especiales (formato diferente a quiniela 3 números) ─────────────────
 // Cada uno tiene su propio rango, cantidad de números y lógica de predicción.
-// tipo: 'pega3' = 3 dígitos 0-9 posicionales
-//       'kino'  = 20 números de 80
-//       'loto'  = 6 números de 38
-//       'lotomas' = 6+1 números de 38+1
+// tipo: &#x27;pega3&#x27; = 3 dígitos 0-9 posicionales
+//       &#x27;kino&#x27;  = 20 números de 80
+//       &#x27;loto&#x27;  = 6 números de 38
+//       &#x27;lotomas&#x27; = 6+1 números de 38+1
 function crearJuegosEspeciales() {
   return {
-    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,50],  cant:3  }, // FIX: es 0-50, no 0-9
-    superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
-    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,40],  cant:6  },
-    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40],  cant:7  },
-    quemaito:  { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, // FIX: era Loteka/3 dígitos, es LoteDom/1 número,
-    megachance:{ nombre:'Mega Chance',   empresa:'LOTEKA',  hora:'7:55 PM',  tipo:'chance',  numeros:[], estado:'pendiente', rango:[0,99],  cant:5  }, // FIX: 5 de 00-99, no 15 de 1-60,
-    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
+    pega3mas:  { nombre:&#x27;Pega 3 Más&#x27;,    empresa:&#x27;LEIDSA&#x27;,  hora:&#x27;9:00 PM&#x27;,  tipo:&#x27;pega3&#x27;,   numeros:[], estado:&#x27;pendiente&#x27;, rango:[0,50],  cant:3  }, // FIX: es 0-50, no 0-9
+    superkino: { nombre:&#x27;Super Kino TV&#x27;, empresa:&#x27;LEIDSA&#x27;,  hora:&#x27;9:00 PM&#x27;,  tipo:&#x27;kino&#x27;,    numeros:[], estado:&#x27;pendiente&#x27;, rango:[1,80],  cant:20 },
+    loto:      { nombre:&#x27;Loto&#x27;,          empresa:&#x27;LEIDSA&#x27;,  hora:&#x27;9:00 PM&#x27;,  tipo:&#x27;loto&#x27;,    numeros:[], estado:&#x27;pendiente&#x27;, rango:[1,40],  cant:6  },
+    lotomas:   { nombre:&#x27;Loto Más&#x27;,      empresa:&#x27;LEIDSA&#x27;,  hora:&#x27;9:00 PM&#x27;,  tipo:&#x27;lotomas&#x27;, numeros:[], estado:&#x27;pendiente&#x27;, rango:[1,40],  cant:7  },
+    quemaito:  { nombre:&#x27;El Quemaito Mayor&#x27;, empresa:&#x27;LOTEDOM&#x27;, hora:&#x27;1:55 PM&#x27;, tipo:&#x27;quiniela&#x27;, numeros:[], estado:&#x27;pendiente&#x27;, rango:[0,99], cant:1 }, // FIX: era Loteka/3 dígitos, es LoteDom/1 número,
+    megachance:{ nombre:&#x27;Mega Chance&#x27;,   empresa:&#x27;LOTEKA&#x27;,  hora:&#x27;7:55 PM&#x27;,  tipo:&#x27;chance&#x27;,  numeros:[], estado:&#x27;pendiente&#x27;, rango:[0,99],  cant:5  }, // FIX: 5 de 00-99, no 15 de 1-60,
+    pega4king: { nombre:&#x27;Pega 4&#x27;,        empresa:&#x27;King&#x27;,    hora:&#x27;7:00 PM&#x27;,  tipo:&#x27;pega4&#x27;,   numeros:[], estado:&#x27;pendiente&#x27;, rango:[0,9],   cant:4  },
   };
 }
 
 function crearSorteos() {
   return {
-    anguila_m:   { nombre:'Anguila Mañana',   hora:'10:00 AM', numeros:[], estado:'pendiente' },
-    laprimera:   { nombre:'La Primera Día',   hora:'12:00 PM', numeros:[], estado:'pendiente' },
-    lotedom:     { nombre:'LoteDom',           hora:'12:00 PM', numeros:[], estado:'pendiente' },
-    suerte:      { nombre:'La Suerte 12:30',  hora:'12:30 PM', numeros:[], estado:'pendiente' },
-    king_t:      { nombre:'King Tarde',        hora:'12:30 PM', numeros:[], estado:'pendiente' },
-    real_t:      { nombre:'Lotería Real',      hora:'1:00 PM',  numeros:[], estado:'pendiente' },
-    anguila_t:   { nombre:'Anguila 1:00 PM',  hora:'1:00 PM',  numeros:[], estado:'pendiente' },
-    gana_mas:    { nombre:'Gana Más',          hora:'2:30 PM',  numeros:[], estado:'pendiente' },
-    new_york_t:  { nombre:'New York Tarde',    hora:'2:30 PM',  numeros:[], estado:'pendiente' },
-    florida_d:   { nombre:'Florida Día',       hora:'2:00 PM',  numeros:[], estado:'pendiente' },
-    suerte_t2:   { nombre:'La Suerte Tarde',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
-    anguila_n:   { nombre:'Anguila 6:00 PM',  hora:'6:00 PM',  numeros:[], estado:'pendiente' },
-    king_n:      { nombre:'King Noche',        hora:'7:00 PM',  numeros:[], estado:'pendiente' },
-    loteka:      { nombre:'Loteka',            hora:'6:55 PM',  numeros:[], estado:'pendiente' },
-    laprimera_n: { nombre:'La Primera Noche', hora:'7:00 PM',  numeros:[], estado:'pendiente' },
-    leidsa:      { nombre:'Leidsa',            hora:'8:55 PM',  numeros:[], estado:'pendiente' },
-    nacional:    { nombre:'Lotería Nacional',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
-    anguila_nn:  { nombre:'Anguila 9:00 PM',  hora:'9:00 PM',  numeros:[], estado:'pendiente' },
-    new_york_n:  { nombre:'New York Noche',    hora:'10:30 PM', numeros:[], estado:'pendiente' },
-    florida_n:   { nombre:'Florida Noche',     hora:'10:30 PM', numeros:[], estado:'pendiente' }
+    anguila_m:   { nombre:&#x27;Anguila Mañana&#x27;,   hora:&#x27;10:00 AM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    laprimera:   { nombre:&#x27;La Primera Día&#x27;,   hora:&#x27;12:00 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    lotedom:     { nombre:&#x27;LoteDom&#x27;,           hora:&#x27;12:00 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    suerte:      { nombre:&#x27;La Suerte 12:30&#x27;,  hora:&#x27;12:30 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    king_t:      { nombre:&#x27;King Tarde&#x27;,        hora:&#x27;12:30 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    real_t:      { nombre:&#x27;Lotería Real&#x27;,      hora:&#x27;1:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    anguila_t:   { nombre:&#x27;Anguila 1:00 PM&#x27;,  hora:&#x27;1:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    gana_mas:    { nombre:&#x27;Gana Más&#x27;,          hora:&#x27;2:30 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    new_york_t:  { nombre:&#x27;New York Tarde&#x27;,    hora:&#x27;2:30 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    florida_d:   { nombre:&#x27;Florida Día&#x27;,       hora:&#x27;2:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    suerte_t2:   { nombre:&#x27;La Suerte Tarde&#x27;,  hora:&#x27;6:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    anguila_n:   { nombre:&#x27;Anguila 6:00 PM&#x27;,  hora:&#x27;6:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    king_n:      { nombre:&#x27;King Noche&#x27;,        hora:&#x27;7:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    loteka:      { nombre:&#x27;Loteka&#x27;,            hora:&#x27;6:55 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    laprimera_n: { nombre:&#x27;La Primera Noche&#x27;, hora:&#x27;7:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    leidsa:      { nombre:&#x27;Leidsa&#x27;,            hora:&#x27;8:55 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    nacional:    { nombre:&#x27;Lotería Nacional&#x27;,  hora:&#x27;9:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    anguila_nn:  { nombre:&#x27;Anguila 9:00 PM&#x27;,  hora:&#x27;9:00 PM&#x27;,  numeros:[], estado:&#x27;pendiente&#x27; },
+    new_york_n:  { nombre:&#x27;New York Noche&#x27;,    hora:&#x27;10:30 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; },
+    florida_n:   { nombre:&#x27;Florida Noche&#x27;,     hora:&#x27;10:30 PM&#x27;, numeros:[], estado:&#x27;pendiente&#x27; }
   };
 }
 
@@ -528,106 +552,106 @@ function crearSorteos() {
 // (Confirmado contra el HTML real de loteriasdominicanas.com)
 const MAPA = {
   // ── Nombres de loteriasdominicanas.com ──
-  'anguila mañana':       'anguila_m',
-  'anguila medio día':    'anguila_t',
-  'anguila medio dia':    'anguila_t',
-  'anguila tarde':        'anguila_n',
-  'anguila noche':        'anguila_nn',
-  'la primera día':       'laprimera',
-  'la primera dia':       'laprimera',
-  'primera noche':        'laprimera_n',
-  'quiniela lotedom':     'lotedom',
-  'lotedom':              'lotedom',
-  'la suerte 12:30':      'suerte',
-  'la suerte 18:00':      'suerte_t2',
-  'la suerte tarde':      'suerte_t2',
-  'quiniela real':        'real_t',
-  'lotería real':         'real_t',
-  'loteria real':         'real_t',
-  'gana más':             'gana_mas',
-  'gana mas':             'gana_mas',
-  'new york tarde':       'new_york_t',
-  'new york noche':       'new_york_n',
-  'quiniela leidsa':      'leidsa',
-  'leidsa':               'leidsa',
-  'lotería nacional':     'nacional',
-  'loteria nacional':     'nacional',
-  'quiniela loteka':      'loteka',
-  'loteka':               'loteka',
-  'king lottery 12:30':   'king_t',
-  'king lottery 7:30':    'king_n',
-  'king tarde':           'king_t',
-  'king noche':           'king_n',
+  &#x27;anguila mañana&#x27;:       &#x27;anguila_m&#x27;,
+  &#x27;anguila medio día&#x27;:    &#x27;anguila_t&#x27;,
+  &#x27;anguila medio dia&#x27;:    &#x27;anguila_t&#x27;,
+  &#x27;anguila tarde&#x27;:        &#x27;anguila_n&#x27;,
+  &#x27;anguila noche&#x27;:        &#x27;anguila_nn&#x27;,
+  &#x27;la primera día&#x27;:       &#x27;laprimera&#x27;,
+  &#x27;la primera dia&#x27;:       &#x27;laprimera&#x27;,
+  &#x27;primera noche&#x27;:        &#x27;laprimera_n&#x27;,
+  &#x27;quiniela lotedom&#x27;:     &#x27;lotedom&#x27;,
+  &#x27;lotedom&#x27;:              &#x27;lotedom&#x27;,
+  &#x27;la suerte 12:30&#x27;:      &#x27;suerte&#x27;,
+  &#x27;la suerte 18:00&#x27;:      &#x27;suerte_t2&#x27;,
+  &#x27;la suerte tarde&#x27;:      &#x27;suerte_t2&#x27;,
+  &#x27;quiniela real&#x27;:        &#x27;real_t&#x27;,
+  &#x27;lotería real&#x27;:         &#x27;real_t&#x27;,
+  &#x27;loteria real&#x27;:         &#x27;real_t&#x27;,
+  &#x27;gana más&#x27;:             &#x27;gana_mas&#x27;,
+  &#x27;gana mas&#x27;:             &#x27;gana_mas&#x27;,
+  &#x27;new york tarde&#x27;:       &#x27;new_york_t&#x27;,
+  &#x27;new york noche&#x27;:       &#x27;new_york_n&#x27;,
+  &#x27;quiniela leidsa&#x27;:      &#x27;leidsa&#x27;,
+  &#x27;leidsa&#x27;:               &#x27;leidsa&#x27;,
+  &#x27;lotería nacional&#x27;:     &#x27;nacional&#x27;,
+  &#x27;loteria nacional&#x27;:     &#x27;nacional&#x27;,
+  &#x27;quiniela loteka&#x27;:      &#x27;loteka&#x27;,
+  &#x27;loteka&#x27;:               &#x27;loteka&#x27;,
+  &#x27;king lottery 12:30&#x27;:   &#x27;king_t&#x27;,
+  &#x27;king lottery 7:30&#x27;:    &#x27;king_n&#x27;,
+  &#x27;king tarde&#x27;:           &#x27;king_t&#x27;,
+  &#x27;king noche&#x27;:           &#x27;king_n&#x27;,
 
   // ── Nombres REALES de conectate.com.do (confirmados en /api/debug) ──
-  'anguila 10:00 am':     'anguila_m',
-  'anguila 10:00':        'anguila_m',
-  'anguila 1:00 pm':      'anguila_t',
-  'anguila 1:00':         'anguila_t',
-  'anguila 6:00 pm':      'anguila_n',
-  'anguila 6:00':         'anguila_n',
-  'anguila 9:00 pm':      'anguila_nn',
-  'anguila 9:00':         'anguila_nn',
+  &#x27;anguila 10:00 am&#x27;:     &#x27;anguila_m&#x27;,
+  &#x27;anguila 10:00&#x27;:        &#x27;anguila_m&#x27;,
+  &#x27;anguila 1:00 pm&#x27;:      &#x27;anguila_t&#x27;,
+  &#x27;anguila 1:00&#x27;:         &#x27;anguila_t&#x27;,
+  &#x27;anguila 6:00 pm&#x27;:      &#x27;anguila_n&#x27;,
+  &#x27;anguila 6:00&#x27;:         &#x27;anguila_n&#x27;,
+  &#x27;anguila 9:00 pm&#x27;:      &#x27;anguila_nn&#x27;,
+  &#x27;anguila 9:00&#x27;:         &#x27;anguila_nn&#x27;,
   // Confirmados en logs de Render:
-  'la suerte 6pm':        'suerte_t2',   // ← "La Suerte 6PM"
-  'la suerte md':         'suerte',      // ← "La Suerte MD" (mediodía)
-  'new york 3:30':        'new_york_t',  // ← "New York 3:30"
-  'new york 11:30':       'new_york_t',
-  'new york 2:30':        'new_york_t',
-  'nueva york':           'new_york_t',
+  &#x27;la suerte 6pm&#x27;:        &#x27;suerte_t2&#x27;,   // ← &quot;La Suerte 6PM&quot;
+  &#x27;la suerte md&#x27;:         &#x27;suerte&#x27;,      // ← &quot;La Suerte MD&quot; (mediodía)
+  &#x27;new york 3:30&#x27;:        &#x27;new_york_t&#x27;,  // ← &quot;New York 3:30&quot;
+  &#x27;new york 11:30&#x27;:       &#x27;new_york_t&#x27;,
+  &#x27;new york 2:30&#x27;:        &#x27;new_york_t&#x27;,
+  &#x27;nueva york&#x27;:           &#x27;new_york_t&#x27;,
   // BUGFIX: Florida y New York son loterías AMERICANAS DISTINTAS (Florida
-  // Lottery vs New York Lottery), ambas jugadas en RD. Antes "Florida Día"
-  // apuntaba al mismo identificador que "New York Tarde", así que la que
+  // Lottery vs New York Lottery), ambas jugadas en RD. Antes &quot;Florida Día&quot;
+  // apuntaba al mismo identificador que &quot;New York Tarde&quot;, así que la que
   // llegara primero en el sync borraba/ocultaba a la otra. Ahora cada una
   // tiene su propia clave (florida_d / florida_n).
-  'florida día':          'florida_d',
-  'florida dia':          'florida_d',
-  'florida 2:00':         'florida_d',
-  'florida noche':        'florida_n',
-  'florida 10:30':        'florida_n',
-  'primera noche':        'laprimera_n',
-  'la primera noche':     'laprimera_n',
-  'la primera 12:00':     'laprimera',
-  'primera día':          'laprimera',
-  'primera dia':          'laprimera',
-  'king lottery 7:30':    'king_n',
-  'king lottery 12:30':   'king_t',
-  'quiniela mega decenas': 'loteka',
-  'quiniela loteka':      'loteka',
-  'la suerte 12:30 pm':   'suerte',
-  'suerte 12:30':         'suerte',
-  'la suerte 6:00 pm':    'suerte_t2',
-  'lotería real 1:00':    'real_t',
-  'loto real':            'real_t',
+  &#x27;florida día&#x27;:          &#x27;florida_d&#x27;,
+  &#x27;florida dia&#x27;:          &#x27;florida_d&#x27;,
+  &#x27;florida 2:00&#x27;:         &#x27;florida_d&#x27;,
+  &#x27;florida noche&#x27;:        &#x27;florida_n&#x27;,
+  &#x27;florida 10:30&#x27;:        &#x27;florida_n&#x27;,
+  &#x27;primera noche&#x27;:        &#x27;laprimera_n&#x27;,
+  &#x27;la primera noche&#x27;:     &#x27;laprimera_n&#x27;,
+  &#x27;la primera 12:00&#x27;:     &#x27;laprimera&#x27;,
+  &#x27;primera día&#x27;:          &#x27;laprimera&#x27;,
+  &#x27;primera dia&#x27;:          &#x27;laprimera&#x27;,
+  &#x27;king lottery 7:30&#x27;:    &#x27;king_n&#x27;,
+  &#x27;king lottery 12:30&#x27;:   &#x27;king_t&#x27;,
+  &#x27;quiniela mega decenas&#x27;: &#x27;loteka&#x27;,
+  &#x27;quiniela loteka&#x27;:      &#x27;loteka&#x27;,
+  &#x27;la suerte 12:30 pm&#x27;:   &#x27;suerte&#x27;,
+  &#x27;suerte 12:30&#x27;:         &#x27;suerte&#x27;,
+  &#x27;la suerte 6:00 pm&#x27;:    &#x27;suerte_t2&#x27;,
+  &#x27;lotería real 1:00&#x27;:    &#x27;real_t&#x27;,
+  &#x27;loto real&#x27;:            &#x27;real_t&#x27;,
 };
 
 // ── MAPEO de juegos especiales ─────────────────────────────────────────────────
 const MAPA_ESPECIALES = {
-  'pega 3 más':     'pega3mas',
-  'pega 3 mas':     'pega3mas',
-  'pega3más':       'pega3mas',
-  'pega3mas':       'pega3mas',
-  'super kino tv':  'superkino',
-  'super kino':     'superkino',
-  'kino tv':        'superkino',
-  'loto más':       'lotomas',
-  'loto mas':       'lotomas',
-  'lotomas':        'lotomas',
-  'loto':           'loto',
-  'el quemaito':    'quemaito',
-  'quemaito':       'quemaito',
-  'mega chance':    'megachance',
-  'megachance':     'megachance',
-  'pega 4':         'pega4king',
-  'pega4':          'pega4king',
+  &#x27;pega 3 más&#x27;:     &#x27;pega3mas&#x27;,
+  &#x27;pega 3 mas&#x27;:     &#x27;pega3mas&#x27;,
+  &#x27;pega3más&#x27;:       &#x27;pega3mas&#x27;,
+  &#x27;pega3mas&#x27;:       &#x27;pega3mas&#x27;,
+  &#x27;super kino tv&#x27;:  &#x27;superkino&#x27;,
+  &#x27;super kino&#x27;:     &#x27;superkino&#x27;,
+  &#x27;kino tv&#x27;:        &#x27;superkino&#x27;,
+  &#x27;loto más&#x27;:       &#x27;lotomas&#x27;,
+  &#x27;loto mas&#x27;:       &#x27;lotomas&#x27;,
+  &#x27;lotomas&#x27;:        &#x27;lotomas&#x27;,
+  &#x27;loto&#x27;:           &#x27;loto&#x27;,
+  &#x27;el quemaito&#x27;:    &#x27;quemaito&#x27;,
+  &#x27;quemaito&#x27;:       &#x27;quemaito&#x27;,
+  &#x27;mega chance&#x27;:    &#x27;megachance&#x27;,
+  &#x27;megachance&#x27;:     &#x27;megachance&#x27;,
+  &#x27;pega 4&#x27;:         &#x27;pega4king&#x27;,
+  &#x27;pega4&#x27;:          &#x27;pega4king&#x27;,
 };
 
 function buscarClaveEspecial(texto) {
   const t = texto.toLowerCase().trim();
   // Loto Más debe ir antes que Loto para evitar match corto
-  const orden = ['loto más','loto mas','lotomas','super kino tv','super kino','kino tv',
-    'pega 3 más','pega 3 mas','pega3más','pega3mas','el quemaito','quemaito',
-    'mega chance','megachance','pega 4','pega4','loto'];
+  const orden = [&#x27;loto más&#x27;,&#x27;loto mas&#x27;,&#x27;lotomas&#x27;,&#x27;super kino tv&#x27;,&#x27;super kino&#x27;,&#x27;kino tv&#x27;,
+    &#x27;pega 3 más&#x27;,&#x27;pega 3 mas&#x27;,&#x27;pega3más&#x27;,&#x27;pega3mas&#x27;,&#x27;el quemaito&#x27;,&#x27;quemaito&#x27;,
+    &#x27;mega chance&#x27;,&#x27;megachance&#x27;,&#x27;pega 4&#x27;,&#x27;pega4&#x27;,&#x27;loto&#x27;];
   for (const k of orden) {
     if (t.includes(k)) return MAPA_ESPECIALES[k];
   }
@@ -647,17 +671,17 @@ function buscarClave(texto) {
 // sorteos diarios pareados con cada horario de Anguila (Mañana/Medio Día/
 // Tarde/Noche). NO existe para las otras 17 loterías.
 const MAPA_CUARTETA = {
-  'la cuarteta mañana':    'cuarteta_m',
-  'la cuarteta manana':    'cuarteta_m',
-  'cuarteta mañana':       'cuarteta_m',
-  'la cuarteta medio día': 'cuarteta_md',
-  'la cuarteta medio dia': 'cuarteta_md',
-  'cuarteta medio día':    'cuarteta_md',
-  'cuarteta medio dia':    'cuarteta_md',
-  'la cuarteta tarde':     'cuarteta_t',
-  'cuarteta tarde':        'cuarteta_t',
-  'la cuarteta noche':     'cuarteta_n',
-  'cuarteta noche':        'cuarteta_n',
+  &#x27;la cuarteta mañana&#x27;:    &#x27;cuarteta_m&#x27;,
+  &#x27;la cuarteta manana&#x27;:    &#x27;cuarteta_m&#x27;,
+  &#x27;cuarteta mañana&#x27;:       &#x27;cuarteta_m&#x27;,
+  &#x27;la cuarteta medio día&#x27;: &#x27;cuarteta_md&#x27;,
+  &#x27;la cuarteta medio dia&#x27;: &#x27;cuarteta_md&#x27;,
+  &#x27;cuarteta medio día&#x27;:    &#x27;cuarteta_md&#x27;,
+  &#x27;cuarteta medio dia&#x27;:    &#x27;cuarteta_md&#x27;,
+  &#x27;la cuarteta tarde&#x27;:     &#x27;cuarteta_t&#x27;,
+  &#x27;cuarteta tarde&#x27;:        &#x27;cuarteta_t&#x27;,
+  &#x27;la cuarteta noche&#x27;:     &#x27;cuarteta_n&#x27;,
+  &#x27;cuarteta noche&#x27;:        &#x27;cuarteta_n&#x27;,
 };
 
 function buscarClaveCuarteta(texto) {
@@ -669,27 +693,27 @@ function buscarClaveCuarteta(texto) {
 }
 
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'es-DO,es;q=0.9,en;q=0.8',
+  &#x27;User-Agent&#x27;: &#x27;Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36&#x27;,
+  &#x27;Accept&#x27;: &#x27;text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8&#x27;,
+  &#x27;Accept-Language&#x27;: &#x27;es-DO,es;q=0.9,en;q=0.8&#x27;,
 };
 
 // ── SCRAPER PRINCIPAL: conectate.com.do widget API (JSON) ─────────────────────
 // Estructura CONFIRMADA del /api/debug:
 // {
-//   "game_title": "Anguila 10:00 AM",
-//   "permalink": "https://www.conectate.com.do/loterias/anguilla/anguila-10-am",
-//   "update_date_time": "2026-06-15 14:00:10",
-//   "score": ["03","91","75"],   ← AQUÍ están los números (strings)
-//   "date": "15-06",
-//   "today": true,               ← true = sorteo de HOY
-//   "text_mode": 0
+//   &quot;game_title&quot;: &quot;Anguila 10:00 AM&quot;,
+//   &quot;permalink&quot;: &quot;https://www.conectate.com.do/loterias/anguilla/anguila-10-am&quot;,
+//   &quot;update_date_time&quot;: &quot;2026-06-15 14:00:10&quot;,
+//   &quot;score&quot;: [&quot;03&quot;,&quot;91&quot;,&quot;75&quot;],   ← AQUÍ están los números (strings)
+//   &quot;date&quot;: &quot;15-06&quot;,
+//   &quot;today&quot;: true,               ← true = sorteo de HOY
+//   &quot;text_mode&quot;: 0
 // }
 async function scrapeConectateAPI() {
   try {
-    console.log('📡 [PRIMARIO] Raspando conectate.com.do/loterias/api/widget...');
-    const res = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
-      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+    console.log(&#x27;📡 [PRIMARIO] Raspando conectate.com.do/loterias/api/widget...&#x27;);
+    const res = await axios.get(&#x27;https://www.conectate.com.do/loterias/api/widget&#x27;, {
+      headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;application/json, text/plain, */*&#x27;, &#x27;X-Requested-With&#x27;: &#x27;XMLHttpRequest&#x27; },
       timeout: 10000
     });
 
@@ -703,22 +727,22 @@ async function scrapeConectateAPI() {
     let conteo = 0;
 
     for (const item of items) {
-      const nombre = (item.game_title || '').toString().trim();
+      const nombre = (item.game_title || &#x27;&#x27;).toString().trim();
       if (!nombre) continue;
 
       // Verificar si el resultado es de hoy usando AMBOS métodos:
       // 1. item.today === true  (campo directo de la API)
-      // 2. item.date === "DD-MM" de hoy (fallback si el API cambia)
-      const [año, mes, dia] = estado.fecha.split('-');
-      const fechaHoyDDMM = `${dia}-${mes}`; // ej: "27-06"
+      // 2. item.date === &quot;DD-MM&quot; de hoy (fallback si el API cambia)
+      const [año, mes, dia] = estado.fecha.split(&#x27;-&#x27;);
+      const fechaHoyDDMM = `${dia}-${mes}`; // ej: &quot;27-06&quot;
       const esFechaHoy = item.date === fechaHoyDDMM;
-      const esHoy = item.today === true || item.today === 1 || String(item.today).toLowerCase() === 'true' || esFechaHoy;
+      const esHoy = item.today === true || item.today === 1 || String(item.today).toLowerCase() === &#x27;true&#x27; || esFechaHoy;
 
       if (!esHoy) {
         console.log(`  ⏭️  ${nombre}: hoy=false (today=${JSON.stringify(item.today)}, fecha=${item.date}, esperada=${fechaHoyDDMM})`);
         continue;
       }
-      if (!item.today && esFechaHoy) {
+      if (!item.today &amp;&amp; esFechaHoy) {
         console.log(`  ⚠️  ${nombre}: today=${JSON.stringify(item.today)} pero fecha ${item.date} es hoy — aceptando por fecha`);
       }
 
@@ -727,16 +751,16 @@ async function scrapeConectateAPI() {
 
       // ── ¿Es quiniela de 3 números? ─────────────────────────────────────────
       const clave = buscarClave(nombre);
-      if (clave && estado.sorteos[clave] && estado.sorteos[clave].numeros.length < 3 && scoreArr.length >= 3) {
-        const nums = scoreArr.slice(0,3).map(n=>parseInt(n,10)).filter(n=>!isNaN(n)&&n>=0&&n<=99);
+      if (clave &amp;&amp; estado.sorteos[clave] &amp;&amp; estado.sorteos[clave].numeros.length &lt; 3 &amp;&amp; scoreArr.length &gt;= 3) {
+        const nums = scoreArr.slice(0,3).map(n=&gt;parseInt(n,10)).filter(n=&gt;!isNaN(n)&amp;&amp;n&gt;=0&amp;&amp;n&lt;=99);
         if (nums.length === 3) {
-          if (nums.includes(0) && nums.includes(99)) {
-            console.log(`  ⚠️  ${nombre}: patrón sospechoso ${nums.join('-')} - descartado`);
+          if (nums.includes(0) &amp;&amp; nums.includes(99)) {
+            console.log(`  ⚠️  ${nombre}: patrón sospechoso ${nums.join(&#x27;-&#x27;)} - descartado`);
           } else {
             estado.sorteos[clave].numeros = nums;
-            estado.sorteos[clave].estado = 'disponible';
+            estado.sorteos[clave].estado = &#x27;disponible&#x27;;
             conteo++;
-            console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join('-')} (hoy, ${item.date})`);
+            console.log(`  ✓ [API] ${estado.sorteos[clave].nombre}: ${nums.join(&#x27;-&#x27;)} (hoy, ${item.date})`);
           }
         }
         continue;
@@ -744,35 +768,35 @@ async function scrapeConectateAPI() {
 
       // ── ¿Es juego especial? ────────────────────────────────────────────────
       const claveEsp = buscarClaveEspecial(nombre);
-      if (claveEsp && estado.especiales[claveEsp]) {
+      if (claveEsp &amp;&amp; estado.especiales[claveEsp]) {
         const juego = estado.especiales[claveEsp];
-        if (juego.numeros.length >= juego.cant) continue;
+        if (juego.numeros.length &gt;= juego.cant) continue;
         const [rMin, rMax] = juego.rango;
 
         let nums;
-        const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+        const esDigitos = juego.tipo === &#x27;pega3&#x27; || juego.tipo === &#x27;pega4&#x27;;
         if (esDigitos) {
           // Pega 3 / Pega 4 / El Quemaito: resultado son dígitos individuales 0-9
           // La API puede mandar en varios formatos:
-          //   ["0","4","2"]  → 3 dígitos separados
-          //   ["042"]        → string combinado
-          //   ["42"]         → falta el 0 inicial → debe ser "042"
-          //   ["4"]          → solo el último dígito → "004"
+          //   [&quot;0&quot;,&quot;4&quot;,&quot;2&quot;]  → 3 dígitos separados
+          //   [&quot;042&quot;]        → string combinado
+          //   [&quot;42&quot;]         → falta el 0 inicial → debe ser &quot;042&quot;
+          //   [&quot;4&quot;]          → solo el último dígito → &quot;004&quot;
           // Solución robusta: unir todo, extraer solo dígitos,
           // rellenar con ceros a la izquierda hasta llegar a cant
-          const raw = scoreArr.map(x => String(x)).join('').replace(/\D/g, '');
-          const padded = raw.padStart(juego.cant, '0').slice(-juego.cant);
-          nums = padded.split('').map(d => parseInt(d, 10));
+          const raw = scoreArr.map(x =&gt; String(x)).join(&#x27;&#x27;).replace(/\D/g, &#x27;&#x27;);
+          const padded = raw.padStart(juego.cant, &#x27;0&#x27;).slice(-juego.cant);
+          nums = padded.split(&#x27;&#x27;).map(d =&gt; parseInt(d, 10));
         } else {
-          nums = scoreArr.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= juego.rango[0] && n <= juego.rango[1]);
+          nums = scoreArr.map(n =&gt; parseInt(n, 10)).filter(n =&gt; !isNaN(n) &amp;&amp; n &gt;= juego.rango[0] &amp;&amp; n &lt;= juego.rango[1]);
         }
 
-        if (nums.length >= juego.cant) {
+        if (nums.length &gt;= juego.cant) {
           juego.numeros = nums.slice(0, juego.cant);
-          juego.estado = 'disponible';
+          juego.estado = &#x27;disponible&#x27;;
           conteo++;
-          console.log(`  ✓ [API] ${juego.nombre}: ${juego.numeros.join('-')} (${juego.tipo})`);
-        } else if (nums.length > 0) {
+          console.log(`  ✓ [API] ${juego.nombre}: ${juego.numeros.join(&#x27;-&#x27;)} (${juego.tipo})`);
+        } else if (nums.length &gt; 0) {
           // Resultado incompleto todavía (ej. solo salió 1 de 3 dígitos) —
           // NO se guarda a medias; se espera al próximo sync con el dato completo.
           console.log(`  ⏭️  ${juego.nombre}: solo ${nums.length}/${juego.cant} número(s) detectado(s) aún, esperando más`);
@@ -780,7 +804,7 @@ async function scrapeConectateAPI() {
         continue;
       }
 
-      console.log(`  ⚠️  Sin mapeo para: "${nombre}"`);
+      console.log(`  ⚠️  Sin mapeo para: &quot;${nombre}&quot;`);
     }
 
     console.log(`✅ [PRIMARIO] conectate API: ${conteo} sorteos`);
@@ -793,17 +817,17 @@ async function scrapeConectateAPI() {
 
 
 // Estructura confirmada:
-//   <a class="game-title" href="..."><span>Gana Más</span></a>
-//   <div class="game-scores p-2 ball-mode">
-//     <span class="score ">67</span><span class="score ">66</span><span class="score ">37</span>
-//   </div>
+//   &lt;a class=&quot;game-title&quot; href=&quot;...&quot;&gt;&lt;span&gt;Gana Más&lt;/span&gt;&lt;/a&gt;
+//   &lt;div class=&quot;game-scores p-2 ball-mode&quot;&gt;
+//     &lt;span class=&quot;score &quot;&gt;67&lt;/span&gt;&lt;span class=&quot;score &quot;&gt;66&lt;/span&gt;&lt;span class=&quot;score &quot;&gt;37&lt;/span&gt;
+//   &lt;/div&gt;
 async function scrapeLotDominicanas() {
   // loteriasdominicanas.com usa Nuxt.js — los resultados NO están en el HTML,
   // se cargan vía JS. Sin embargo, Nuxt SSR expone los datos en _payload.json.
   // Usamos ese endpoint JSON directamente para cada lotería pendiente.
 
-  const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) =>
-    estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
+  const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) =&gt;
+    estado.sorteos[k] &amp;&amp; estado.sorteos[k].numeros.length &lt; 3
   );
   if (pendientesMap.length === 0) return 0;
 
@@ -812,34 +836,34 @@ async function scrapeLotDominicanas() {
 
   // Primero intentar la página principal (tiene todos los sorteos del día)
   try {
-    const payloadUrl = 'https://loteriasdominicanas.com/_payload.json';
+    const payloadUrl = &#x27;https://loteriasdominicanas.com/_payload.json&#x27;;
     const res = await axios.get(payloadUrl, {
-      headers: { ...HEADERS, 'Accept': 'application/json' },
+      headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;application/json&#x27; },
       timeout: 12000
     });
 
     // El payload.json de Nuxt es un array dehydratado — buscar scores
-    const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    const raw = typeof res.data === &#x27;string&#x27; ? JSON.parse(res.data) : res.data;
     const rawStr = JSON.stringify(raw);
 
     // Buscar patrones de scores: arrays de 3 números entre 0-99
     const matches = [];
     if (Array.isArray(raw)) {
-      for (let i = 0; i < raw.length; i++) {
+      for (let i = 0; i &lt; raw.length; i++) {
         const item = raw[i];
-        if (Array.isArray(item) && item.length === 3) {
+        if (Array.isArray(item) &amp;&amp; item.length === 3) {
           const nums = item.map(Number);
-          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) && !(nums[0]===0&&nums[1]===0&&nums[2]===0)) {
+          if (nums.every(n =&gt; !isNaN(n) &amp;&amp; n &gt;= 0 &amp;&amp; n &lt;= 99) &amp;&amp; !(nums[0]===0&amp;&amp;nums[1]===0&amp;&amp;nums[2]===0)) {
             matches.push({ idx: i, nums });
           }
         }
       }
     }
 
-    if (matches.length > 0) {
+    if (matches.length &gt; 0) {
       console.log(`  📊 Encontrados ${matches.length} posibles resultados en payload.json`);
       // Por ahora logueamos — necesitamos confirmar la estructura
-      matches.slice(0, 5).forEach(m => console.log(`    [${m.idx}] = ${m.nums.join('-')}`));
+      matches.slice(0, 5).forEach(m =&gt; console.log(`    [${m.idx}] = ${m.nums.join(&#x27;-&#x27;)}`));
     } else {
       console.log(`  ⚠️  payload.json no tiene resultados en formato esperado`);
     }
@@ -852,33 +876,33 @@ async function scrapeLotDominicanas() {
     try {
       const payloadUrl = `https://loteriasdominicanas.com/${path}/_payload.json`;
       const res = await axios.get(payloadUrl, {
-        headers: { ...HEADERS, 'Accept': 'application/json' },
+        headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;application/json&#x27; },
         timeout: 10000
       });
 
-      const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      const raw = typeof res.data === &#x27;string&#x27; ? JSON.parse(res.data) : res.data;
       if (!Array.isArray(raw)) continue;
 
       // Buscar en el array del payload arrays de 3 números válidos
-      for (let i = 0; i < raw.length; i++) {
+      for (let i = 0; i &lt; raw.length; i++) {
         const item = raw[i];
-        if (Array.isArray(item) && item.length === 3) {
+        if (Array.isArray(item) &amp;&amp; item.length === 3) {
           const nums = item.map(Number);
-          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) &&
-              !(nums.includes(0) && nums.includes(99))) {
+          if (nums.every(n =&gt; !isNaN(n) &amp;&amp; n &gt;= 0 &amp;&amp; n &lt;= 99) &amp;&amp;
+              !(nums.includes(0) &amp;&amp; nums.includes(99))) {
             // Verificar que es un resultado real (aparece después de metadata)
-            if (i > 10) { // los primeros índices son navegación/config
+            if (i &gt; 10) { // los primeros índices son navegación/config
               estado.sorteos[clave].numeros = nums;
-              estado.sorteos[clave].estado = 'disponible';
+              estado.sorteos[clave].estado = &#x27;disponible&#x27;;
               conteo++;
-              console.log(`  ✓ [payload] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+              console.log(`  ✓ [payload] ${estado.sorteos[clave].nombre}: ${nums.join(&#x27;-&#x27;)}`);
               break;
             }
           }
         }
       }
 
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r =&gt; setTimeout(r, 600));
     } catch (e) {
       console.log(`  ⚠️  [payload] ${clave}: ${e.message}`);
     }
@@ -895,41 +919,41 @@ async function scrapeLotDominicanas() {
 // HTML, revisa /api/debug2 para confirmar que sigue encontrando los bloques.
 async function scrapeCuartetaLotDominicanas() {
   try {
-    console.log('📡 Raspando La Cuarteta (loteriasdominicanas.com)...');
-    const res = await axios.get('https://loteriasdominicanas.com/', {
+    console.log(&#x27;📡 Raspando La Cuarteta (loteriasdominicanas.com)...&#x27;);
+    const res = await axios.get(&#x27;https://loteriasdominicanas.com/&#x27;, {
       headers: HEADERS, timeout: 10000
     });
     const $ = cheerio.load(res.data);
     let conteo = 0;
 
-    $('.game-block').each((i, bloque) => {
-      const tituloWeb = $(bloque).find('.game-title span').text().trim();
+    $(&#x27;.game-block&#x27;).each((i, bloque) =&gt; {
+      const tituloWeb = $(bloque).find(&#x27;.game-title span&#x27;).text().trim();
       if (!tituloWeb) return;
 
       const clave = buscarClaveCuarteta(tituloWeb);
       if (!clave || !estado.cuartetas[clave]) return;
-      if (estado.cuartetas[clave].numeros.length >= 4) return;
+      if (estado.cuartetas[clave].numeros.length &gt;= 4) return;
 
-      const contenedorBolas = $(bloque).find('.game-scores.ball-mode');
+      const contenedorBolas = $(bloque).find(&#x27;.game-scores.ball-mode&#x27;);
       if (contenedorBolas.length === 0) {
         console.log(`  ⏭️  [Cuarteta] ${tituloWeb}: sin .ball-mode aún`);
         return;
       }
 
       const nums = [];
-      contenedorBolas.first().find('span.score').each((j, span) => {
-        if (nums.length >= 4) return false;
+      contenedorBolas.first().find(&#x27;span.score&#x27;).each((j, span) =&gt; {
+        if (nums.length &gt;= 4) return false;
         const raw = $(span).text().trim();
         if (!/^\d{1,2}$/.test(raw)) return;
         const n = parseInt(raw, 10);
-        if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
+        if (!isNaN(n) &amp;&amp; n &gt;= 0 &amp;&amp; n &lt;= 99) nums.push(n);
       });
 
       if (nums.length === 4) {
         estado.cuartetas[clave].numeros = nums;
-        estado.cuartetas[clave].estado = 'disponible';
+        estado.cuartetas[clave].estado = &#x27;disponible&#x27;;
         conteo++;
-        console.log(`  ✓ [Cuarteta] ${estado.cuartetas[clave].nombre}: ${nums.join('-')}`);
+        console.log(`  ✓ [Cuarteta] ${estado.cuartetas[clave].nombre}: ${nums.join(&#x27;-&#x27;)}`);
       } else {
         console.log(`  ⏭️  [Cuarteta] ${tituloWeb}: solo ${nums.length}/4 números válidos`);
       }
@@ -953,32 +977,32 @@ async function scrapeCuartetaLotDominicanas() {
 // IDs: Anguila Mañana=2, La Primera Día=1, etc. (fuente: CarlsRemy/LotteryScraping-RD)
 const LOTS_SCRAPER_MAP = [
   // [url_path, clave_interna]
-  ['anguila/anguila-manana',         'anguila_m'],
-  ['anguila/anguila-medio-dia',      'anguila_t'],
-  ['anguila/anguila-tarde',          'anguila_n'],
-  ['anguila/anguila-noche',          'anguila_nn'],
-  ['la-primera/la-primera-dia',      'laprimera_d'],
-  ['lotedom',                        'lotedom'],
-  ['la-suerte-dominicana/la-suerte-12-30', 'suerte_m'],
-  ['king-lottery/king-tarde',        'king_t'],
-  ['loto-real/real-tarde',           'real_t'],
-  ['la-primera/gana-mas',            'gana_mas'],
-  ['nueva-york/new-york-tarde',      'new_york_t'],
-  ['loteria-de-florida/florida-dia', 'florida_d'],
-  ['la-suerte-dominicana/la-suerte-tarde', 'suerte_t2'],
-  ['king-lottery/king-noche',        'king_n'],
-  ['loteka',                         'loteka'],
-  ['la-primera/la-primera-noche',    'laprimera_n'],
-  ['leidsa',                         'leidsa'],
-  ['loteria-nacional',               'nacional'],
-  ['nueva-york/new-york-noche',      'new_york_n'],
-  ['loteria-de-florida/florida-noche','florida_n'],
+  [&#x27;anguila/anguila-manana&#x27;,         &#x27;anguila_m&#x27;],
+  [&#x27;anguila/anguila-medio-dia&#x27;,      &#x27;anguila_t&#x27;],
+  [&#x27;anguila/anguila-tarde&#x27;,          &#x27;anguila_n&#x27;],
+  [&#x27;anguila/anguila-noche&#x27;,          &#x27;anguila_nn&#x27;],
+  [&#x27;la-primera/la-primera-dia&#x27;,      &#x27;laprimera_d&#x27;],
+  [&#x27;lotedom&#x27;,                        &#x27;lotedom&#x27;],
+  [&#x27;la-suerte-dominicana/la-suerte-12-30&#x27;, &#x27;suerte_m&#x27;],
+  [&#x27;king-lottery/king-tarde&#x27;,        &#x27;king_t&#x27;],
+  [&#x27;loto-real/real-tarde&#x27;,           &#x27;real_t&#x27;],
+  [&#x27;la-primera/gana-mas&#x27;,            &#x27;gana_mas&#x27;],
+  [&#x27;nueva-york/new-york-tarde&#x27;,      &#x27;new_york_t&#x27;],
+  [&#x27;loteria-de-florida/florida-dia&#x27;, &#x27;florida_d&#x27;],
+  [&#x27;la-suerte-dominicana/la-suerte-tarde&#x27;, &#x27;suerte_t2&#x27;],
+  [&#x27;king-lottery/king-noche&#x27;,        &#x27;king_n&#x27;],
+  [&#x27;loteka&#x27;,                         &#x27;loteka&#x27;],
+  [&#x27;la-primera/la-primera-noche&#x27;,    &#x27;laprimera_n&#x27;],
+  [&#x27;leidsa&#x27;,                         &#x27;leidsa&#x27;],
+  [&#x27;loteria-nacional&#x27;,               &#x27;nacional&#x27;],
+  [&#x27;nueva-york/new-york-noche&#x27;,      &#x27;new_york_n&#x27;],
+  [&#x27;loteria-de-florida/florida-noche&#x27;,&#x27;florida_n&#x27;],
 ];
 
 async function scrapeLoteriasDominicanas() {
   let conteo = 0;
-  const pendientes = LOTS_SCRAPER_MAP.filter(([, k]) =>
-    estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
+  const pendientes = LOTS_SCRAPER_MAP.filter(([, k]) =&gt;
+    estado.sorteos[k] &amp;&amp; estado.sorteos[k].numeros.length &lt; 3
   );
   if (pendientes.length === 0) return 0;
 
@@ -991,43 +1015,43 @@ async function scrapeLoteriasDominicanas() {
       const $ = cheerio.load(res.data);
 
       // Los números aparecen en el HTML como: General | 1 | 2 | 3 | num1 | num2 | num3
-      // La estructura es: texto "General" seguido de los 3 números en spans/divs
+      // La estructura es: texto &quot;General&quot; seguido de los 3 números en spans/divs
       let nums = [];
 
       // Método 1: buscar en el contenido del body texto con patrón numérico de 2 dígitos
-      const bodyText = $('body').text();
-      // Buscar patrón: "General" seguido de números
+      const bodyText = $(&#x27;body&#x27;).text();
+      // Buscar patrón: &quot;General&quot; seguido de números
       const generalMatch = bodyText.match(/General[\s\S]{1,50}?(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/);
       if (generalMatch) {
         nums = [+generalMatch[1], +generalMatch[2], +generalMatch[3]];
       }
 
       // Método 2: buscar en elementos que contengan números del 00-99
-      if (nums.length < 3) {
+      if (nums.length &lt; 3) {
         const candidatos = [];
-        $('strong, b, .numero, .result, [class*="num"], [class*="result"], td, span').each((i, el) => {
+        $(&#x27;strong, b, .numero, .result, [class*=&quot;num&quot;], [class*=&quot;result&quot;], td, span&#x27;).each((i, el) =&gt; {
           const txt = $(el).text().trim();
           if (/^\d{1,2}$/.test(txt)) {
             const n = parseInt(txt, 10);
-            if (n >= 0 && n <= 99) candidatos.push(n);
+            if (n &gt;= 0 &amp;&amp; n &lt;= 99) candidatos.push(n);
           }
         });
-        // Tomar los primeros 3 únicos que aparecen cerca de "General"
-        if (candidatos.length >= 3) nums = candidatos.slice(0, 3);
+        // Tomar los primeros 3 únicos que aparecen cerca de &quot;General&quot;
+        if (candidatos.length &gt;= 3) nums = candidatos.slice(0, 3);
       }
 
-      if (nums.length === 3 && estado.sorteos[clave]) {
+      if (nums.length === 3 &amp;&amp; estado.sorteos[clave]) {
         // Verificar que no sea el resultado de ayer (pattern: todos iguales o cero)
-        if (!(nums[0] === 0 && nums[1] === 0 && nums[2] === 0)) {
+        if (!(nums[0] === 0 &amp;&amp; nums[1] === 0 &amp;&amp; nums[2] === 0)) {
           estado.sorteos[clave].numeros = nums;
-          estado.sorteos[clave].estado = 'disponible';
+          estado.sorteos[clave].estado = &#x27;disponible&#x27;;
           conteo++;
-          console.log(`  ✓ [loteriasdominicanas] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+          console.log(`  ✓ [loteriasdominicanas] ${estado.sorteos[clave].nombre}: ${nums.join(&#x27;-&#x27;)}`);
         }
       }
 
       // Pausa para no saturar el sitio
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r =&gt; setTimeout(r, 800));
     } catch (e) {
       console.log(`  ⚠️ [loteriasdominicanas] ${clave}: ${e.message}`);
     }
@@ -1038,7 +1062,7 @@ async function scrapeLoteriasDominicanas() {
 }
 
 async function scrapeQuinielasRD() {
-  console.log('⏭️  quinielasrd.com DESACTIVADO (genera datos basura 0-99-0)');
+  console.log(&#x27;⏭️  quinielasrd.com DESACTIVADO (genera datos basura 0-99-0)&#x27;);
   return 0;
 }
 
@@ -1048,12 +1072,12 @@ async function scrapeQuinielasRD() {
 async function scrapeLeidsa() {
   try {
     const pendE = Object.entries(estado.especiales)
-      .filter(([k, e]) => e.empresa === 'LEIDSA' && e.numeros.length === 0);
+      .filter(([k, e]) =&gt; e.empresa === &#x27;LEIDSA&#x27; &amp;&amp; e.numeros.length === 0);
     if (pendE.length === 0) return 0;
 
-    console.log('📡 Raspando leidsa.com para especiales...');
-    const res = await axios.get('https://www.leidsa.com/', {
-      headers: { ...HEADERS, 'Accept': 'text/html,application/xhtml+xml,*/*' },
+    console.log(&#x27;📡 Raspando leidsa.com para especiales...&#x27;);
+    const res = await axios.get(&#x27;https://www.leidsa.com/&#x27;, {
+      headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;text/html,application/xhtml+xml,*/*&#x27; },
       timeout: 12000
     });
     const $ = cheerio.load(res.data);
@@ -1061,26 +1085,26 @@ async function scrapeLeidsa() {
 
     // Buscar resultados en la página principal de leidsa.com
     // El HTML contiene bloques de juego con números
-    $('[class*="result"], [class*="number"], [class*="kino"], [class*="pega"], [class*="loto"]').each((i, el) => {
+    $(&#x27;[class*=&quot;result&quot;], [class*=&quot;number&quot;], [class*=&quot;kino&quot;], [class*=&quot;pega&quot;], [class*=&quot;loto&quot;]&#x27;).each((i, el) =&gt; {
       const texto = $(el).text().trim();
       const nums = texto.match(/\d+/g);
       if (!nums || nums.length === 0) return;
 
       const textoNorm = texto.toLowerCase();
       let clave = null;
-      if (textoNorm.includes('pega 3') || textoNorm.includes('pega3')) clave = 'pega3mas';
-      else if (textoNorm.includes('super kino') || textoNorm.includes('kino')) clave = 'superkino';
-      else if (textoNorm.includes('loto más') || textoNorm.includes('loto mas')) clave = 'lotomas';
-      else if (textoNorm.includes('loto')) clave = 'loto';
+      if (textoNorm.includes(&#x27;pega 3&#x27;) || textoNorm.includes(&#x27;pega3&#x27;)) clave = &#x27;pega3mas&#x27;;
+      else if (textoNorm.includes(&#x27;super kino&#x27;) || textoNorm.includes(&#x27;kino&#x27;)) clave = &#x27;superkino&#x27;;
+      else if (textoNorm.includes(&#x27;loto más&#x27;) || textoNorm.includes(&#x27;loto mas&#x27;)) clave = &#x27;lotomas&#x27;;
+      else if (textoNorm.includes(&#x27;loto&#x27;)) clave = &#x27;loto&#x27;;
 
-      if (clave && estado.especiales[clave] && estado.especiales[clave].numeros.length === 0) {
+      if (clave &amp;&amp; estado.especiales[clave] &amp;&amp; estado.especiales[clave].numeros.length === 0) {
         const juego = estado.especiales[clave];
-        const validos = nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n >= juego.rango[0] && n <= juego.rango[1]);
-        if (validos.length >= juego.cant) {
+        const validos = nums.map(n =&gt; parseInt(n, 10)).filter(n =&gt; !isNaN(n) &amp;&amp; n &gt;= juego.rango[0] &amp;&amp; n &lt;= juego.rango[1]);
+        if (validos.length &gt;= juego.cant) {
           juego.numeros = validos.slice(0, juego.cant);
-          juego.estado = 'disponible';
+          juego.estado = &#x27;disponible&#x27;;
           conteo++;
-          console.log(`  ✓ [leidsa.com] ${juego.nombre}: ${juego.numeros.join('-')}`);
+          console.log(`  ✓ [leidsa.com] ${juego.nombre}: ${juego.numeros.join(&#x27;-&#x27;)}`);
         }
       }
     });
@@ -1095,30 +1119,30 @@ async function scrapeLeidsa() {
 
 async function scrapeQuinielasRD_DESACTIVADO() {
   try {
-    console.log('📡 [respaldo] Raspando quinielasrd.com...');
-    const res = await axios.get('https://quinielasrd.com/', {
+    console.log(&#x27;📡 [respaldo] Raspando quinielasrd.com...&#x27;);
+    const res = await axios.get(&#x27;https://quinielasrd.com/&#x27;, {
       headers: HEADERS, timeout: 10000
     });
     const $ = cheerio.load(res.data);
     let conteo = 0;
 
-    $('a[href]').each((i, el) => {
+    $(&#x27;a[href]&#x27;).each((i, el) =&gt; {
       const txt = $(el).text().trim().toLowerCase();
-      if (!txt || txt.length > 40) return;
+      if (!txt || txt.length &gt; 40) return;
       const clave = buscarClave(txt);
       if (!clave || !estado.sorteos[clave]) return;
-      if (estado.sorteos[clave].numeros.length >= 3) return;
+      if (estado.sorteos[clave].numeros.length &gt;= 3) return;
 
-      const parent = $(el).closest('div, li, span');
+      const parent = $(el).closest(&#x27;div, li, span&#x27;);
       const matches = parent.text().match(/\b(\d{2})\b/g);
-      if (!matches || matches.length < 3) return;
+      if (!matches || matches.length &lt; 3) return;
 
-      const nums = matches.slice(0, 3).map(Number).filter(n => n >= 0 && n <= 99);
+      const nums = matches.slice(0, 3).map(Number).filter(n =&gt; n &gt;= 0 &amp;&amp; n &lt;= 99);
       if (nums.length === 3) {
         estado.sorteos[clave].numeros = nums;
-        estado.sorteos[clave].estado = 'disponible';
+        estado.sorteos[clave].estado = &#x27;disponible&#x27;;
         conteo++;
-        console.log(`  ✓ [Q] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+        console.log(`  ✓ [Q] ${estado.sorteos[clave].nombre}: ${nums.join(&#x27;-&#x27;)}`);
       }
     });
 
@@ -1146,38 +1170,38 @@ let sincronizando = false;
 const ENLOTERIA_REGLAS = [
   // [regex sobre el slug normalizado, clave interna]
   // (Anguila se maneja aparte en claveEnloteria con token exacto de hora,
-  //  porque /1.*pm/ matcheaba también "12pm" y contaminaba anguila_t)
-  [/primera.*noche/,          'laprimera_n'],
-  [/primera/,                 'laprimera'],
-  [/lotedom/,                 'lotedom'],
-  [/suerte.*(6|18|tarde)/,    'suerte_t2'],
-  [/suerte/,                  'suerte'],
-  [/king.*(noche|7)/,         'king_n'],
-  [/king/,                    'king_t'],
-  [/^(quiniela )?real$/,      'real_t'],   // exacto: NO chance-real ni loto-real
-  [/gana.*mas/,               'gana_mas'],
-  [/(new.*york|nueva.*york).*(noche|10)/, 'new_york_n'],
-  [/(new.*york|nueva.*york)/, 'new_york_t'],
-  [/florida.*(noche|10)/,     'florida_n'],
-  [/florida/,                 'florida_d'],
-  [/^(quiniela )?loteka$/,    'loteka'],   // exacto: NO lotto-loteka
-  [/^(quiniela )?leidsa$/,    'leidsa'],   // exacto: NO otros juegos leidsa
-  [/nacional/,                'nacional'],
+  //  porque /1.*pm/ matcheaba también &quot;12pm&quot; y contaminaba anguila_t)
+  [/primera.*noche/,          &#x27;laprimera_n&#x27;],
+  [/primera/,                 &#x27;laprimera&#x27;],
+  [/lotedom/,                 &#x27;lotedom&#x27;],
+  [/suerte.*(6|18|tarde)/,    &#x27;suerte_t2&#x27;],
+  [/suerte/,                  &#x27;suerte&#x27;],
+  [/king.*(noche|7)/,         &#x27;king_n&#x27;],
+  [/king/,                    &#x27;king_t&#x27;],
+  [/^(quiniela )?real$/,      &#x27;real_t&#x27;],   // exacto: NO chance-real ni loto-real
+  [/gana.*mas/,               &#x27;gana_mas&#x27;],
+  [/(new.*york|nueva.*york).*(noche|10)/, &#x27;new_york_n&#x27;],
+  [/(new.*york|nueva.*york)/, &#x27;new_york_t&#x27;],
+  [/florida.*(noche|10)/,     &#x27;florida_n&#x27;],
+  [/florida/,                 &#x27;florida_d&#x27;],
+  [/^(quiniela )?loteka$/,    &#x27;loteka&#x27;],   // exacto: NO lotto-loteka
+  [/^(quiniela )?leidsa$/,    &#x27;leidsa&#x27;],   // exacto: NO otros juegos leidsa
+  [/nacional/,                &#x27;nacional&#x27;],
 ];
 
 // Sorteos horarios de Anguila en enloteria.com → solo mapeamos los 4
 // clásicos que rastrea el sistema. Los demás (8am, 9am, 11am, 12pm,
 // 2pm...) quedan sin mapear a propósito (visibles en /api/test-enloteria).
 const ANGUILA_HORAS = {
-  '10am': 'anguila_m',
-  '1pm':  'anguila_t',
-  '6pm':  'anguila_n',
-  '9pm':  'anguila_nn',
+  &#x27;10am&#x27;: &#x27;anguila_m&#x27;,
+  &#x27;1pm&#x27;:  &#x27;anguila_t&#x27;,
+  &#x27;6pm&#x27;:  &#x27;anguila_n&#x27;,
+  &#x27;9pm&#x27;:  &#x27;anguila_nn&#x27;,
 };
 
 function claveEnloteria(slug) {
-  const s = slug.toLowerCase().replace(/-/g, ' ');
-  // Anguila: extraer token exacto de hora ("1pm" NO matchea "12pm")
+  const s = slug.toLowerCase().replace(/-/g, &#x27; &#x27;);
+  // Anguila: extraer token exacto de hora (&quot;1pm&quot; NO matchea &quot;12pm&quot;)
   const ang = s.match(/anguil+a\s+(\d{1,2})\s*(am|pm)/);
   if (ang) return ANGUILA_HORAS[ang[1] + ang[2]] || null;
   if (/anguil/.test(s)) return null; // otras variantes anguila: no adivinar
@@ -1189,16 +1213,16 @@ function claveEnloteria(slug) {
 }
 
 const MESES_ES = {
-  enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
-  julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12'
+  enero:&#x27;01&#x27;, febrero:&#x27;02&#x27;, marzo:&#x27;03&#x27;, abril:&#x27;04&#x27;, mayo:&#x27;05&#x27;, junio:&#x27;06&#x27;,
+  julio:&#x27;07&#x27;, agosto:&#x27;08&#x27;, septiembre:&#x27;09&#x27;, octubre:&#x27;10&#x27;, noviembre:&#x27;11&#x27;, diciembre:&#x27;12&#x27;
 };
 
-// "Jue 02 de julio, 2026" -> "2026-07-02"
+// &quot;Jue 02 de julio, 2026&quot; -&gt; &quot;2026-07-02&quot;
 function fechaEnloteria(texto) {
   const m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(\d{4})/i);
   if (!m) return null;
   const mes = MESES_ES[m[2].toLowerCase()];
-  return mes ? `${m[3]}-${mes}-${String(m[1]).padStart(2,'0')}` : null;
+  return mes ? `${m[3]}-${mes}-${String(m[1]).padStart(2,&#x27;0&#x27;)}` : null;
 }
 
 // Parser genérico de la portada de enloteria.com.
@@ -1208,17 +1232,17 @@ function parsearEnloteria(html) {
   const tarjetas = [];
   const vistos = new Set();
 
-  $('a[href*="/resultados-"]').each((_, a) => {
-    const href = $(a).attr('href') || '';
+  $(&#x27;a[href*=&quot;/resultados-&quot;]&#x27;).each((_, a) =&gt; {
+    const href = $(a).attr(&#x27;href&#x27;) || &#x27;&#x27;;
     const m = href.match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer|-\d{4}-\d{2}-\d{2})?$/);
     if (!m) return;
     const slug = m[1];
-    if (slug === 'loterias') return; // enlaces de navegación
+    if (slug === &#x27;loterias&#x27;) return; // enlaces de navegación
 
     // Subir hasta el contenedor con fecha en español (máx 6 niveles)
     let $card = $(a).parent();
     let fecha = null;
-    for (let i = 0; i < 6 && $card.length; i++) {
+    for (let i = 0; i &lt; 6 &amp;&amp; $card.length; i++) {
       fecha = fechaEnloteria($card.text());
       if (fecha) break;
       $card = $card.parent();
@@ -1230,15 +1254,15 @@ function parsearEnloteria(html) {
 
     // Números: nodos de texto que son exactamente 1-2 dígitos
     const nums = [];
-    $card.find('*').addBack().contents().each((_, node) => {
-      if (node.type !== 'text') return;
+    $card.find(&#x27;*&#x27;).addBack().contents().each((_, node) =&gt; {
+      if (node.type !== &#x27;text&#x27;) return;
       const t = $(node).text().trim();
       if (/^\d{1,2}$/.test(t)) {
         const n = parseInt(t, 10);
-        if (n >= 0 && n <= 99) nums.push(n);
+        if (n &gt;= 0 &amp;&amp; n &lt;= 99) nums.push(n);
       }
     });
-    if (nums.length < 3) return;
+    if (nums.length &lt; 3) return;
 
     const key = `${slug}|${fecha}`;
     if (vistos.has(key)) return; // tarjeta repetida en portada
@@ -1253,12 +1277,12 @@ function parsearEnloteria(html) {
 async function scrapeEnloteria() {
   let conteo = 0;
   const pendientes = Object.entries(estado.sorteos)
-    .filter(([, s]) => s.numeros.length < 3).length;
+    .filter(([, s]) =&gt; s.numeros.length &lt; 3).length;
   if (pendientes === 0) return 0;
 
   console.log(`📡 [RESPALDO 2] enloteria.com — ${pendientes} loterías pendientes...`);
   try {
-    const res = await axios.get('https://enloteria.com/resultados-loterias-hoy', {
+    const res = await axios.get(&#x27;https://enloteria.com/resultados-loterias-hoy&#x27;, {
       headers: HEADERS, timeout: 15000
     });
     const tarjetas = parsearEnloteria(res.data);
@@ -1266,19 +1290,19 @@ async function scrapeEnloteria() {
 
     for (const t of tarjetas) {
       if (!t.clave || !estado.sorteos[t.clave]) continue;
-      if (estado.sorteos[t.clave].numeros.length >= 3) continue;
+      if (estado.sorteos[t.clave].numeros.length &gt;= 3) continue;
       if (t.fecha !== hoy) continue; // solo resultados de HOY (honestidad)
 
       const nums = t.numeros.slice(0, 3);
       // Guard anti-placeholder (como el bug de quinielasrd: 0-99-0)
-      if (nums.every(n => n === nums[0])) {
-        console.log(`  ⏭️  [enloteria] ${t.slug}: patrón sospechoso ${nums.join('-')}`);
+      if (nums.every(n =&gt; n === nums[0])) {
+        console.log(`  ⏭️  [enloteria] ${t.slug}: patrón sospechoso ${nums.join(&#x27;-&#x27;)}`);
         continue;
       }
       estado.sorteos[t.clave].numeros = nums;
-      estado.sorteos[t.clave].estado = 'disponible';
+      estado.sorteos[t.clave].estado = &#x27;disponible&#x27;;
       conteo++;
-      console.log(`  ✓ [enloteria] ${estado.sorteos[t.clave].nombre}: ${nums.join('-')}`);
+      console.log(`  ✓ [enloteria] ${estado.sorteos[t.clave].nombre}: ${nums.join(&#x27;-&#x27;)}`);
     }
     console.log(`✅ [RESPALDO 2] enloteria.com: ${conteo} sorteos`);
     return conteo;
@@ -1293,17 +1317,17 @@ async function scrapeEnloteria() {
 // y el historial con URLs por fecha (/resultados-{slug}-YYYY-MM-DD).
 // NOTA HONESTIDAD: solo se mapean juegos inequívocos.
 //  - pega3mas: NO existe en enloteria (Leidsa solo tiene quiniela/loto/kino/pool)
-//  - quemaito: ambiguo (enloteria tiene "toca-3" en Loteka y
-//    "el-quemaito-mayor" en LoteDom) — inspeccionar con
+//  - quemaito: ambiguo (enloteria tiene &quot;toca-3&quot; en Loteka y
+//    &quot;el-quemaito-mayor&quot; en LoteDom) — inspeccionar con
 //    /api/test-enloteria?juego=toca-3 antes de mapear.
 const ESPECIALES_ENLOTERIA = {
-  superkino:  'super-kino-tv',
-  loto:       'loto',
-  lotomas:    'loto',        // misma página: Loto + Más (se toman 7 válidos)
-  megachance: 'megachance',
-  pega3mas:   'pega-3-mas',  // slug no confirmado en el menú: si da 404 se ignora
-  pega4king:  'pega-4',      // slug no confirmado: si da 404 se ignora
-  quemaito:   'el-quemaito-mayor', // RESUELTO: LoteDom, 1 número 00-99, 1:55 PM
+  superkino:  &#x27;super-kino-tv&#x27;,
+  loto:       &#x27;loto&#x27;,
+  lotomas:    &#x27;loto&#x27;,        // misma página: Loto + Más (se toman 7 válidos)
+  megachance: &#x27;megachance&#x27;,
+  pega3mas:   &#x27;pega-3-mas&#x27;,  // slug no confirmado en el menú: si da 404 se ignora
+  pega4king:  &#x27;pega-4&#x27;,      // slug no confirmado: si da 404 se ignora
+  quemaito:   &#x27;el-quemaito-mayor&#x27;, // RESUELTO: LoteDom, 1 número 00-99, 1:55 PM
 };
 
 // Filtro por nombre: en páginas con varias tarjetas evita capturar el juego
@@ -1319,17 +1343,17 @@ const ESPECIALES_ENLOTERIA_RE = {
 };
 
 // Parser de página por juego: NO depende de anclas (la tarjeta de HOY no
-// tiene link a sí misma). Busca cada <h5> del juego y sube hasta el
+// tiene link a sí misma). Busca cada &lt;h5&gt; del juego y sube hasta el
 // contenedor con UNA sola fecha en español.
 function parsearPaginaJuegoEnloteria(html, nombreRe) {
   const $ = cheerio.load(html);
   const tarjetas = [];
 
-  $('h5').each((_, h) => {
-    if (nombreRe && !nombreRe.test($(h).text())) return; // otro juego
+  $(&#x27;h5&#x27;).each((_, h) =&gt; {
+    if (nombreRe &amp;&amp; !nombreRe.test($(h).text())) return; // otro juego
     let $card = $(h).parent();
     let fecha = null;
-    for (let i = 0; i < 6 && $card.length; i++) {
+    for (let i = 0; i &lt; 6 &amp;&amp; $card.length; i++) {
       fecha = fechaEnloteria($card.text());
       if (fecha) break;
       $card = $card.parent();
@@ -1343,8 +1367,8 @@ function parsearPaginaJuegoEnloteria(html, nombreRe) {
     if (/Avísame cuando salga/i.test(texto)) return; // pendiente
 
     const nums = [];
-    $card.find('*').addBack().contents().each((_, node) => {
-      if (node.type !== 'text') return;
+    $card.find(&#x27;*&#x27;).addBack().contents().each((_, node) =&gt; {
+      if (node.type !== &#x27;text&#x27;) return;
       const t = $(node).text().trim();
       if (/^\d{1,2}$/.test(t)) nums.push(parseInt(t, 10));
     });
@@ -1358,10 +1382,10 @@ function parsearPaginaJuegoEnloteria(html, nombreRe) {
 
 async function scrapeEspecialesEnloteria() {
   const pendientes = Object.entries(estado.especiales)
-    .filter(([k, e]) => e.numeros.length === 0 && ESPECIALES_ENLOTERIA[k]);
+    .filter(([k, e]) =&gt; e.numeros.length === 0 &amp;&amp; ESPECIALES_ENLOTERIA[k]);
   if (pendientes.length === 0) return 0;
 
-  console.log(`📡 [RESPALDO 2] enloteria.com especiales — ${pendientes.map(([k]) => k).join(', ')}...`);
+  console.log(`📡 [RESPALDO 2] enloteria.com especiales — ${pendientes.map(([k]) =&gt; k).join(&#x27;, &#x27;)}...`);
   const hoy = fechaRD();
   let conteo = 0;
   const cachePaginas = {}; // loto y lotomas comparten página
@@ -1370,28 +1394,28 @@ async function scrapeEspecialesEnloteria() {
     const slug = ESPECIALES_ENLOTERIA[clave];
     try {
       const re = ESPECIALES_ENLOTERIA_RE[clave];
-      const cacheKey = slug + '|' + (re ? re.source : '');
+      const cacheKey = slug + &#x27;|&#x27; + (re ? re.source : &#x27;&#x27;);
       if (!cachePaginas[cacheKey]) {
         const res = await axios.get(`https://enloteria.com/resultados-${slug}`, {
           headers: HEADERS, timeout: 15000
         });
         cachePaginas[cacheKey] = parsearPaginaJuegoEnloteria(res.data, re);
-        await new Promise(r => setTimeout(r, 1200)); // pausa entre páginas
+        await new Promise(r =&gt; setTimeout(r, 1200)); // pausa entre páginas
       }
-      const tarjetaHoy = cachePaginas[cacheKey].find(t => t.fecha === hoy);
+      const tarjetaHoy = cachePaginas[cacheKey].find(t =&gt; t.fecha === hoy);
       if (!tarjetaHoy) continue; // aún no sale o no publicado: NO inventar
 
       // Validar contra rango del juego
-      const validos = tarjetaHoy.numeros.filter(n => n >= juego.rango[0] && n <= juego.rango[1]);
+      const validos = tarjetaHoy.numeros.filter(n =&gt; n &gt;= juego.rango[0] &amp;&amp; n &lt;= juego.rango[1]);
       // Kino/loto exigen números únicos; pega3/pega4 permiten dígitos repetidos
-      const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+      const esDigitos = juego.tipo === &#x27;pega3&#x27; || juego.tipo === &#x27;pega4&#x27;;
       const usar = esDigitos ? validos : [...new Set(validos)];
 
-      if (usar.length >= juego.cant) {
+      if (usar.length &gt;= juego.cant) {
         juego.numeros = usar.slice(0, juego.cant);
-        juego.estado = 'disponible';
+        juego.estado = &#x27;disponible&#x27;;
         conteo++;
-        console.log(`  ✓ [enloteria] ${juego.nombre}: ${juego.numeros.join('-')}`);
+        console.log(`  ✓ [enloteria] ${juego.nombre}: ${juego.numeros.join(&#x27;-&#x27;)}`);
       } else {
         console.log(`  ⏭️  [enloteria] ${juego.nombre}: solo ${usar.length}/${juego.cant} números válidos, descartado`);
       }
@@ -1412,14 +1436,14 @@ let estadoBackfill = { activo: false, inicio: null, log: [], resumen: null };
 function logBF(msg) {
   console.log(`[BACKFILL] ${msg}`);
   estadoBackfill.log.push(msg);
-  if (estadoBackfill.log.length > 200) estadoBackfill.log.shift();
+  if (estadoBackfill.log.length &gt; 200) estadoBackfill.log.shift();
 }
 
 function listaFechas(desde, hasta) {
   const fechas = [];
-  let d = new Date(desde + 'T12:00:00Z');
-  const fin = new Date(hasta + 'T12:00:00Z');
-  while (d <= fin && fechas.length < 15) {
+  let d = new Date(desde + &#x27;T12:00:00Z&#x27;);
+  const fin = new Date(hasta + &#x27;T12:00:00Z&#x27;);
+  while (d &lt;= fin &amp;&amp; fechas.length &lt; 15) {
     fechas.push(d.toISOString().slice(0, 10));
     d.setUTCDate(d.getUTCDate() + 1);
   }
@@ -1428,7 +1452,7 @@ function listaFechas(desde, hasta) {
 
 async function ejecutarBackfill(desde, hasta, guardar) {
   estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
-  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  const pausa = ms =&gt; new Promise(r =&gt; setTimeout(r, ms));
   try {
     const fechas = listaFechas(desde, hasta);
     logBF(`Rango: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} dias) - guardar=${guardar}`);
@@ -1438,7 +1462,7 @@ async function ejecutarBackfill(desde, hasta, guardar) {
     if (SUPABASE_ACTIVO) {
       try {
         const r = await axios.get(
-          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&amp;fecha=gte.${fechas[0]}&amp;fecha=lte.${fechas[fechas.length - 1]}`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 }
         );
         for (const row of r.data) existentes[row.fecha] = row;
@@ -1457,7 +1481,7 @@ async function ejecutarBackfill(desde, hasta, guardar) {
         for (const t of tarjetas) {
           if (t.fecha !== f || !t.clave) continue;
           const nums = t.numeros.slice(0, 3);
-          if (nums.length < 3 || nums.every(x => x === nums[0])) continue;
+          if (nums.length &lt; 3 || nums.every(x =&gt; x === nums[0])) continue;
           quinielasPorDia[f][t.clave] = nums; n++;
         }
         logBF(`${f}: ${n} quinielas`);
@@ -1477,7 +1501,7 @@ async function ejecutarBackfill(desde, hasta, guardar) {
       if (!juego) continue;
       try {
         const re = ESPECIALES_ENLOTERIA_RE[clave];
-        const ck = slug + '|' + (re ? re.source : '');
+        const ck = slug + &#x27;|&#x27; + (re ? re.source : &#x27;&#x27;);
         if (!cachePag[ck]) {
           const res = await axios.get(`https://enloteria.com/resultados-${slug}`, { headers: HEADERS, timeout: 15000 });
           cachePag[ck] = parsearPaginaJuegoEnloteria(res.data, re);
@@ -1486,10 +1510,10 @@ async function ejecutarBackfill(desde, hasta, guardar) {
         let n = 0;
         for (const t of cachePag[ck]) {
           if (!especialesPorDia[t.fecha]) continue; // fuera de rango
-          const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
-          const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+          const validos = t.numeros.filter(x =&gt; x &gt;= juego.rango[0] &amp;&amp; x &lt;= juego.rango[1]);
+          const esDig = juego.tipo === &#x27;pega3&#x27; || juego.tipo === &#x27;pega4&#x27;;
           const usar = esDig ? validos : [...new Set(validos)];
-          if (usar.length >= juego.cant) { especialesPorDia[t.fecha][clave] = usar.slice(0, juego.cant); n++; }
+          if (usar.length &gt;= juego.cant) { especialesPorDia[t.fecha][clave] = usar.slice(0, juego.cant); n++; }
         }
         logBF(`especial ${clave} (${slug}): ${n} dias en rango`);
       } catch (e) {
@@ -1507,19 +1531,86 @@ async function ejecutarBackfill(desde, hasta, guardar) {
       let nuevos = 0;
       for (const [clave, nums] of Object.entries(quinielasPorDia[f] || {})) {
         const s = base.sorteos[clave];
-        if (s && (!s.numeros || s.numeros.length < 3)) { s.numeros = nums; s.estado = 'disponible'; nuevos++; }
+        if (s &amp;&amp; (!s.numeros || s.numeros.length &lt; 3)) { s.numeros = nums; s.estado = &#x27;disponible&#x27;; nuevos++; }
       }
       for (const [clave, nums] of Object.entries(especialesPorDia[f] || {})) {
         const j = base.especiales[clave];
-        if (j && (!j.numeros || j.numeros.length === 0)) { j.numeros = nums; j.estado = 'disponible'; nuevos++; }
+        if (j &amp;&amp; (!j.numeros || j.numeros.length === 0)) { j.numeros = nums; j.estado = &#x27;disponible&#x27;; nuevos++; }
       }
       let guardado = false;
-      if (guardar && nuevos > 0) guardado = await guardarEnSupabase(base);
+      if (guardar &amp;&amp; nuevos &gt; 0) guardado = await guardarEnSupabase(base);
       resumen.push({ fecha: f, existia: !!existentes[f], nuevos, guardado });
-      logBF(`${f}: +${nuevos} sorteos nuevos${guardar ? (guardado ? ' -> GUARDADO' : (nuevos > 0 ? ' -> ERROR al guardar' : '')) : ' (simulacion)'}`);
+      logBF(`${f}: +${nuevos} sorteos nuevos${guardar ? (guardado ? &#x27; -&gt; GUARDADO&#x27; : (nuevos &gt; 0 ? &#x27; -&gt; ERROR al guardar&#x27; : &#x27;&#x27;)) : &#x27; (simulacion)&#x27;}`);
     }
     estadoBackfill.resumen = resumen;
-    logBF('LISTO Backfill terminado');
+    logBF(&#x27;LISTO Backfill terminado&#x27;);
+  } catch (e) {
+    logBF(`ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
+}
+
+
+// ── SEMILLA GANAMAS (datos históricos raspados el 4 jul 2026) ──────────────
+// ganamas.com.do bloquea la IP de Render (403), así que estos datos fueron
+// extraídos externamente y verificados: Cuartetas (4 núm 00-99) y Pega 3 Más
+// (3 núm 00-50), del 23 abr al 11 jun 2026. El sitio está congelado desde el
+// 11 jun, por lo que esta semilla es estable y no necesita actualizarse.
+const GANAMAS_SEED = {&quot;cuarteta_m&quot;:{&quot;2026-06-11&quot;:[94,30,5,83],&quot;2026-06-10&quot;:[42,90,83,87],&quot;2026-06-09&quot;:[59,89,94,56],&quot;2026-06-08&quot;:[21,91,15,0],&quot;2026-06-07&quot;:[39,46,60,30],&quot;2026-06-06&quot;:[90,54,96,47],&quot;2026-06-05&quot;:[69,32,56,8],&quot;2026-06-04&quot;:[62,74,43,8],&quot;2026-06-03&quot;:[21,38,99,17],&quot;2026-06-02&quot;:[48,52,7,40],&quot;2026-06-01&quot;:[24,86,12,93],&quot;2026-05-31&quot;:[18,67,7,67],&quot;2026-05-30&quot;:[45,93,99,56],&quot;2026-05-29&quot;:[34,7,29,61],&quot;2026-05-28&quot;:[78,21,71,10],&quot;2026-05-27&quot;:[65,64,99,91],&quot;2026-05-26&quot;:[62,98,99,87],&quot;2026-05-25&quot;:[19,87,65,81],&quot;2026-05-24&quot;:[99,66,27,58],&quot;2026-05-23&quot;:[9,58,25,38],&quot;2026-05-22&quot;:[92,46,87,91],&quot;2026-05-21&quot;:[35,35,19,64],&quot;2026-05-20&quot;:[86,36,15,33],&quot;2026-05-19&quot;:[21,23,54,14],&quot;2026-05-18&quot;:[96,17,67,82],&quot;2026-05-17&quot;:[35,73,60,26],&quot;2026-05-16&quot;:[34,49,11,3],&quot;2026-05-15&quot;:[31,25,35,80],&quot;2026-05-14&quot;:[12,18,32,56],&quot;2026-05-13&quot;:[91,58,5,36],&quot;2026-05-12&quot;:[35,42,64,91],&quot;2026-05-11&quot;:[76,37,38,29],&quot;2026-05-10&quot;:[42,61,20,89],&quot;2026-05-09&quot;:[19,80,6,95],&quot;2026-05-08&quot;:[70,81,99,84],&quot;2026-05-07&quot;:[71,30,18,77],&quot;2026-05-06&quot;:[34,39,23,72],&quot;2026-05-05&quot;:[47,28,65,59],&quot;2026-05-04&quot;:[72,84,29,72],&quot;2026-05-03&quot;:[90,34,76,34],&quot;2026-05-02&quot;:[63,62,3,48],&quot;2026-05-01&quot;:[73,41,86,24],&quot;2026-04-30&quot;:[69,75,77,47],&quot;2026-04-29&quot;:[67,61,0,54],&quot;2026-04-28&quot;:[68,31,10,26],&quot;2026-04-27&quot;:[30,70,87,10],&quot;2026-04-26&quot;:[73,35,97,43],&quot;2026-04-25&quot;:[0,1,23,88]},&quot;cuarteta_md&quot;:{&quot;2026-06-11&quot;:[67,2,45,66],&quot;2026-06-10&quot;:[70,90,18,35],&quot;2026-06-09&quot;:[74,89,65,68],&quot;2026-06-08&quot;:[11,7,11,84],&quot;2026-06-07&quot;:[48,36,78,33],&quot;2026-06-06&quot;:[49,83,62,99],&quot;2026-06-05&quot;:[85,31,46,73],&quot;2026-06-04&quot;:[19,4,93,78],&quot;2026-06-03&quot;:[16,79,24,16],&quot;2026-06-02&quot;:[74,17,83,82],&quot;2026-06-01&quot;:[61,28,77,30],&quot;2026-05-31&quot;:[14,56,53,53],&quot;2026-05-30&quot;:[68,8,78,60],&quot;2026-05-29&quot;:[17,51,51,12],&quot;2026-05-28&quot;:[18,95,40,74],&quot;2026-05-27&quot;:[3,56,39,52],&quot;2026-05-26&quot;:[14,73,80,38],&quot;2026-05-25&quot;:[96,64,37,54],&quot;2026-05-24&quot;:[78,60,65,12],&quot;2026-05-23&quot;:[18,20,81,40],&quot;2026-05-22&quot;:[30,98,0,90],&quot;2026-05-21&quot;:[67,64,3,33],&quot;2026-05-20&quot;:[43,79,74,29],&quot;2026-05-19&quot;:[38,72,15,67],&quot;2026-05-18&quot;:[86,83,69,87],&quot;2026-05-17&quot;:[88,49,98,59],&quot;2026-05-16&quot;:[43,10,94,68],&quot;2026-05-15&quot;:[13,15,5,51],&quot;2026-05-14&quot;:[12,56,70,14],&quot;2026-05-13&quot;:[11,94,82,87],&quot;2026-05-12&quot;:[68,7,41,75],&quot;2026-05-11&quot;:[66,97,40,18],&quot;2026-05-10&quot;:[6,4,63,8],&quot;2026-05-09&quot;:[68,36,71,92],&quot;2026-05-08&quot;:[57,7,78,58],&quot;2026-05-07&quot;:[92,64,18,93],&quot;2026-05-06&quot;:[70,21,42,96],&quot;2026-05-05&quot;:[60,92,49,99],&quot;2026-05-04&quot;:[64,64,88,50],&quot;2026-05-03&quot;:[49,76,72,36],&quot;2026-05-02&quot;:[42,62,34,97],&quot;2026-05-01&quot;:[53,14,39,69],&quot;2026-04-30&quot;:[97,80,88,64],&quot;2026-04-29&quot;:[27,90,18,42],&quot;2026-04-28&quot;:[78,42,7,63],&quot;2026-04-27&quot;:[75,11,36,66],&quot;2026-04-26&quot;:[85,28,92,25],&quot;2026-04-25&quot;:[33,7,99,43],&quot;2026-04-24&quot;:[58,70,31,44]},&quot;cuarteta_t&quot;:{&quot;2026-06-11&quot;:[41,5,95,38],&quot;2026-06-10&quot;:[93,98,63,75],&quot;2026-06-09&quot;:[42,69,72,13],&quot;2026-06-08&quot;:[70,43,96,89],&quot;2026-06-07&quot;:[29,16,44,84],&quot;2026-06-06&quot;:[33,82,0,3],&quot;2026-06-05&quot;:[29,9,11,60],&quot;2026-06-04&quot;:[43,39,81,99],&quot;2026-06-03&quot;:[68,11,56,21],&quot;2026-06-02&quot;:[1,60,44,30],&quot;2026-06-01&quot;:[44,81,91,7],&quot;2026-05-31&quot;:[18,87,0,67],&quot;2026-05-30&quot;:[22,0,71,37],&quot;2026-05-29&quot;:[4,69,8,39],&quot;2026-05-28&quot;:[93,71,54,43],&quot;2026-05-27&quot;:[40,48,83,41],&quot;2026-05-26&quot;:[15,34,5,26],&quot;2026-05-25&quot;:[82,94,75,80],&quot;2026-05-24&quot;:[96,29,70,47],&quot;2026-05-23&quot;:[62,44,99,90],&quot;2026-05-22&quot;:[58,95,86,4],&quot;2026-05-21&quot;:[51,68,91,34],&quot;2026-05-20&quot;:[79,85,75,82],&quot;2026-05-19&quot;:[74,34,58,64],&quot;2026-05-18&quot;:[27,72,5,68],&quot;2026-05-17&quot;:[99,90,60,80],&quot;2026-05-16&quot;:[7,66,15,47],&quot;2026-05-15&quot;:[19,9,70,11],&quot;2026-05-14&quot;:[67,6,42,78],&quot;2026-05-13&quot;:[37,95,0,15],&quot;2026-05-12&quot;:[4,87,24,90],&quot;2026-05-11&quot;:[29,67,49,41],&quot;2026-05-10&quot;:[14,63,46,11],&quot;2026-05-09&quot;:[80,33,23,5],&quot;2026-05-08&quot;:[73,25,61,44],&quot;2026-05-07&quot;:[81,57,50,55],&quot;2026-05-06&quot;:[63,79,33,45],&quot;2026-05-05&quot;:[38,89,84,61],&quot;2026-05-04&quot;:[20,2,71,63],&quot;2026-05-03&quot;:[94,94,22,52],&quot;2026-05-02&quot;:[67,73,32,58],&quot;2026-05-01&quot;:[33,48,38,12],&quot;2026-04-30&quot;:[73,37,69,13],&quot;2026-04-29&quot;:[83,84,31,93],&quot;2026-04-28&quot;:[72,58,26,23],&quot;2026-04-27&quot;:[22,94,31,91],&quot;2026-04-26&quot;:[6,62,86,95],&quot;2026-04-25&quot;:[19,83,44,43]},&quot;cuarteta_n&quot;:{&quot;2026-06-11&quot;:[59,59,62,30],&quot;2026-06-10&quot;:[72,93,72,74],&quot;2026-06-09&quot;:[61,16,85,44],&quot;2026-06-08&quot;:[99,4,55,61],&quot;2026-06-07&quot;:[55,7,4,76],&quot;2026-06-06&quot;:[77,55,30,9],&quot;2026-06-05&quot;:[39,79,43,83],&quot;2026-06-04&quot;:[17,16,79,28],&quot;2026-06-03&quot;:[19,7,97,36],&quot;2026-06-02&quot;:[81,40,52,86],&quot;2026-06-01&quot;:[11,1,21,15],&quot;2026-05-31&quot;:[59,73,1,35],&quot;2026-05-30&quot;:[36,26,1,7],&quot;2026-05-29&quot;:[47,10,28,83],&quot;2026-05-28&quot;:[5,63,48,83],&quot;2026-05-27&quot;:[30,89,0,73],&quot;2026-05-26&quot;:[17,62,66,93],&quot;2026-05-25&quot;:[25,13,1,66],&quot;2026-05-24&quot;:[86,45,72,76],&quot;2026-05-23&quot;:[22,11,95,56],&quot;2026-05-22&quot;:[95,6,87,45],&quot;2026-05-21&quot;:[62,41,50,32],&quot;2026-05-20&quot;:[20,8,44,46],&quot;2026-05-19&quot;:[13,6,14,66],&quot;2026-05-18&quot;:[93,9,40,95],&quot;2026-05-17&quot;:[23,23,74,92],&quot;2026-05-16&quot;:[37,4,78,39],&quot;2026-05-15&quot;:[28,28,22,65],&quot;2026-05-14&quot;:[29,67,32,7],&quot;2026-05-13&quot;:[49,89,22,47],&quot;2026-05-12&quot;:[18,79,61,53],&quot;2026-05-11&quot;:[48,76,56,32],&quot;2026-05-10&quot;:[19,90,94,65],&quot;2026-05-09&quot;:[69,92,44,27],&quot;2026-05-08&quot;:[52,31,72,94],&quot;2026-05-07&quot;:[3,18,17,69],&quot;2026-05-06&quot;:[4,6,31,25],&quot;2026-05-05&quot;:[23,91,59,41],&quot;2026-05-04&quot;:[97,85,30,59],&quot;2026-05-03&quot;:[98,23,19,28],&quot;2026-05-02&quot;:[57,33,53,56],&quot;2026-05-01&quot;:[85,14,91,34],&quot;2026-04-30&quot;:[67,66,11,43],&quot;2026-04-29&quot;:[32,93,17,25],&quot;2026-04-28&quot;:[36,35,98,88],&quot;2026-04-27&quot;:[92,74,26,10],&quot;2026-04-26&quot;:[98,14,46,49],&quot;2026-04-25&quot;:[14,40,95,44],&quot;2026-04-24&quot;:[37,17,38,46]},&quot;pega3mas&quot;:{&quot;2026-06-11&quot;:[14,32,8],&quot;2026-06-10&quot;:[22,22,4],&quot;2026-06-09&quot;:[46,13,38],&quot;2026-06-08&quot;:[37,27,31],&quot;2026-06-07&quot;:[48,45,16],&quot;2026-06-06&quot;:[19,7,26],&quot;2026-06-05&quot;:[22,37,40],&quot;2026-06-04&quot;:[29,49,29],&quot;2026-06-03&quot;:[30,10,3],&quot;2026-06-02&quot;:[49,22,31],&quot;2026-06-01&quot;:[10,38,16],&quot;2026-05-31&quot;:[16,4,13],&quot;2026-05-30&quot;:[6,14,38],&quot;2026-05-29&quot;:[2,33,46],&quot;2026-05-28&quot;:[43,6,30],&quot;2026-05-27&quot;:[20,2,36],&quot;2026-05-26&quot;:[21,7,15],&quot;2026-05-25&quot;:[49,4,6],&quot;2026-05-24&quot;:[14,49,0],&quot;2026-05-23&quot;:[45,45,22],&quot;2026-05-22&quot;:[6,29,47],&quot;2026-05-21&quot;:[38,22,15],&quot;2026-05-20&quot;:[23,24,38],&quot;2026-05-19&quot;:[19,3,38],&quot;2026-05-18&quot;:[32,22,41],&quot;2026-05-17&quot;:[47,19,17],&quot;2026-05-16&quot;:[33,29,42],&quot;2026-05-15&quot;:[2,35,42],&quot;2026-05-14&quot;:[7,19,42],&quot;2026-05-13&quot;:[38,47,33],&quot;2026-05-12&quot;:[10,18,12],&quot;2026-05-11&quot;:[30,24,50],&quot;2026-05-10&quot;:[20,43,32],&quot;2026-05-09&quot;:[6,16,13],&quot;2026-05-08&quot;:[8,43,1],&quot;2026-05-07&quot;:[31,8,50],&quot;2026-05-06&quot;:[21,39,41],&quot;2026-05-05&quot;:[39,7,33],&quot;2026-05-04&quot;:[18,37,1],&quot;2026-05-03&quot;:[28,2,45],&quot;2026-05-02&quot;:[13,39,43],&quot;2026-05-01&quot;:[23,20,4],&quot;2026-04-30&quot;:[27,7,19],&quot;2026-04-29&quot;:[24,22,3],&quot;2026-04-28&quot;:[10,39,36],&quot;2026-04-27&quot;:[11,4,4],&quot;2026-04-26&quot;:[48,28,0],&quot;2026-04-25&quot;:[18,22,25],&quot;2026-04-24&quot;:[29,13,41],&quot;2026-04-23&quot;:[3,37,33]}};
+
+async function ejecutarBackfillSeed(guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  try {
+    const hoy = fechaRD();
+    const fechasSet = new Set();
+    for (const clave of Object.keys(GANAMAS_SEED)) {
+      for (const f of Object.keys(GANAMAS_SEED[clave])) if (f &lt; hoy) fechasSet.add(f);
+    }
+    const fechas = [...fechasSet].sort();
+    logBF(`SEED: ${fechas.length} fechas (${fechas[0]} a ${fechas[fechas.length-1]}) - guardar=${guardar}`);
+
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&amp;fecha=gte.${fechas[0]}&amp;fecha=lte.${fechas[fechas.length-1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 20000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    let totalNuevos = 0, diasGuardados = 0;
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const clave of Object.keys(GANAMAS_SEED)) {
+        const nums = GANAMAS_SEED[clave][f];
+        if (!nums) continue;
+        const dest = clave === &#x27;pega3mas&#x27; ? base.especiales[clave] : base.cuartetas[clave];
+        if (dest &amp;&amp; (!dest.numeros || dest.numeros.length === 0)) {
+          dest.numeros = nums;
+          dest.estado = &#x27;disponible&#x27;;
+          nuevos++;
+        }
+      }
+      if (nuevos &gt; 0) {
+        totalNuevos += nuevos;
+        if (guardar) {
+          const ok = await guardarEnSupabase(base);
+          if (ok) diasGuardados++;
+          await new Promise(r =&gt; setTimeout(r, 150));
+        }
+      }
+    }
+    logBF(`RESUMEN SEED: +${totalNuevos} sorteos en ${fechas.length} fechas${guardar ? ` -&gt; ${diasGuardados} dias GUARDADOS` : &#x27; (simulacion)&#x27;}`);
+    estadoBackfill.resumen = { fechas: fechas.length, nuevos: totalNuevos, guardados: diasGuardados, modo: guardar ? &#x27;GUARDADO&#x27; : &#x27;SIMULACION&#x27; };
+    logBF(&#x27;LISTO Backfill seed terminado&#x27;);
   } catch (e) {
     logBF(`ERROR GENERAL: ${e.message}`);
   } finally {
@@ -1532,50 +1623,50 @@ async function ejecutarBackfill(desde, hasta, guardar) {
 // como fuente en vivo, pero tiene ~2 meses de historial real (abr → 11 jun)
 // de las 4 Cuartetas y el Pega 3 Más, juegos que hoy tienen CERO historial.
 // Parser lineal defensivo: recorre los nodos de texto en orden y agrupa
-// "fecha → números" sin depender de clases CSS.
+// &quot;fecha → números&quot; sin depender de clases CSS.
 
 const GANAMAS_JUEGOS = {
-  // clave interna -> { url, destino ('cuartetas'|'especiales'), cant, rango }
-  cuarteta_m:  { slug: 'la-cuarteta-manana',    destino: 'cuartetas',  cant: 4, rango: [0, 99] },
-  cuarteta_md: { slug: 'la-cuarteta-medio-dia', destino: 'cuartetas',  cant: 4, rango: [0, 99] },
-  cuarteta_t:  { slug: 'la-cuarteta-tarde',     destino: 'cuartetas',  cant: 4, rango: [0, 99] },
-  cuarteta_n:  { slug: 'la-cuarteta-noche',     destino: 'cuartetas',  cant: 4, rango: [0, 99] },
-  pega3mas:    { slug: 'pega-3-mas-leidsa',     destino: 'especiales', cant: 3, rango: [0, 50] },
+  // clave interna -&gt; { url, destino (&#x27;cuartetas&#x27;|&#x27;especiales&#x27;), cant, rango }
+  cuarteta_m:  { slug: &#x27;la-cuarteta-manana&#x27;,    destino: &#x27;cuartetas&#x27;,  cant: 4, rango: [0, 99] },
+  cuarteta_md: { slug: &#x27;la-cuarteta-medio-dia&#x27;, destino: &#x27;cuartetas&#x27;,  cant: 4, rango: [0, 99] },
+  cuarteta_t:  { slug: &#x27;la-cuarteta-tarde&#x27;,     destino: &#x27;cuartetas&#x27;,  cant: 4, rango: [0, 99] },
+  cuarteta_n:  { slug: &#x27;la-cuarteta-noche&#x27;,     destino: &#x27;cuartetas&#x27;,  cant: 4, rango: [0, 99] },
+  pega3mas:    { slug: &#x27;pega-3-mas-leidsa&#x27;,     destino: &#x27;especiales&#x27;, cant: 3, rango: [0, 50] },
 };
 
 const MESES_ABREV = {
-  ene:'01', feb:'02', mar:'03', abr:'04', may:'05', jun:'06',
-  jul:'07', ago:'08', sep:'09', oct:'10', nov:'11', dic:'12'
+  ene:&#x27;01&#x27;, feb:&#x27;02&#x27;, mar:&#x27;03&#x27;, abr:&#x27;04&#x27;, may:&#x27;05&#x27;, jun:&#x27;06&#x27;,
+  jul:&#x27;07&#x27;, ago:&#x27;08&#x27;, sep:&#x27;09&#x27;, oct:&#x27;10&#x27;, nov:&#x27;11&#x27;, dic:&#x27;12&#x27;
 };
 
-// "jue, 11 jun 2026" -> "2026-06-11"
+// &quot;jue, 11 jun 2026&quot; -&gt; &quot;2026-06-11&quot;
 function fechaGanamas(texto) {
   const m = texto.match(/(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?\s+(\d{4})/i);
   if (!m) return null;
-  return `${m[3]}-${MESES_ABREV[m[2].toLowerCase()]}-${String(m[1]).padStart(2, '0')}`;
+  return `${m[3]}-${MESES_ABREV[m[2].toLowerCase()]}-${String(m[1]).padStart(2, &#x27;0&#x27;)}`;
 }
 
 // Parser lineal: stream de nodos de texto en orden del documento.
-// Una fecha abre una "tarjeta"; los números de 1-2 dígitos que siguen
+// Una fecha abre una &quot;tarjeta&quot;; los números de 1-2 dígitos que siguen
 // le pertenecen hasta la próxima fecha. Se toman máximo `cant`.
 function parsearGanamas(html, cant, rango) {
   const $ = cheerio.load(html);
   const porFecha = {};
   let fechaActual = null;
 
-  $('body *').addBack().contents().each((_, node) => {
-    if (node.type !== 'text') return;
+  $(&#x27;body *&#x27;).addBack().contents().each((_, node) =&gt; {
+    if (node.type !== &#x27;text&#x27;) return;
     const t = $(node).text().trim();
     if (!t) return;
 
-    // Ignorar dígitos dentro de enlaces/nav/footer (paginación "2 3 4...8",
+    // Ignorar dígitos dentro de enlaces/nav/footer (paginación &quot;2 3 4...8&quot;,
     // menús, etc.) — solo un número de paginación bastaría para completar
     // con basura una tarjeta incompleta
     let p = node.parent;
     let excluido = false;
-    while (p && p.type === 'tag') {
-      const tag = (p.tagName || p.name || '').toLowerCase();
-      if (tag === 'a' || tag === 'nav' || tag === 'header' || tag === 'footer' || tag === 'script' || tag === 'style') { excluido = true; break; }
+    while (p &amp;&amp; p.type === &#x27;tag&#x27;) {
+      const tag = (p.tagName || p.name || &#x27;&#x27;).toLowerCase();
+      if (tag === &#x27;a&#x27; || tag === &#x27;nav&#x27; || tag === &#x27;header&#x27; || tag === &#x27;footer&#x27; || tag === &#x27;script&#x27; || tag === &#x27;style&#x27;) { excluido = true; break; }
       p = p.parent;
     }
 
@@ -1583,9 +1674,9 @@ function parsearGanamas(html, cant, rango) {
     if (f) { fechaActual = f; if (!porFecha[f]) porFecha[f] = []; return; }
     if (excluido) return;
 
-    if (fechaActual && /^\d{1,2}$/.test(t)) {
+    if (fechaActual &amp;&amp; /^\d{1,2}$/.test(t)) {
       const n = parseInt(t, 10);
-      if (n >= rango[0] && n <= rango[1] && porFecha[fechaActual].length < cant) {
+      if (n &gt;= rango[0] &amp;&amp; n &lt;= rango[1] &amp;&amp; porFecha[fechaActual].length &lt; cant) {
         porFecha[fechaActual].push(n);
       }
     }
@@ -1601,16 +1692,16 @@ function parsearGanamas(html, cant, rango) {
 
 async function ejecutarBackfillGanamas(paginas, guardar) {
   estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
-  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  const pausa = ms =&gt; new Promise(r =&gt; setTimeout(r, ms));
   try {
     logBF(`GANAMAS: hasta ${paginas} paginas por juego - guardar=${guardar}`);
     const hoy = fechaRD();
 
     // 1) Raspar cada juego, página por página
-    const datos = {}; // clave -> { fecha: [nums] }
+    const datos = {}; // clave -&gt; { fecha: [nums] }
     for (const [clave, cfg] of Object.entries(GANAMAS_JUEGOS)) {
       datos[clave] = {};
-      for (let p = 1; p <= paginas; p++) {
+      for (let p = 1; p &lt;= paginas; p++) {
         const url = p === 1
           ? `https://ganamas.com.do/${cfg.slug}`
           : `https://ganamas.com.do/${cfg.slug}/pagina/${p}`;
@@ -1619,11 +1710,11 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
           const tarjetas = parsearGanamas(res.data, cfg.cant, cfg.rango);
           let n = 0;
           for (const [f, nums] of Object.entries(tarjetas)) {
-            if (f >= hoy) continue; // solo pasado
+            if (f &gt;= hoy) continue; // solo pasado
             if (!datos[clave][f]) { datos[clave][f] = nums; n++; }
           }
           logBF(`${clave} pag ${p}: +${n} fechas`);
-          if (n === 0 && p > 1) break; // se acabó el historial
+          if (n === 0 &amp;&amp; p &gt; 1) break; // se acabó el historial
         } catch (e) {
           logBF(`${clave} pag ${p}: AVISO ${e.response?.status || e.message}`);
           break; // 404 en página = fin de paginación (o slug malo en pag 1)
@@ -1639,14 +1730,14 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
       for (const f of Object.keys(datos[clave])) fechasSet.add(f);
     }
     const fechas = [...fechasSet].sort();
-    if (fechas.length === 0) { logBF('Sin datos utilizables'); return; }
+    if (fechas.length === 0) { logBF(&#x27;Sin datos utilizables&#x27;); return; }
     logBF(`Rango encontrado: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} fechas)`);
 
     const existentes = {};
     if (SUPABASE_ACTIVO) {
       try {
         const r = await axios.get(
-          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&amp;fecha=gte.${fechas[0]}&amp;fecha=lte.${fechas[fechas.length - 1]}`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 20000 }
         );
         for (const row of r.data) existentes[row.fecha] = row;
@@ -1666,13 +1757,13 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
         const nums = datos[clave][f];
         if (!nums) continue;
         const dest = base[cfg.destino][clave];
-        if (dest && (!dest.numeros || dest.numeros.length === 0)) {
+        if (dest &amp;&amp; (!dest.numeros || dest.numeros.length === 0)) {
           dest.numeros = nums;
-          dest.estado = 'disponible';
+          dest.estado = &#x27;disponible&#x27;;
           nuevos++;
         }
       }
-      if (nuevos > 0) {
+      if (nuevos &gt; 0) {
         totalNuevos += nuevos;
         if (guardar) {
           const ok = await guardarEnSupabase(base);
@@ -1681,9 +1772,9 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
         }
       }
     }
-    logBF(`RESUMEN: +${totalNuevos} sorteos en ${fechas.length} fechas${guardar ? ` -> ${diasGuardados} dias GUARDADOS` : ' (simulacion)'}`);
-    estadoBackfill.resumen = { fechas: fechas.length, nuevos: totalNuevos, guardados: diasGuardados, modo: guardar ? 'GUARDADO' : 'SIMULACION' };
-    logBF('LISTO Backfill ganamas terminado');
+    logBF(`RESUMEN: +${totalNuevos} sorteos en ${fechas.length} fechas${guardar ? ` -&gt; ${diasGuardados} dias GUARDADOS` : &#x27; (simulacion)&#x27;}`);
+    estadoBackfill.resumen = { fechas: fechas.length, nuevos: totalNuevos, guardados: diasGuardados, modo: guardar ? &#x27;GUARDADO&#x27; : &#x27;SIMULACION&#x27; };
+    logBF(&#x27;LISTO Backfill ganamas terminado&#x27;);
   } catch (e) {
     logBF(`ERROR GENERAL: ${e.message}`);
   } finally {
@@ -1693,7 +1784,7 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
 
 async function sincronizar() {
   if (sincronizando) {
-    console.log('⏭️  Sync ya en curso, saltando...');
+    console.log(&#x27;⏭️  Sync ya en curso, saltando...&#x27;);
     return;
   }
   sincronizando = true;
@@ -1710,18 +1801,18 @@ async function sincronizar() {
       especiales: JSON.parse(JSON.stringify(estado.especiales))
     };
     estado.historico.unshift(snapshot);
-    if (estado.historico.length > 90) estado.historico.pop();
+    if (estado.historico.length &gt; 90) estado.historico.pop();
 
     // Resumen nocturno antes de reiniciar
-    const totalDia = Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length;
-    const totalCuarteta = Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length;
-    const totalEsp = Object.values(estado.especiales).filter(e=>e.numeros.length>0).length;
+    const totalDia = Object.values(estado.sorteos).filter(s=&gt;s.numeros.length&gt;=3).length;
+    const totalCuarteta = Object.values(estado.cuartetas).filter(c=&gt;c.numeros.length&gt;=4).length;
+    const totalEsp = Object.values(estado.especiales).filter(e=&gt;e.numeros.length&gt;0).length;
     await enviarTelegram(
-      `🌙 <b>RESUMEN DEL DÍA ${estado.fecha}</b>\n\n` +
-      `✅ Sorteos capturados: <b>${totalDia}/${Object.keys(estado.sorteos).length}</b>\n` +
-      `🎲 Cuartetas capturadas: <b>${totalCuarteta}/4</b>\n` +
-      `🎰 Especiales capturados: <b>${totalEsp}/${Object.keys(estado.especiales).length}</b>\n\n` +
-      `💾 Histórico guardado en Supabase.\n🔄 Iniciando nuevo día: <b>${hoy}</b>`
+      `🌙 &lt;b&gt;RESUMEN DEL DÍA ${estado.fecha}&lt;/b&gt;\n\n` +
+      `✅ Sorteos capturados: &lt;b&gt;${totalDia}/${Object.keys(estado.sorteos).length}&lt;/b&gt;\n` +
+      `🎲 Cuartetas capturadas: &lt;b&gt;${totalCuarteta}/4&lt;/b&gt;\n` +
+      `🎰 Especiales capturados: &lt;b&gt;${totalEsp}/${Object.keys(estado.especiales).length}&lt;/b&gt;\n\n` +
+      `💾 Histórico guardado en Supabase.\n🔄 Iniciando nuevo día: &lt;b&gt;${hoy}&lt;/b&gt;`
     );
 
     // Reiniciar estado del día
@@ -1730,7 +1821,7 @@ async function sincronizar() {
     estado.especiales = crearJuegosEspeciales();
     estado.fecha = hoy;
     // Limpiar notificados del día anterior
-    Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+    Object.keys(yaNotificado).forEach(k =&gt; delete yaNotificado[k]);
 
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
     guardarEnDisco();
@@ -1741,38 +1832,38 @@ async function sincronizar() {
   await scrapeConectateAPI();
 
   // Si faltan, intentar HTML de loteriasdominicanas.com
-  let pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
-  if (pendientes > 0) await scrapeLotDominicanas();
+  let pendientes = Object.values(estado.sorteos).filter(s =&gt; s.numeros.length &lt; 3).length;
+  if (pendientes &gt; 0) await scrapeLotDominicanas();
 
   // Si aún faltan, intentar enloteria.com (SSR, números en el HTML)
-  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
-  if (pendientes > 0) await scrapeEnloteria();
+  pendientes = Object.values(estado.sorteos).filter(s =&gt; s.numeros.length &lt; 3).length;
+  if (pendientes &gt; 0) await scrapeEnloteria();
 
-  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
-  if (pendientes > 8) await scrapeQuinielasRD();
+  pendientes = Object.values(estado.sorteos).filter(s =&gt; s.numeros.length &lt; 3).length;
+  if (pendientes &gt; 8) await scrapeQuinielasRD();
 
   // La Cuarteta (Anguila, 4 dígitos)
-  const pendCuarteta = Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length;
-  if (pendCuarteta > 0) await scrapeCuartetaLotDominicanas();
+  const pendCuarteta = Object.values(estado.cuartetas).filter(c =&gt; c.numeros.length &lt; 4).length;
+  if (pendCuarteta &gt; 0) await scrapeCuartetaLotDominicanas();
 
-  const pendEsp = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
-  if (pendEsp > 0) await scrapeLeidsa();
+  const pendEsp = Object.values(estado.especiales).filter(e =&gt; e.numeros.length === 0).length;
+  if (pendEsp &gt; 0) await scrapeLeidsa();
 
   // Especiales que leidsa.com no cubrió: enloteria.com (kino, loto, megachance)
-  const pendEsp2 = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
-  if (pendEsp2 > 0) await scrapeEspecialesEnloteria();
+  const pendEsp2 = Object.values(estado.especiales).filter(e =&gt; e.numeros.length === 0).length;
+  if (pendEsp2 &gt; 0) await scrapeEspecialesEnloteria();
 
   estado.hora_actualizacion = horaRD();
-  const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
-  const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
-  const dispE = Object.values(estado.especiales).filter(e => e.numeros.length > 0).length;
+  const disp = Object.values(estado.sorteos).filter(s =&gt; s.numeros.length &gt;= 3).length;
+  const dispC = Object.values(estado.cuartetas).filter(c =&gt; c.numeros.length &gt;= 4).length;
+  const dispE = Object.values(estado.especiales).filter(e =&gt; e.numeros.length &gt; 0).length;
   console.log(`📊 RESULTADO: ${disp}/${Object.keys(estado.sorteos).length} sorteos · ${dispC}/4 cuartetas · ${dispE}/${Object.keys(estado.especiales).length} especiales\n`);
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
   await chequearEnvioAutomaticoPredicciones();
   } catch(e) {
-    console.error('⚠️ Error en sincronizar:', e.message);
+    console.error(&#x27;⚠️ Error en sincronizar:&#x27;, e.message);
   } finally {
     sincronizando = false;
   }
@@ -1783,7 +1874,7 @@ setInterval(sincronizar, 15 * 60 * 1000);
 
 // ── ENDPOINTS (formato esperado por el frontend v4.0-REAL) ─────────────────────
 
-app.get('/api/hoy', async (req, res) => {
+app.get(&#x27;/api/hoy&#x27;, async (req, res) =&gt; {
   await sincronizar();
   res.json({
     fecha: estado.fecha,
@@ -1794,7 +1885,7 @@ app.get('/api/hoy', async (req, res) => {
   });
 });
 
-app.get('/api/radar', async (req, res) => {
+app.get(&#x27;/api/radar&#x27;, async (req, res) =&gt; {
   await sincronizar();
   res.json({
     fecha: estado.fecha,
@@ -1805,26 +1896,26 @@ app.get('/api/radar', async (req, res) => {
   });
 });
 
-app.get('/api/historico', (req, res) => {
+app.get(&#x27;/api/historico&#x27;, (req, res) =&gt; {
   res.json({ historico: estado.historico, total: estado.historico.length });
 });
 
-app.get('/api/consultar', (req, res) => {
+app.get(&#x27;/api/consultar&#x27;, (req, res) =&gt; {
   const { loteria, fecha_inicio, fecha_fin } = req.query;
   const todos = [
     { fecha: estado.fecha, sorteos: { ...estado.sorteos, ...estado.cuartetas, ...estado.especiales } },
-    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: { ...h.sorteos, ...(h.cuartetas || {}), ...(h.especiales || {}) } }))
+    ...estado.historico.map(h =&gt; ({ fecha: h.fecha, sorteos: { ...h.sorteos, ...(h.cuartetas || {}), ...(h.especiales || {}) } }))
   ];
   const todasLasClaves = [...Object.keys(estado.sorteos), ...Object.keys(estado.cuartetas), ...Object.keys(estado.especiales)];
   const resultados = [];
   for (const dia of todos) {
-    if (fecha_inicio && dia.fecha < fecha_inicio) continue;
-    if (fecha_fin   && dia.fecha > fecha_fin)     continue;
-    const lotes = (loteria && loteria !== 'todas') ? [loteria] : todasLasClaves;
+    if (fecha_inicio &amp;&amp; dia.fecha &lt; fecha_inicio) continue;
+    if (fecha_fin   &amp;&amp; dia.fecha &gt; fecha_fin)     continue;
+    const lotes = (loteria &amp;&amp; loteria !== &#x27;todas&#x27;) ? [loteria] : todasLasClaves;
     for (const k of lotes) {
       const s = dia.sorteos[k];
-      const minNum = k.startsWith('cuarteta_') ? 4 : (estado.especiales[k] ? 1 : 3);
-      if (s && s.numeros && s.numeros.length >= minNum) {
+      const minNum = k.startsWith(&#x27;cuarteta_&#x27;) ? 4 : (estado.especiales[k] ? 1 : 3);
+      if (s &amp;&amp; s.numeros &amp;&amp; s.numeros.length &gt;= minNum) {
         resultados.push({ fecha: dia.fecha, clave: k, nombre: s.nombre, numeros: s.numeros });
       }
     }
@@ -1832,43 +1923,43 @@ app.get('/api/consultar', (req, res) => {
   res.json({ resultados, total: resultados.length });
 });
 
-app.get('/api/estadisticas', (req, res) => {
+app.get(&#x27;/api/estadisticas&#x27;, (req, res) =&gt; {
   const { loteria } = req.query;
   const todos = [
     { fecha: estado.fecha, sorteos: estado.sorteos },
-    ...estado.historico.map(h => ({ fecha: h.fecha, sorteos: h.sorteos }))
+    ...estado.historico.map(h =&gt; ({ fecha: h.fecha, sorteos: h.sorteos }))
   ];
   const freq = {}, pares = {}, trips = {};
   let total = 0;
   for (const dia of todos) {
-    const lotes = (loteria && loteria !== 'todas')
+    const lotes = (loteria &amp;&amp; loteria !== &#x27;todas&#x27;)
       ? [loteria] : Object.keys(estado.sorteos);
     for (const k of lotes) {
       const s = dia.sorteos[k];
-      if (!s || s.numeros.length < 3) continue;
+      if (!s || s.numeros.length &lt; 3) continue;
       total++;
       for (const n of s.numeros) freq[n] = (freq[n]||0) + 1;
-      for (let i=0;i<s.numeros.length;i++) for (let j=i+1;j<s.numeros.length;j++) {
-        const key = [s.numeros[i],s.numeros[j]].sort((a,b)=>a-b).join('-');
+      for (let i=0;i&lt;s.numeros.length;i++) for (let j=i+1;j&lt;s.numeros.length;j++) {
+        const key = [s.numeros[i],s.numeros[j]].sort((a,b)=&gt;a-b).join(&#x27;-&#x27;);
         pares[key] = (pares[key]||0) + 1;
       }
-      const tk = s.numeros.slice(0,3).sort((a,b)=>a-b).join('-');
+      const tk = s.numeros.slice(0,3).sort((a,b)=&gt;a-b).join(&#x27;-&#x27;);
       trips[tk] = (trips[tk]||0) + 1;
     }
   }
   res.json({
-    topNumeros: Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([n,f])=>({numero:+n,frecuencia:f})),
-    topPares:   Object.entries(pares).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([p,f])=>({par:p,frecuencia:f})),
-    topTrips:   Object.entries(trips).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([t,f])=>({tripleta:t,frecuencia:f})),
+    topNumeros: Object.entries(freq).sort((a,b)=&gt;b[1]-a[1]).slice(0,20).map(([n,f])=&gt;({numero:+n,frecuencia:f})),
+    topPares:   Object.entries(pares).sort((a,b)=&gt;b[1]-a[1]).slice(0,10).map(([p,f])=&gt;({par:p,frecuencia:f})),
+    topTrips:   Object.entries(trips).sort((a,b)=&gt;b[1]-a[1]).slice(0,5).map(([t,f])=&gt;({tripleta:t,frecuencia:f})),
     total_sorteos: total
   });
 });
 
 // Endpoint de diagnóstico - SOLO conectate API (rápido)
-app.get('/api/debug', async (req, res) => {
+app.get(&#x27;/api/debug&#x27;, async (req, res) =&gt; {
   try {
-    const r1 = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
-      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+    const r1 = await axios.get(&#x27;https://www.conectate.com.do/loterias/api/widget&#x27;, {
+      headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;application/json, text/plain, */*&#x27;, &#x27;X-Requested-With&#x27;: &#x27;XMLHttpRequest&#x27; },
       timeout: 8000
     });
     let items = r1.data;
@@ -1877,9 +1968,9 @@ app.get('/api/debug', async (req, res) => {
       status: r1.status,
       total_items: items.length,
       // Lista todos los game_title con su mapeo y scores
-      todos_los_items: items.map(item => ({
+      todos_los_items: items.map(item =&gt; ({
         game_title: item.game_title,
-        clave_mapeada: buscarClave(item.game_title || ''),
+        clave_mapeada: buscarClave(item.game_title || &#x27;&#x27;),
         score: item.score,
         today: item.today,
         date: item.date,
@@ -1892,16 +1983,16 @@ app.get('/api/debug', async (req, res) => {
 });
 
 // Endpoint de diagnóstico - SOLO loteriasdominicanas.com (rápido)
-app.get('/api/debug2', async (req, res) => {
+app.get(&#x27;/api/debug2&#x27;, async (req, res) =&gt; {
   try {
-    const r2 = await axios.get('https://loteriasdominicanas.com/', { headers: HEADERS, timeout: 8000 });
+    const r2 = await axios.get(&#x27;https://loteriasdominicanas.com/&#x27;, { headers: HEADERS, timeout: 8000 });
     const $ = cheerio.load(r2.data);
     const bloques = [];
-    $('.game-block').each((i, b) => {
-      const titulo = $(b).find('.game-title span').text().trim();
-      const tieneBallMode = $(b).find('.game-scores.ball-mode').length > 0;
+    $(&#x27;.game-block&#x27;).each((i, b) =&gt; {
+      const titulo = $(b).find(&#x27;.game-title span&#x27;).text().trim();
+      const tieneBallMode = $(b).find(&#x27;.game-scores.ball-mode&#x27;).length &gt; 0;
       const scores = [];
-      $(b).find('.game-scores.ball-mode span.score').each((j, s) => scores.push($(s).text().trim()));
+      $(b).find(&#x27;.game-scores.ball-mode span.score&#x27;).each((j, s) =&gt; scores.push($(s).text().trim()));
       const clave = buscarClave(titulo);
       const claveCuarteta = buscarClaveCuarteta(titulo);
       bloques.push({ titulo, clave, claveCuarteta, tieneBallMode, scores });
@@ -1912,36 +2003,36 @@ app.get('/api/debug2', async (req, res) => {
   }
 });
 
-app.get('/api/debug-db', async (req, res) => {
+app.get(&#x27;/api/debug-db&#x27;, async (req, res) =&gt; {
   if (!SUPABASE_ACTIVO) {
-    return res.json({ activo: false, mensaje: 'SUPABASE_URL / SUPABASE_KEY no configuradas en Render todavía.' });
+    return res.json({ activo: false, mensaje: &#x27;SUPABASE_URL / SUPABASE_KEY no configuradas en Render todavía.&#x27; });
   }
   const datos = await cargarDeSupabase();
   if (datos === null) {
-    return res.json({ activo: true, conectado: false, mensaje: 'Variables configuradas pero la conexión falló.' });
+    return res.json({ activo: true, conectado: false, mensaje: &#x27;Variables configuradas pero la conexión falló.&#x27; });
   }
-  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d => d.fecha) });
+  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d =&gt; d.fecha) });
 });
 
 // Ver exactamente lo que manda la API de conectate.com.do para cualquier juego
 // Uso: /api/debug-api?filtro=pega  (filtra por nombre, vacío = todos)
-app.get('/api/debug-api', async (req, res) => {
+app.get(&#x27;/api/debug-api&#x27;, async (req, res) =&gt; {
   try {
-    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
-      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
+    const r = await axios.get(&#x27;https://www.conectate.com.do/loterias/api/widget&#x27;, {
+      headers: { ...HEADERS, &#x27;Accept&#x27;: &#x27;application/json, text/plain, */*&#x27;, &#x27;X-Requested-With&#x27;: &#x27;XMLHttpRequest&#x27; },
       timeout: 10000
     });
     const items = r.data?.response?.data || r.data?.data || r.data || [];
-    const filtro = (req.query.filtro || '').toLowerCase();
+    const filtro = (req.query.filtro || &#x27;&#x27;).toLowerCase();
     const resultado = items
-      .filter(i => !filtro || (i.game_title || '').toLowerCase().includes(filtro))
-      .map(i => ({
+      .filter(i =&gt; !filtro || (i.game_title || &#x27;&#x27;).toLowerCase().includes(filtro))
+      .map(i =&gt; ({
         nombre: i.game_title,
         today: i.today,
         fecha: i.date,
         score_raw: i.score,
         score_tipo: Array.isArray(i.score) ? `array[${i.score.length}]` : typeof i.score,
-        mapeado_como: buscarClave(i.game_title || '') || buscarClaveEspecial(i.game_title || '') || '⚠️ sin mapeo'
+        mapeado_como: buscarClave(i.game_title || &#x27;&#x27;) || buscarClaveEspecial(i.game_title || &#x27;&#x27;) || &#x27;⚠️ sin mapeo&#x27;
       }));
     res.json({ total_items_api: items.length, filtrados: resultado.length, resultado });
   } catch(e) {
@@ -1949,85 +2040,102 @@ app.get('/api/debug-api', async (req, res) => {
       error: e.message,
       status_real: e.response?.status,
       data_real: e.response?.data,
-      url_usada: 'https://www.conectate.com.do/loterias/api/widget'
+      url_usada: &#x27;https://www.conectate.com.do/loterias/api/widget&#x27;
     });
   }
 });
 
-app.get('/', (req, res) => {
+app.get(&#x27;/&#x27;, (req, res) =&gt; {
   res.json({
-    version: 'v7.30-GANAMAS',
-    status: 'ok',
-    persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
-    telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
+    version: &#x27;v7.31-SEED&#x27;,
+    status: &#x27;ok&#x27;,
+    persistencia: SUPABASE_ACTIVO ? &#x27;supabase (permanente)&#x27; : &#x27;solo disco local&#x27;,
+    telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : &#x27;no configurado&#x27;,
     fecha_rd: fechaRD(),
     hora_rd: horaRD(),
-    sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
-    cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
-    especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
+    sorteos_hoy: Object.values(estado.sorteos).filter(s=&gt;s.numeros.length&gt;=3).length,
+    cuartetas_hoy: Object.values(estado.cuartetas).filter(c=&gt;c.numeros.length&gt;=4).length,
+    especiales_hoy: Object.values(estado.especiales).filter(e=&gt;e.numeros.length&gt;0).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram','/api/test-enloteria']
+    endpoints: [&#x27;/api/hoy&#x27;,&#x27;/api/radar&#x27;,&#x27;/api/consultar&#x27;,&#x27;/api/estadisticas&#x27;,&#x27;/api/historico&#x27;,&#x27;/api/debug&#x27;,&#x27;/api/debug2&#x27;,&#x27;/api/debug-db&#x27;,&#x27;/api/test-telegram&#x27;,&#x27;/api/predicciones-telegram&#x27;,&#x27;/api/test-enloteria&#x27;]
   });
 });
 
+
+// Backfill desde la SEMILLA embebida (cuartetas + pega 3 mas, sin depender
+// de la IP de Render). 1) Simulacion: /api/backfill-seed  2) /api/backfill-seed?guardar=1
+app.get(&#x27;/api/backfill-seed&#x27;, (req, res) =&gt; {
+  if (estadoBackfill.activo) {
+    return res.status(409).json({ error: &#x27;Ya hay un backfill corriendo&#x27;, ver: &#x27;/api/backfill-estado&#x27; });
+  }
+  const guardar = req.query.guardar === &#x27;1&#x27;;
+  ejecutarBackfillSeed(guardar);
+  res.json({
+    iniciado: true,
+    juegos: Object.keys(GANAMAS_SEED),
+    registros: Object.values(GANAMAS_SEED).reduce((a, o) =&gt; a + Object.keys(o).length, 0),
+    modo: guardar ? &#x27;GUARDAR EN SUPABASE&#x27; : &#x27;SIMULACION (agrega &amp;guardar=1)&#x27;,
+    progreso: &#x27;/api/backfill-estado&#x27;
+  });
+});
 
 // Backfill historico desde GANAMAS (cuartetas + pega 3 mas, abr - 11 jun)
 // 1) Simulacion: /api/backfill-ganamas
 // 2) Guardar:    /api/backfill-ganamas?guardar=1
 // 3) Progreso:   /api/backfill-estado (compartido con el de enloteria)
-app.get('/api/backfill-ganamas', (req, res) => {
+app.get(&#x27;/api/backfill-ganamas&#x27;, (req, res) =&gt; {
   if (estadoBackfill.activo) {
-    return res.status(409).json({ error: 'Ya hay un backfill corriendo', ver: '/api/backfill-estado' });
+    return res.status(409).json({ error: &#x27;Ya hay un backfill corriendo&#x27;, ver: &#x27;/api/backfill-estado&#x27; });
   }
   const paginas = Math.min(parseInt(req.query.paginas) || 8, 12);
-  const guardar = req.query.guardar === '1';
+  const guardar = req.query.guardar === &#x27;1&#x27;;
   ejecutarBackfillGanamas(paginas, guardar); // sin await: segundo plano
   res.json({
     iniciado: true, paginas,
     juegos: Object.keys(GANAMAS_JUEGOS),
-    modo: guardar ? 'GUARDAR EN SUPABASE' : 'SIMULACION (agrega &guardar=1 para guardar de verdad)',
-    nota: 'ganamas.com.do esta congelado desde el 11 jun — esto es solo historial, tarda ~1-2 min',
-    progreso: '/api/backfill-estado'
+    modo: guardar ? &#x27;GUARDAR EN SUPABASE&#x27; : &#x27;SIMULACION (agrega &amp;guardar=1 para guardar de verdad)&#x27;,
+    nota: &#x27;ganamas.com.do esta congelado desde el 11 jun — esto es solo historial, tarda ~1-2 min&#x27;,
+    progreso: &#x27;/api/backfill-estado&#x27;
   });
 });
 
 // Backfill historico (corre en segundo plano, no bloquea el sync)
-// 1) Simulacion: /api/backfill-enloteria?desde=2026-06-23&hasta=2026-07-01
-// 2) Guardar:    agrega &guardar=1
+// 1) Simulacion: /api/backfill-enloteria?desde=2026-06-23&amp;hasta=2026-07-01
+// 2) Guardar:    agrega &amp;guardar=1
 // 3) Progreso:   /api/backfill-estado
-app.get('/api/backfill-enloteria', (req, res) => {
+app.get(&#x27;/api/backfill-enloteria&#x27;, (req, res) =&gt; {
   const { desde, hasta } = req.query;
   const reF = /^\d{4}-\d{2}-\d{2}$/;
-  if (!reF.test(desde || '') || !reF.test(hasta || '')) {
-    return res.status(400).json({ error: 'Usa ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD (max 15 dias)' });
+  if (!reF.test(desde || &#x27;&#x27;) || !reF.test(hasta || &#x27;&#x27;)) {
+    return res.status(400).json({ error: &#x27;Usa ?desde=YYYY-MM-DD&amp;hasta=YYYY-MM-DD (max 15 dias)&#x27; });
   }
-  if (hasta >= fechaRD()) {
-    return res.status(400).json({ error: 'Solo dias pasados: hasta debe ser menor que hoy (el dia de hoy lo maneja el sync normal)' });
+  if (hasta &gt;= fechaRD()) {
+    return res.status(400).json({ error: &#x27;Solo dias pasados: hasta debe ser menor que hoy (el dia de hoy lo maneja el sync normal)&#x27; });
   }
   if (estadoBackfill.activo) {
-    return res.status(409).json({ error: 'Ya hay un backfill corriendo', ver: '/api/backfill-estado' });
+    return res.status(409).json({ error: &#x27;Ya hay un backfill corriendo&#x27;, ver: &#x27;/api/backfill-estado&#x27; });
   }
-  const guardar = req.query.guardar === '1';
+  const guardar = req.query.guardar === &#x27;1&#x27;;
   ejecutarBackfill(desde, hasta, guardar); // sin await: segundo plano
   res.json({
     iniciado: true, desde, hasta,
-    modo: guardar ? 'GUARDAR EN SUPABASE' : 'SIMULACION (agrega &guardar=1 para guardar de verdad)',
-    progreso: '/api/backfill-estado'
+    modo: guardar ? &#x27;GUARDAR EN SUPABASE&#x27; : &#x27;SIMULACION (agrega &amp;guardar=1 para guardar de verdad)&#x27;,
+    progreso: &#x27;/api/backfill-estado&#x27;
   });
 });
 
-app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
+app.get(&#x27;/api/backfill-estado&#x27;, (req, res) =&gt; res.json(estadoBackfill));
 
 // Endpoint de prueba: ver TODO lo que enloteria.com devuelve (mapeado o no)
 // Uso: /api/test-enloteria          → resultados de hoy
 //      /api/test-enloteria?dia=ayer → resultados de ayer
 //      /api/test-enloteria?dia=antes-de-ayer
-app.get('/api/test-enloteria', async (req, res) => {
+app.get(&#x27;/api/test-enloteria&#x27;, async (req, res) =&gt; {
   try {
     // Modo juego: /api/test-enloteria?juego=super-kino-tv (o toca-3,
     // el-quemaito-mayor, loto, megachance...) — inspecciona la página del juego
     if (req.query.juego) {
-      const slug = String(req.query.juego).replace(/[^a-z0-9-]/g, '');
+      const slug = String(req.query.juego).replace(/[^a-z0-9-]/g, &#x27;&#x27;);
       const r = await axios.get(`https://enloteria.com/resultados-${slug}`, {
         headers: HEADERS, timeout: 15000
       });
@@ -2035,7 +2143,7 @@ app.get('/api/test-enloteria', async (req, res) => {
       return res.json({ juego: slug, fecha_rd: fechaRD(), total: tarjetas.length, tarjetas });
     }
 
-    const dia = ['ayer','antes-de-ayer'].includes(req.query.dia) ? req.query.dia : 'hoy';
+    const dia = [&#x27;ayer&#x27;,&#x27;antes-de-ayer&#x27;].includes(req.query.dia) ? req.query.dia : &#x27;hoy&#x27;;
     const r = await axios.get(`https://enloteria.com/resultados-loterias-${dia}`, {
       headers: HEADERS, timeout: 15000
     });
@@ -2044,8 +2152,8 @@ app.get('/api/test-enloteria', async (req, res) => {
       dia,
       fecha_rd: fechaRD(),
       total: tarjetas.length,
-      mapeadas: tarjetas.filter(t => t.clave).length,
-      sin_mapear: tarjetas.filter(t => !t.clave).map(t => t.slug),
+      mapeadas: tarjetas.filter(t =&gt; t.clave).length,
+      sin_mapear: tarjetas.filter(t =&gt; !t.clave).map(t =&gt; t.slug),
       tarjetas
     });
   } catch (e) {
@@ -2054,36 +2162,36 @@ app.get('/api/test-enloteria', async (req, res) => {
 });
 
 // Endpoint para probar el bot manualmente
-app.get('/api/test-telegram', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_IDS en Render.' });
+app.get(&#x27;/api/test-telegram&#x27;, async (req, res) =&gt; {
+  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: &#x27;Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_IDS en Render.&#x27; });
   await enviarTelegram(
-    `✅ <b>REYDIS RADAR PRO</b> — Test de conexión\n\n` +
+    `✅ &lt;b&gt;REYDIS RADAR PRO&lt;/b&gt; — Test de conexión\n\n` +
     `🤖 Bot conectado correctamente.\n` +
-    `👥 Destinatarios: <b>${TG_CHAT_IDS.length}</b>\n` +
+    `👥 Destinatarios: &lt;b&gt;${TG_CHAT_IDS.length}&lt;/b&gt;\n` +
     `📅 Fecha RD: ${fechaRD()} ${horaRD()}\n` +
-    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/${Object.keys(estado.sorteos).length}`
+    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=&gt;s.numeros.length&gt;=3).length}/${Object.keys(estado.sorteos).length}`
   );
   res.json({ activo: true, destinatarios: TG_CHAT_IDS.length, mensaje: `¡Mensaje enviado a ${TG_CHAT_IDS.length} destinatario(s)!` });
 });
 
 // Envía las predicciones del día manualmente, sin esperar a las 7 AM
-app.get('/api/predicciones-telegram', async (req, res) => {
+app.get(&#x27;/api/predicciones-telegram&#x27;, async (req, res) =&gt; {
   const resultado = await enviarPrediccionesTelegram();
   res.json(resultado);
 });
 
 // Prueba completa de notificación de resultado — muestra la respuesta exacta de Telegram
-app.get('/api/test-resultado', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Telegram no configurado' });
+app.get(&#x27;/api/test-resultado&#x27;, async (req, res) =&gt; {
+  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: &#x27;Telegram no configurado&#x27; });
   const resultados = [];
   for (const chatId of TG_CHAT_IDS) {
     try {
-      const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
-        `✅ <b>Gana Más</b> (2:30 PM) — RESULTADO REAL\n` +
-        `🔢 <b>41 - 58 - 89</b>\n\n` +
-        `<i>Este es un mensaje de prueba para verificar que las notificaciones llegan correctamente.</i>`;
+      const msg = `🇩🇴 &lt;b&gt;REYDIS RADAR PRO&lt;/b&gt; — ${fechaRD()}\n\n` +
+        `✅ &lt;b&gt;Gana Más&lt;/b&gt; (2:30 PM) — RESULTADO REAL\n` +
+        `🔢 &lt;b&gt;41 - 58 - 89&lt;/b&gt;\n\n` +
+        `&lt;i&gt;Este es un mensaje de prueba para verificar que las notificaciones llegan correctamente.&lt;/i&gt;`;
       const r = await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-        chat_id: chatId, text: msg, parse_mode: 'HTML'
+        chat_id: chatId, text: msg, parse_mode: &#x27;HTML&#x27;
       }, { timeout: 8000 });
       resultados.push({ chat_id: chatId, ok: r.data.ok, message_id: r.data.result?.message_id });
     } catch(e) {
@@ -2095,56 +2203,56 @@ app.get('/api/test-resultado', async (req, res) => {
 
 // Fuerza el envío de notificaciones de TODOS los sorteos que ya tienen
 // resultado hoy — útil si algo falló durante el día
-app.get('/api/forzar-notif', async (req, res) => {
+app.get(&#x27;/api/forzar-notif&#x27;, async (req, res) =&gt; {
   if (!TG_ACTIVO) return res.json({ activo: false });
   // Limpiar yaNotificado para forzar reenvío
-  Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+  Object.keys(yaNotificado).forEach(k =&gt; delete yaNotificado[k]);
   await notificarNuevosSorteos();
   res.json({
     enviado: true,
     sorteos_con_resultado: Object.entries(estado.sorteos)
-      .filter(([,s]) => s.numeros.length >= 3)
-      .map(([k,s]) => ({ k, nombre: s.nombre, numeros: s.numeros }))
+      .filter(([,s]) =&gt; s.numeros.length &gt;= 3)
+      .map(([k,s]) =&gt; ({ k, nombre: s.nombre, numeros: s.numeros }))
   });
 });
 
 // Ver estado actual de yaNotificado (qué loterías ya fueron notificadas hoy)
-app.get('/api/status-notif', (req, res) => {
+app.get(&#x27;/api/status-notif&#x27;, (req, res) =&gt; {
   const sorteosConResultado = Object.entries(estado.sorteos)
-    .filter(([,s]) => s.numeros.length >= 3)
-    .map(([k,s]) => ({ clave: k, nombre: s.nombre, numeros: s.numeros, notificado: !!yaNotificado[k] }));
+    .filter(([,s]) =&gt; s.numeros.length &gt;= 3)
+    .map(([k,s]) =&gt; ({ clave: k, nombre: s.nombre, numeros: s.numeros, notificado: !!yaNotificado[k] }));
   res.json({
     telegram_activo: TG_ACTIVO,
     chat_ids: TG_CHAT_IDS,
     ya_notificados: Object.keys(yaNotificado),
     sorteos_con_resultado: sorteosConResultado,
     total_capturados: sorteosConResultado.length,
-    total_notificados: sorteosConResultado.filter(s => s.notificado).length
+    total_notificados: sorteosConResultado.filter(s =&gt; s.notificado).length
   });
 });
 
 // ── Protección anti-crash global ──────────────────────────────────────────────
 // Captura errores no manejados para que el servidor NO se caiga. Los loguea
 // en consola sin detener el proceso — así los sorteos siguen capturándose.
-process.on('uncaughtException', (err) => {
-  console.error('⚠️ [uncaughtException]', err.stack || err.message);
+process.on(&#x27;uncaughtException&#x27;, (err) =&gt; {
+  console.error(&#x27;⚠️ [uncaughtException]&#x27;, err.stack || err.message);
 });
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ [unhandledRejection]', reason?.stack || reason);
+process.on(&#x27;unhandledRejection&#x27;, (reason) =&gt; {
+  console.error(&#x27;⚠️ [unhandledRejection]&#x27;, reason?.stack || reason);
 });
 
-app.listen(PORT, async () => {
+app.listen(PORT, async () =&gt; {
   console.log(`\n🚀 Reydis Engine v7.12-STABLE en puerto ${PORT}`);
-  console.log(`💾 Supabase: ${SUPABASE_ACTIVO ? '✅' : '❌ no configurado'}`);
-  console.log(`📱 Telegram: ${TG_ACTIVO ? `✅ (${TG_CHAT_IDS.length} destinatario(s))` : '❌ no configurado'}`);
+  console.log(`💾 Supabase: ${SUPABASE_ACTIVO ? &#x27;✅&#x27; : &#x27;❌ no configurado&#x27;}`);
+  console.log(`📱 Telegram: ${TG_ACTIVO ? `✅ (${TG_CHAT_IDS.length} destinatario(s))` : &#x27;❌ no configurado&#x27;}`);
 
   await inicializarPersistenciaRemota();
 
   if (TG_ACTIVO) {
     await enviarTelegram(
-      `🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado\n\n` +
+      `🚀 &lt;b&gt;REYDIS RADAR PRO&lt;/b&gt; — Servidor iniciado\n\n` +
       `📅 ${fechaRD()} ${horaRD()} RD\n` +
-      `💾 Supabase: ${SUPABASE_ACTIVO ? '✅ conectado' : '❌ no configurado'}\n` +
+      `💾 Supabase: ${SUPABASE_ACTIVO ? &#x27;✅ conectado&#x27; : &#x27;❌ no configurado&#x27;}\n` +
       `🔄 Sincronizando sorteos...`
     );
   }
@@ -2154,10 +2262,10 @@ app.listen(PORT, async () => {
   // ── Self-ping para evitar que Render duerma el servicio ──────────────────
   // Render free tier duerme el servidor tras ~15 min sin peticiones HTTP.
   // Cuando duerme, pierde todos los resultados en memoria y reinicia —
-  // por eso aparecen tantos "Servidor iniciado" en Telegram.
+  // por eso aparecen tantos &quot;Servidor iniciado&quot; en Telegram.
   // Este ping propio cada 14 minutos mantiene el servidor despierto.
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
-  setInterval(async () => {
+  setInterval(async () =&gt; {
     try {
       await axios.get(`${SELF_URL}/`, { timeout: 5000 });
       // ping silencioso — solo loguea si falla
@@ -2168,3 +2276,15 @@ app.listen(PORT, async () => {
 
   console.log(`🏓 Self-ping activo cada 14 min → ${SELF_URL}`);
 });
+</textarea>
+<script>
+function copiar() {
+  const ta = document.getElementById('code');
+  const mostrar = () => { document.getElementById('ok').style.display='inline'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).then(mostrar).catch(() => { ta.select(); document.execCommand('copy'); mostrar(); });
+  } else { ta.select(); document.execCommand('copy'); mostrar(); }
+}
+</script>
+</body>
+</html>
