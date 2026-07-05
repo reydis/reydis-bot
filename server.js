@@ -1468,6 +1468,7 @@ async function ejecutarBackfill(desde, hasta, guardar) {
     }
 
     // 3) Especiales: una pagina por juego (traen ~10 dias de historial)
+    const slugsMalos = new Set();
     const especialesPorDia = {};
     for (const f of fechas) especialesPorDia[f] = {};
     const plantilla = crearJuegosEspeciales();
@@ -1494,7 +1495,38 @@ async function ejecutarBackfill(desde, hasta, guardar) {
         logBF(`especial ${clave} (${slug}): ${n} dias en rango`);
       } catch (e) {
         logBF(`especial ${clave} (${slug}): AVISO ${e.response?.status || e.message}`);
+        slugsMalos.add(slug); // landing 404 = el juego no existe en enloteria
       }
+    }
+
+    // 3b) EXCAVACIÓN PROFUNDA: para fechas viejas que la página de aterrizaje
+    // no cubre (~12 días), enloteria tiene URLs por fecha:
+    // /resultados-{slug}-YYYY-MM-DD — se piden una a una, con pausa.
+    // 404 en una fecha = ese día no hay página (ej. Loto en día sin sorteo):
+    // se salta honestamente, no se inventa nada.
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego || slugsMalos.has(slug)) continue;
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      let nProf = 0, n404 = 0;
+      for (const f of fechas) {
+        if (especialesPorDia[f][clave]) continue; // ya lo tenemos del landing
+        try {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+          const tarjetas = parsearPaginaJuegoEnloteria(res.data, re);
+          const t = tarjetas.find(x => x.fecha === f);
+          if (t) {
+            const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+            const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+            const usar = esDig ? validos : [...new Set(validos)];
+            if (usar.length >= juego.cant) { especialesPorDia[f][clave] = usar.slice(0, juego.cant); nProf++; }
+          }
+        } catch (e) {
+          n404++;
+        }
+        await pausa(1100);
+      }
+      if (nProf > 0 || n404 > 0) logBF(`especial ${clave} EXCAVACION: +${nProf} fechas antiguas (${n404} sin pagina)`);
     }
 
     // 4) Fusionar SIN pisar datos + guardar
@@ -2023,7 +2055,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.31-SEED',
+    version: 'v7.32-EXCAVACION',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
