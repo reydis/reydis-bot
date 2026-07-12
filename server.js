@@ -72,28 +72,25 @@ async function notificarNuevosSorteos() {
 
   if (nuevos.length === 0) return;
 
-  console.log(`📱 Notificando ${nuevos.length} resultado(s) a Telegram con pausa de 1.2s entre cada uno...`);
+  console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje (modo resumen anti-ban)...`);
 
   // Marcar todos como notificados ANTES de enviar para evitar duplicados
-  // si el servidor es llamado de nuevo antes de que terminen los envíos
   for (const n of nuevos) yaNotificado[n.clave] = true;
 
-  // Enviar UNO POR UNO con pausa — Telegram permite ~1 msg/seg al mismo chat
-  for (let i = 0; i < nuevos.length; i++) {
-    const n = nuevos[i];
+  // MODO RESUMEN: un solo mensaje con todos los resultados del lote.
+  // El bot anterior fue baneado por mandar ráfagas de 15+ mensajes —
+  // este patrón (1 mensaje consolidado) es el perfil sano para Telegram.
+  const lineas = nuevos.map(n => {
     const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
     const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
     const extra = n.empresa ? ` [${n.empresa}]` : '';
-    const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
-      `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora}) — RESULTADO REAL\n` +
-      `🔢 <b>${nums}</b>`;
-    await enviarTelegram(msg);
-    console.log(`  ✅ Enviado: ${n.nombre} → ${n.numeros.join('-')}`);
-    // Pausa de 1.2 segundos entre mensajes para respetar el límite de Telegram
-    if (i < nuevos.length - 1) await new Promise(r => setTimeout(r, 1200));
-  }
-
-  console.log(`📱 Completado: ${nuevos.length} resultado(s) notificado(s)`);
+    return `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora})\n     🔢 <b>${nums}</b>`;
+  });
+  const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n` +
+    `📥 <b>${nuevos.length} resultado(s) nuevo(s):</b>\n\n` +
+    lineas.join('\n\n');
+  await enviarTelegram(msg);
+  console.log(`📱 Completado: ${nuevos.length} resultado(s) en 1 mensaje`);
 }
 
 // ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
@@ -2055,7 +2052,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.32-EXCAVACION',
+    version: 'v7.33-BOT-BLINDADO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2183,6 +2180,115 @@ app.get('/api/test-telegram', async (req, res) => {
 });
 
 // Envía las predicciones del día manualmente, sin esperar a las 7 AM
+
+// ── WEBHOOK del bot: el bot ESCUCHA y responde comandos ─────────────────────
+// Un bot interactivo (que conversa) tiene el perfil sano para Telegram,
+// a diferencia del broadcast puro que mató al bot anterior.
+// Activación (una sola vez, ver instrucciones): setWebhook apuntando a
+// https://reydis-bot-service.onrender.com/api/telegram-webhook
+async function responderChat(chatId, texto) {
+  try {
+    await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      chat_id: chatId, text: texto, parse_mode: 'HTML'
+    }, { timeout: 10000 });
+  } catch (e) {
+    console.error(`⚠️ webhook respuesta ERROR: ${e.response?.data?.description || e.message}`);
+  }
+}
+
+function comandoHoy() {
+  const partes = [];
+  const bloques = [
+    ['✅ QUINIELAS', Object.values(estado.sorteos)],
+    ['🎲 CUARTETAS', Object.values(estado.cuartetas)],
+    ['🎰 ESPECIALES', Object.values(estado.especiales)],
+  ];
+  for (const [titulo, lista] of bloques) {
+    const con = lista.filter(s => s.numeros && s.numeros.length > 0);
+    if (!con.length) continue;
+    partes.push(`<b>${titulo}</b> (${con.length}):`);
+    for (const s of con) {
+      partes.push(`  ${s.nombre}: <b>${s.numeros.map(n => String(n).padStart(2, '0')).join('-')}</b>`);
+    }
+  }
+  if (!partes.length) return `🇩🇴 <b>${fechaRD()}</b>\n\nAún no hay resultados hoy. El primero cae ~10 AM.`;
+  return `🇩🇴 <b>RESULTADOS DE HOY</b> — ${fechaRD()} ${horaRD ? horaRD() : ''}\n\n` + partes.join('\n');
+}
+
+function comandoRastrear(num) {
+  const val = parseInt(num, 10);
+  if (isNaN(val) || val < 0 || val > 99) return 'Uso: /rastrear 99 (número del 00 al 99)';
+  const hallazgos = [];
+  for (const dia of estado.historico) {
+    for (const grupo of ['sorteos', 'cuartetas', 'especiales']) {
+      if (!dia[grupo]) continue;
+      for (const s of Object.values(dia[grupo])) {
+        if (s.numeros && s.numeros.some(n => parseInt(n, 10) === val)) {
+          hallazgos.push({ f: dia.fecha, n: s.nombre });
+        }
+      }
+    }
+  }
+  if (!hallazgos.length) return `El <b>${String(val).padStart(2, '0')}</b> no aparece en ${estado.historico.length} días de historial.`;
+  const porLot = {};
+  for (const h of hallazgos) porLot[h.n] = (porLot[h.n] || 0) + 1;
+  const top = Object.entries(porLot).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([n, c]) => `  ${n}: ${c}x`).join('\n');
+  const ultimos = hallazgos.slice(-5).reverse().map(h => `  ${h.f} · ${h.n}`).join('\n');
+  return `🔍 <b>El ${String(val).padStart(2, '0')}</b> ha salido <b>${hallazgos.length} veces</b> en ${estado.historico.length} días.\n\n<b>Donde más:</b>\n${top}\n\n<b>Últimas 5:</b>\n${ultimos}`;
+}
+
+function comandoEstado() {
+  const q = Object.values(estado.sorteos).filter(s => s.numeros.length > 0).length;
+  const c = Object.values(estado.cuartetas).filter(s => s.numeros.length > 0).length;
+  const e = Object.values(estado.especiales).filter(s => s.numeros.length > 0).length;
+  return `📡 <b>REYDIS RADAR PRO</b> v7.33\n\n` +
+    `📅 ${fechaRD()}\n` +
+    `✅ Hoy: ${q} quinielas · ${c} cuartetas · ${e} especiales\n` +
+    `💾 Histórico: ${estado.historico.length} días\n` +
+    `🤖 Sistema operando normal`;
+}
+
+app.post('/api/telegram-webhook', async (req, res) => {
+  res.sendStatus(200); // responder YA a Telegram; procesamos aparte
+  try {
+    const msg = req.body && req.body.message;
+    if (!msg || !msg.text) return;
+    const chatId = msg.chat.id;
+    const texto = msg.text.trim();
+    const [cmd, ...args] = texto.split(/\s+/);
+    const comando = cmd.toLowerCase().replace(/@\w+$/, ''); // quitar @NombreBot
+
+    console.log(`💬 Comando recibido de ${chatId}: ${texto}`);
+
+    if (comando === '/start') {
+      await responderChat(chatId,
+        `🇩🇴 <b>REYDIS RADAR PRO</b> 📡\n\nBienvenido. Comandos disponibles:\n\n` +
+        `/hoy — resultados de hoy\n/predicciones — pistas del día\n` +
+        `/rastrear 99 — dónde ha salido un número\n/estado — salud del sistema\n\n` +
+        `⚠️ La lotería es aleatoria por diseño. Ningún sistema garantiza aciertos — ` +
+        `los datos mostrados son históricos reales. Juega solo lo que puedas permitirte perder.\n\n` +
+        `Tu chat ID: <code>${chatId}</code>`);
+    } else if (comando === '/hoy') {
+      await responderChat(chatId, comandoHoy());
+    } else if (comando === '/predicciones') {
+      if (TG_CHAT_IDS.includes(String(chatId))) {
+        await enviarPrediccionesTelegram();
+      } else {
+        await responderChat(chatId, 'Las predicciones se envían solo a los destinatarios registrados del sistema.');
+      }
+    } else if (comando === '/rastrear') {
+      await responderChat(chatId, comandoRastrear(args[0]));
+    } else if (comando === '/estado') {
+      await responderChat(chatId, comandoEstado());
+    } else if (comando.startsWith('/')) {
+      await responderChat(chatId, 'Comando no reconocido. Usa /start para ver el menú.');
+    }
+  } catch (e) {
+    console.error(`⚠️ webhook ERROR: ${e.message}`);
+  }
+});
+
 app.get('/api/predicciones-telegram', async (req, res) => {
   const resultado = await enviarPrediccionesTelegram();
   res.json(resultado);
