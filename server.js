@@ -323,6 +323,7 @@ async function chequearEnvioAutomaticoPredicciones() {
   if (hh === 7 && ultimaPrediccionFecha !== estado.fecha) {
     ultimaPrediccionFecha = estado.fecha;
     await enviarPrediccionesTelegram();
+    try { await enviarTelegram(textoCodigoQ()); } catch (e) { console.error('⚠️ Código Q diario:', e.message); }
   }
 }
 
@@ -2052,7 +2053,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.34-LABORATORIO',
+    version: 'v7.35-CODIGO-Q',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2188,6 +2189,13 @@ app.get('/api/test-telegram', async (req, res) => {
 // La quiniela es aleatoria por diseño — esto mide si algún método supera
 // al azar de forma sostenida, con evidencia y no con fe.
 const espejoNum = n => (n % 10) * 10 + Math.floor(n / 10); // 27 -> 72
+// Código Q (del video): palé = [1ro de ayer + Q_A, 1ro de ayer + Q_B] mod 100.
+// El "1220" del maestro: Q_A=12, Q_B=20. Si la regla del video resulta ser
+// otra variante, se ajusta AQUÍ en una línea.
+const Q_A = 12, Q_B = 20;
+function paleCodigoQ(primeroAyer) {
+  return [(primeroAyer + Q_A) % 100, (primeroAyer + Q_B) % 100];
+}
 
 function backtestLaboratorio(filtroLoteria) {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
@@ -2197,6 +2205,7 @@ function backtestLaboratorio(filtroLoteria) {
     paleAyer:   { nombre: 'Pale de ayer (1ro-2do)',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     paleEspejo: { nombre: 'Pale espejo (1ro+espejo)', tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     radarTop2:  { nombre: 'Radar top-2 ponderado',    tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    codigoQ:    { nombre: 'Codigo Q (1ro ayer +12/+20)', tipo: 'pale', ev: 0, pale: 0, medio: 0 },
   };
   const porLoteriaM1 = {};
   const claves = new Set();
@@ -2238,6 +2247,14 @@ function backtestLaboratorio(filtroLoteria) {
         const hits = jug.filter(n => hoy.has(n)).length;
         if (hits >= 2) met.paleEspejo.pale++;
         if (hits >= 1) met.paleEspejo.medio++;
+      }
+
+      met.codigoQ.ev++;
+      {
+        const jug = [...new Set([(ayer[0] + Q_A) % 100, (ayer[0] + Q_B) % 100])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) met.codigoQ.pale++;
+        if (hits >= 1) met.codigoQ.medio++;
       }
 
       met.radarTop2.ev++;
@@ -2282,6 +2299,29 @@ function backtestLaboratorio(filtroLoteria) {
 
 // 🧪 /api/laboratorio          -> todos los métodos vs todo el histórico
 //    /api/laboratorio?loteria=gana_mas -> solo una lotería
+// 🅠 Palé del Código Q de HOY: usa el último 1er premio de Loteka del histórico
+function textoCodigoQ() {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  for (const d of dias) {
+    const s = d.sorteos && d.sorteos.loteka;
+    if (s && s.numeros && s.numeros.length >= 1) {
+      const p = Number(s.numeros[0]);
+      const [a, b] = paleCodigoQ(p);
+      const f2 = n => String(n).padStart(2, '0');
+      return `🅠 <b>CÓDIGO Q — Loteka</b>\n\n` +
+        `Último 1er premio (${d.fecha}): <b>${f2(p)}</b>\n` +
+        `Palé Q de hoy: <b>${f2(a)} - ${f2(b)}</b> (+${Q_A}/+${Q_B})\n\n` +
+        `⚗️ Método en PRUEBA (1 mes). Su tasa real vs el azar se audita en /laboratorio. ` +
+        `Juega solo lo que puedas permitirte perder.`;
+    }
+  }
+  return '🅠 Aún no hay 1er premio de Loteka en el histórico para calcular el Código Q.';
+}
+
+app.get('/api/codigo-q', (req, res) => {
+  res.json({ mensaje: textoCodigoQ().replace(/<[^>]+>/g, '') });
+});
+
 app.get('/api/laboratorio', (req, res) => {
   try {
     res.json(backtestLaboratorio(req.query.loteria || null));
@@ -2390,6 +2430,8 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId, comandoRastrear(args[0]));
     } else if (comando === '/estado') {
       await responderChat(chatId, comandoEstado());
+    } else if (comando === '/codigoq') {
+      await responderChat(chatId, textoCodigoQ());
     } else if (comando === '/laboratorio') {
       const lab = backtestLaboratorio(null);
       const lineas = Object.values(lab.resumen).map(m =>
