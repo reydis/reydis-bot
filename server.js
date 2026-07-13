@@ -2052,7 +2052,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.33-BOT-BLINDADO',
+    version: 'v7.34-LABORATORIO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2062,7 +2062,7 @@ app.get('/', (req, res) => {
     cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
     especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
     historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram','/api/test-enloteria']
+    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram','/api/test-enloteria','/api/laboratorio']
   });
 });
 
@@ -2181,6 +2181,115 @@ app.get('/api/test-telegram', async (req, res) => {
 
 // Envía las predicciones del día manualmente, sin esperar a las 7 AM
 
+
+// ── 🧪 LABORATORIO DE MÉTODOS ───────────────────────────────────────────────
+// Backtest walk-forward HONESTO de métodos folclóricos + el del Radar sobre
+// todo el histórico: cada predicción usa SOLO datos anteriores a ese sorteo.
+// La quiniela es aleatoria por diseño — esto mide si algún método supera
+// al azar de forma sostenida, con evidencia y no con fe.
+const espejoNum = n => (n % 10) * 10 + Math.floor(n / 10); // 27 -> 72
+
+function backtestLaboratorio(filtroLoteria) {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const met = {
+    repite1ro:  { nombre: 'Repite el 1ro (punto)',    tipo: 'punto', ev: 0, punto: 0 },
+    espejo1ro:  { nombre: 'Espejo del 1ro (punto)',   tipo: 'punto', ev: 0, punto: 0 },
+    paleAyer:   { nombre: 'Pale de ayer (1ro-2do)',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    paleEspejo: { nombre: 'Pale espejo (1ro+espejo)', tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    radarTop2:  { nombre: 'Radar top-2 ponderado',    tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+  };
+  const porLoteriaM1 = {};
+  const claves = new Set();
+  for (const d of dias) for (const k of Object.keys(d.sorteos || {})) claves.add(k);
+
+  for (const clave of claves) {
+    if (filtroLoteria && clave !== filtroLoteria) continue;
+    const serie = [];
+    for (const d of dias) {
+      const s = d.sorteos && d.sorteos[clave];
+      if (s && s.numeros && s.numeros.length >= 3) serie.push({ f: d.fecha, nums: s.numeros.map(Number) });
+    }
+    if (serie.length < 3) continue;
+
+    for (let i = 1; i < serie.length; i++) {
+      const ayer = serie[i - 1].nums;
+      const hoy = new Set(serie[i].nums);
+
+      met.repite1ro.ev++;
+      if (hoy.has(ayer[0])) {
+        met.repite1ro.punto++;
+        porLoteriaM1[clave] = (porLoteriaM1[clave] || 0) + 1;
+      }
+
+      met.espejo1ro.ev++;
+      if (hoy.has(espejoNum(ayer[0]))) met.espejo1ro.punto++;
+
+      met.paleAyer.ev++;
+      {
+        const jug = [...new Set([ayer[0], ayer[1]])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) met.paleAyer.pale++;
+        if (hits >= 1) met.paleAyer.medio++;
+      }
+
+      met.paleEspejo.ev++;
+      {
+        const jug = [...new Set([ayer[0], espejoNum(ayer[0])])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) met.paleEspejo.pale++;
+        if (hits >= 1) met.paleEspejo.medio++;
+      }
+
+      met.radarTop2.ev++;
+      {
+        const pesos = {};
+        for (let j = 0; j < i; j++) {
+          const w = 0.5 + 0.5 * (j + 1) / i; // recencia
+          serie[j].nums.forEach((n, pos) => {
+            pesos[n] = (pesos[n] || 0) + w * (pos === 0 ? 60 : pos === 1 ? 8 : 4);
+          });
+        }
+        const top = Object.entries(pesos).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => parseInt(x[0], 10));
+        const hits = [...new Set(top)].filter(n => hoy.has(n)).length;
+        if (hits >= 2) met.radarTop2.pale++;
+        if (hits >= 1) met.radarTop2.medio++;
+      }
+    }
+  }
+
+  const pct = (a, b) => (b ? +((100 * a) / b).toFixed(2) : 0);
+  const resumen = {};
+  for (const [k, m] of Object.entries(met)) {
+    if (m.tipo === 'punto') {
+      resumen[k] = { metodo: m.nombre, evaluaciones: m.ev, aciertos: m.punto,
+        tasa_real: pct(m.punto, m.ev) + '%', azar_espera: '3.00%' };
+    } else {
+      resumen[k] = { metodo: m.nombre, evaluaciones: m.ev,
+        pales_completos: m.pale, tasa_pale: pct(m.pale, m.ev) + '%', azar_pale: '0.06%',
+        medios_pale: m.medio, tasa_medio: pct(m.medio, m.ev) + '%', azar_medio: '5.94%' };
+    }
+  }
+  const topM1 = Object.entries(porLoteriaM1).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([k, c]) => ({ loteria: (estado.sorteos[k] && estado.sorteos[k].nombre) || k, repeticiones: c }));
+
+  return {
+    dias_historial: dias.length,
+    nota: 'Walk-forward honesto: cada prediccion usa SOLO datos anteriores. La quiniela es aleatoria por diseño — esto mide si algun metodo supera al azar de forma sostenida.',
+    resumen,
+    donde_mas_repite_el_1ro: topM1,
+  };
+}
+
+// 🧪 /api/laboratorio          -> todos los métodos vs todo el histórico
+//    /api/laboratorio?loteria=gana_mas -> solo una lotería
+app.get('/api/laboratorio', (req, res) => {
+  try {
+    res.json(backtestLaboratorio(req.query.loteria || null));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── WEBHOOK del bot: el bot ESCUCHA y responde comandos ─────────────────────
 // Un bot interactivo (que conversa) tiene el perfil sano para Telegram,
 // a diferencia del broadcast puro que mató al bot anterior.
@@ -2281,6 +2390,15 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId, comandoRastrear(args[0]));
     } else if (comando === '/estado') {
       await responderChat(chatId, comandoEstado());
+    } else if (comando === '/laboratorio') {
+      const lab = backtestLaboratorio(null);
+      const lineas = Object.values(lab.resumen).map(m =>
+        m.aciertos !== undefined
+          ? `• ${m.metodo}: <b>${m.tasa_real}</b> (azar: ${m.azar_espera}) en ${m.evaluaciones} pruebas`
+          : `• ${m.metodo}: ${m.pales_completos} palés (<b>${m.tasa_pale}</b> vs azar ${m.azar_pale}) · medios ${m.tasa_medio}`);
+      await responderChat(chatId,
+        `🧪 <b>LABORATORIO DE MÉTODOS</b> — ${lab.dias_historial} días\n\n` +
+        lineas.join('\n') + `\n\n⚖️ Walk-forward honesto: cada método probado solo con datos anteriores a cada sorteo.`);
     } else if (comando.startsWith('/')) {
       await responderChat(chatId, 'Comando no reconocido. Usa /start para ver el menú.');
     }
