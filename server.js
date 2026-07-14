@@ -2053,7 +2053,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.35-CODIGO-Q',
+    version: 'v7.36.1-MODO-LIMPIO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2299,6 +2299,122 @@ function backtestLaboratorio(filtroLoteria) {
 
 // 🧪 /api/laboratorio          -> todos los métodos vs todo el histórico
 //    /api/laboratorio?loteria=gana_mas -> solo una lotería
+
+// 🔬 /backtesting — libreta de calificaciones: qué habría jugado cada método
+// (walk-forward, solo con datos previos) vs lo que REALMENTE salió ese día.
+function textoBacktesting(arg) {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  if (dias.length < 2) return 'Aún no hay suficiente historial para backtesting.';
+
+  let objetivos = [];
+  if (arg && /^\d{4}-\d{2}-\d{2}$/.test(arg)) {
+    objetivos = [arg];
+  } else {
+    let n = parseInt(arg, 10);
+    if (isNaN(n) || n < 1) n = 1;
+    n = Math.min(n, 7); // tope: 7 días por mensaje
+    objetivos = dias.slice(-n).map(d => d.fecha);
+  }
+
+  const claves = new Set();
+  for (const d of dias) for (const k of Object.keys(d.sorteos || {})) claves.add(k);
+  const seriePor = {};
+  for (const clave of claves) {
+    const serie = [];
+    for (const d of dias) {
+      const s = d.sorteos && d.sorteos[clave];
+      if (s && s.numeros && s.numeros.length >= 3) {
+        serie.push({ f: d.fecha, nums: s.numeros.map(Number), nombre: s.nombre || clave });
+      }
+    }
+    seriePor[clave] = serie;
+  }
+
+  const f2 = x => String(x).padStart(2, '0');
+  const bloques = [];
+  for (const fecha of objetivos) {
+    const agg = {
+      rep: { h: 0, ev: 0, det: [] }, esp: { h: 0, det: [] },
+      pAyer: { p: 0, m: 0, det: [] }, pEsp: { p: 0, m: 0 },
+      radar: { p: 0, m: 0, det: [] },
+    };
+    let lineaQ = null;
+
+    for (const [clave, serie] of Object.entries(seriePor)) {
+      const i = serie.findIndex(x => x.f === fecha);
+      if (i < 1) continue;
+      const ayer = serie[i - 1].nums;
+      const hoyArr = serie[i].nums;
+      const hoy = new Set(hoyArr);
+      const nom = serie[i].nombre;
+
+      agg.rep.ev++;
+      if (hoy.has(ayer[0])) { agg.rep.h++; agg.rep.det.push(`${nom}: ${f2(ayer[0])}`); }
+
+      { const e = espejoNum(ayer[0]);
+        if (hoy.has(e)) { agg.esp.h++; agg.esp.det.push(`${nom}: ${f2(e)}`); } }
+
+      { const jug = [...new Set([ayer[0], ayer[1]])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) { agg.pAyer.p++; agg.pAyer.det.push(`${nom} 🎯 ${jug.map(f2).join('-')}`); }
+        else if (hits === 1) agg.pAyer.m++; }
+
+      { const jug = [...new Set([ayer[0], espejoNum(ayer[0])])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) agg.pEsp.p++; else if (hits === 1) agg.pEsp.m++; }
+
+      { const pesos = {};
+        for (let j = 0; j < i; j++) {
+          const w = 0.5 + 0.5 * (j + 1) / i;
+          serie[j].nums.forEach((n, pos) => {
+            pesos[n] = (pesos[n] || 0) + w * (pos === 0 ? 60 : pos === 1 ? 8 : 4);
+          });
+        }
+        const top = Object.entries(pesos).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => parseInt(x[0], 10));
+        const hits = [...new Set(top)].filter(n => hoy.has(n)).length;
+        if (hits >= 2) { agg.radar.p++; agg.radar.det.push(`${nom} 🎯`); }
+        else if (hits === 1) agg.radar.m++; }
+
+      if (clave === 'loteka') {
+        const jug = paleCodigoQ(ayer[0]);
+        const hits = [...new Set(jug)].filter(n => hoy.has(n)).length;
+        lineaQ = `🅠 Código Q: jugó <b>${jug.map(f2).join('-')}</b> → salió ${hoyArr.map(f2).join('-')} → ` +
+          (hits >= 2 ? '<b>¡PALÉ COMPLETO! 🎯🎯</b>' : hits === 1 ? '<b>medio palé ✳️</b>' : 'falló');
+      }
+    }
+
+    if (!agg.rep.ev) { bloques.push(`📅 <b>${fecha}</b>: sin datos evaluables.`); continue; }
+    // MODO LIMPIO HONESTO: los aciertos brillan con detalle; los métodos en
+    // cero se comprimen en una línea (se mencionan SIEMPRE — ocultar los
+    // fallos convertiría este informe en el truco de los vendehumo).
+    const det = arr => (arr.length ? ` (${arr.slice(0, 3).join(' · ')})` : '');
+    const conAcierto = [];
+    const enCero = [];
+    if (agg.rep.h > 0) conAcierto.push(`🏆 Repite 1ro: <b>${agg.rep.h}</b>${det(agg.rep.det)}`);
+    else enCero.push('Repite 1ro');
+    if (agg.esp.h > 0) conAcierto.push(`🏆 Espejo 1ro: <b>${agg.esp.h}</b>${det(agg.esp.det)}`);
+    else enCero.push('Espejo 1ro');
+    if (agg.pAyer.p > 0 || agg.pAyer.m > 0) conAcierto.push(`🏆 Palé de ayer: ${agg.pAyer.p} palés · ${agg.pAyer.m} medios${det(agg.pAyer.det)}`);
+    else enCero.push('Palé ayer');
+    if (agg.pEsp.p > 0 || agg.pEsp.m > 0) conAcierto.push(`🏆 Palé espejo: ${agg.pEsp.p} palés · ${agg.pEsp.m} medios`);
+    else enCero.push('Palé espejo');
+    if (agg.radar.p > 0 || agg.radar.m > 0) conAcierto.push(`🏆 Radar top-2: ${agg.radar.p} palés · ${agg.radar.m} medios${det(agg.radar.det)}`);
+    else enCero.push('Radar top-2');
+
+    let cuerpo = conAcierto.length ? conAcierto.join('\n') : '— Ningún método acertó este día —';
+    if (enCero.length && conAcierto.length) cuerpo += `\n▫️ Sin aciertos: ${enCero.join(', ')}`;
+    bloques.push(
+      `📅 <b>${fecha}</b> — ${agg.rep.ev} loterías evaluadas\n` + cuerpo +
+      (lineaQ ? `\n${lineaQ}` : '')
+    );
+  }
+
+  return `🔬 <b>BACKTESTING</b> — cada método jugado con datos de ANTES vs lo que salió\n\n` +
+    bloques.join('\n\n') +
+    `\n\n⚖️ Referencia del azar (por 20 loterías/día): ~0.6 repetidos · ~1.2 medios palé.\n` +
+    `Uso: /backtesting · /backtesting 2026-07-10 · /backtesting 5`;
+}
+
 // 🅠 Palé del Código Q de HOY: usa el último 1er premio de Loteka del histórico
 function textoCodigoQ() {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -2414,7 +2530,7 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId,
         `🇩🇴 <b>REYDIS RADAR PRO</b> 📡\n\nBienvenido. Comandos disponibles:\n\n` +
         `/hoy — resultados de hoy\n/predicciones — pistas del día\n` +
-        `/rastrear 99 — dónde ha salido un número\n/estado — salud del sistema\n\n` +
+        `/rastrear 99 — dónde ha salido un número\n/backtesting — cómo nos fue (ayer o /backtesting 5)\n/estado — salud del sistema\n\n` +
         `⚠️ La lotería es aleatoria por diseño. Ningún sistema garantiza aciertos — ` +
         `los datos mostrados son históricos reales. Juega solo lo que puedas permitirte perder.\n\n` +
         `Tu chat ID: <code>${chatId}</code>`);
@@ -2430,6 +2546,8 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId, comandoRastrear(args[0]));
     } else if (comando === '/estado') {
       await responderChat(chatId, comandoEstado());
+    } else if (comando === '/backtesting' || comando === '/backtest') {
+      await responderChat(chatId, textoBacktesting(args[0]));
     } else if (comando === '/codigoq') {
       await responderChat(chatId, textoCodigoQ());
     } else if (comando === '/laboratorio') {
