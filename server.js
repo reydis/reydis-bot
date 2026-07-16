@@ -2053,7 +2053,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.36.1-MODO-LIMPIO',
+    version: 'v7.37-VENTANA-Q7',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2206,6 +2206,7 @@ function backtestLaboratorio(filtroLoteria) {
     paleEspejo: { nombre: 'Pale espejo (1ro+espejo)', tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     radarTop2:  { nombre: 'Radar top-2 ponderado',    tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     codigoQ:    { nombre: 'Codigo Q (1ro ayer +12/+20)', tipo: 'pale', ev: 0, pale: 0, medio: 0 },
+    codigoQ7:   { nombre: 'Ventana Q7 (7 pales x dia)',  tipo: 'pale', ev: 0, pale: 0, medio: 0 },
   };
   const porLoteriaM1 = {};
   const claves = new Set();
@@ -2257,6 +2258,18 @@ function backtestLaboratorio(filtroLoteria) {
         if (hits >= 1) met.codigoQ.medio++;
       }
 
+      if (clave === 'loteka') {
+        met.codigoQ7.ev++;
+        let mejor = 0;
+        for (let j = Math.max(0, i - 7); j < i; j++) {
+          const jug = [...new Set(paleCodigoQ(serie[j].nums[0]))];
+          const hits = jug.filter(n => hoy.has(n)).length;
+          if (hits > mejor) mejor = hits;
+        }
+        if (mejor >= 2) met.codigoQ7.pale++;
+        if (mejor >= 1) met.codigoQ7.medio++;
+      }
+
       met.radarTop2.ev++;
       {
         const pesos = {};
@@ -2281,9 +2294,11 @@ function backtestLaboratorio(filtroLoteria) {
       resumen[k] = { metodo: m.nombre, evaluaciones: m.ev, aciertos: m.punto,
         tasa_real: pct(m.punto, m.ev) + '%', azar_espera: '3.00%' };
     } else {
+      const esQ7 = (k === 'codigoQ7');
       resumen[k] = { metodo: m.nombre, evaluaciones: m.ev,
-        pales_completos: m.pale, tasa_pale: pct(m.pale, m.ev) + '%', azar_pale: '0.06%',
-        medios_pale: m.medio, tasa_medio: pct(m.medio, m.ev) + '%', azar_medio: '5.94%' };
+        pales_completos: m.pale, tasa_pale: pct(m.pale, m.ev) + '%', azar_pale: esQ7 ? '0.42%' : '0.06%',
+        medios_pale: m.medio, tasa_medio: pct(m.medio, m.ev) + '%', azar_medio: esQ7 ? '34%' : '5.94%',
+        ...(esQ7 ? { nota: '7 pales/dia (RD$7) — el azar de 7 boletos ya es mas alto, por eso su vara de comparacion sube' } : {}) };
     }
   }
   const topM1 = Object.entries(porLoteriaM1).sort((a, b) => b[1] - a[1]).slice(0, 8)
@@ -2376,10 +2391,19 @@ function textoBacktesting(arg) {
         else if (hits === 1) agg.radar.m++; }
 
       if (clave === 'loteka') {
-        const jug = paleCodigoQ(ayer[0]);
-        const hits = [...new Set(jug)].filter(n => hoy.has(n)).length;
-        lineaQ = `🅠 Código Q: jugó <b>${jug.map(f2).join('-')}</b> → salió ${hoyArr.map(f2).join('-')} → ` +
-          (hits >= 2 ? '<b>¡PALÉ COMPLETO! 🎯🎯</b>' : hits === 1 ? '<b>medio palé ✳️</b>' : 'falló');
+        const ganadores = [];
+        let mediosQ = 0;
+        const desde = Math.max(0, i - 7);
+        for (let j = desde; j < i; j++) {
+          const jug = [...new Set(paleCodigoQ(serie[j].nums[0]))];
+          const hits = jug.filter(n => hoy.has(n)).length;
+          if (hits >= 2) ganadores.push(`<b>${jug.map(f2).join('-')}</b> (nació ${serie[j].f.slice(5)}, pegó a los ${i - j} días) 🎯🎯`);
+          else if (hits === 1) mediosQ++;
+        }
+        const nAct = i - desde;
+        lineaQ = ganadores.length
+          ? `🅠 Ventana Q7: ¡PALÉ! ${ganadores.join(' · ')} — salió ${hoyArr.map(f2).join('-')}`
+          : `🅠 Ventana Q7 (${nAct} palés): ${mediosQ > 0 ? mediosQ + ' medio(s) ✳️' : 'sin acierto'} — salió ${hoyArr.map(f2).join('-')}`;
       }
     }
 
@@ -2415,23 +2439,33 @@ function textoBacktesting(arg) {
     `Uso: /backtesting · /backtesting 2026-07-10 · /backtesting 5`;
 }
 
-// 🅠 Palé del Código Q de HOY: usa el último 1er premio de Loteka del histórico
-function textoCodigoQ() {
-  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+// 🅠 VENTANA Q7: los 7 palés Q activos (uno por cada uno de los últimos 7
+// sorteos de Loteka). Cada palé "vive" 7 días: hoy entra el nuevo y se jubila
+// el número 8. Estrategia en prueba: 7 palés × RD$1 diario.
+function palesQ7Activos() {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const serie = [];
   for (const d of dias) {
     const s = d.sorteos && d.sorteos.loteka;
     if (s && s.numeros && s.numeros.length >= 1) {
-      const p = Number(s.numeros[0]);
-      const [a, b] = paleCodigoQ(p);
-      const f2 = n => String(n).padStart(2, '0');
-      return `🅠 <b>CÓDIGO Q — Loteka</b>\n\n` +
-        `Último 1er premio (${d.fecha}): <b>${f2(p)}</b>\n` +
-        `Palé Q de hoy: <b>${f2(a)} - ${f2(b)}</b> (+${Q_A}/+${Q_B})\n\n` +
-        `⚗️ Método en PRUEBA (1 mes). Su tasa real vs el azar se audita en /laboratorio. ` +
-        `Juega solo lo que puedas permitirte perder.`;
+      serie.push({ f: d.fecha, primero: Number(s.numeros[0]) });
     }
   }
-  return '🅠 Aún no hay 1er premio de Loteka en el histórico para calcular el Código Q.';
+  return serie.slice(-7).map(x => ({ nacimiento: x.f, primero: x.primero, pale: paleCodigoQ(x.primero) }));
+}
+
+function textoCodigoQ() {
+  const activos = palesQ7Activos();
+  if (!activos.length) return '🅠 Aún no hay sorteos de Loteka en el histórico para la Ventana Q7.';
+  const f2 = n => String(n).padStart(2, '0');
+  const lineas = activos.map((x, i) =>
+    `${i + 1}. <b>${x.pale.map(f2).join('-')}</b>  <i>(nació ${x.nacimiento.slice(5)}, 1ro fue ${f2(x.primero)})</i>`);
+  return `🅠 <b>VENTANA Q7 — Loteka</b> (${activos.length} palés activos)\n\n` +
+    lineas.join('\n') +
+    `\n\n🎫 Jugada del día: los ${activos.length} palés × RD$1 = RD$${activos.length}` +
+    `\n♻️ Mañana entra el palé del sorteo de hoy y se jubila el #1.` +
+    `\n\n⚗️ Estrategia en PRUEBA (1 mes) — auditada en /laboratorio y /backtesting. ` +
+    `Juega solo lo que puedas permitirte perder.`;
 }
 
 app.get('/api/codigo-q', (req, res) => {
