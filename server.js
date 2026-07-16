@@ -2053,7 +2053,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.37-VENTANA-Q7',
+    version: 'v7.38-JUGADAS',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2182,6 +2182,90 @@ app.get('/api/test-telegram', async (req, res) => {
 
 // Envía las predicciones del día manualmente, sin esperar a las 7 AM
 
+
+
+// ── 🎫 GENERADOR DE JUGADAS (/jugada) ──────────────────────────────────────
+// Genera hasta 5 jugadas para un juego usando el histórico, cada una con
+// una estrategia distinta — incluida una de azar puro como control honesto.
+const JUGADA_CFG = {
+  // clave: [grupo, tamaño de jugada del apostador, rango]
+  superkino:  ['especiales', 10, [1, 80]],
+  loto:       ['especiales', 6,  [1, 40]],
+  lotomas:    ['especiales', 6,  [1, 40]],
+  pega3mas:   ['especiales', 3,  [0, 50]],
+  megachance: ['especiales', 5,  [0, 99]],
+  quemaito:   ['especiales', 1,  [0, 99]],
+};
+const JUGADA_ALIAS = {
+  kino: 'superkino', superkino: 'superkino', loto: 'loto', lotomas: 'lotomas',
+  pega3: 'pega3mas', pega3mas: 'pega3mas', mega: 'megachance', megachance: 'megachance',
+  quemaito: 'quemaito',
+};
+
+function generarJugadas(juegoTxt, cantidad) {
+  const txt = (juegoTxt || '').toLowerCase();
+  let clave = JUGADA_ALIAS[txt] || null;
+  let grupo = clave ? 'especiales' : null;
+  if (!clave) { // ¿es una quiniela? buscar por clave o nombre
+    for (const [k, s] of Object.entries(estado.sorteos)) {
+      if (k === txt || (s.nombre || '').toLowerCase().includes(txt)) { clave = k; grupo = 'sorteos'; break; }
+    }
+  }
+  if (!clave) {
+    return `No conozco el juego "${juegoTxt}". Prueba: kino, loto, lotomas, pega3, mega, quemaito, o el nombre de una quiniela (ej: /jugada anguila 3).`;
+  }
+  const esQuiniela = grupo === 'sorteos';
+  const [, tam, rango] = esQuiniela ? [null, 2, [0, 99]] : JUGADA_CFG[clave]; // quiniela: palé de 2
+  const n = Math.min(Math.max(parseInt(cantidad) || 4, 1), 5);
+
+  // Frecuencia ponderada + días sin salir, del histórico de ESTE juego
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const pesos = {}, ultimaVez = {};
+  let sorteosVistos = 0;
+  for (let i = 0; i < dias.length; i++) {
+    const s = dias[i][grupo] && dias[i][grupo][clave];
+    if (!s || !s.numeros || !s.numeros.length) continue;
+    sorteosVistos++;
+    const w = 0.5 + 0.5 * (i + 1) / dias.length;
+    s.numeros.forEach((num, pos) => {
+      const v = Number(num);
+      pesos[v] = (pesos[v] || 0) + w * (esQuiniela ? (pos === 0 ? 60 : pos === 1 ? 8 : 4) : 1);
+      ultimaVez[v] = i;
+    });
+  }
+  if (sorteosVistos < 3) return `Solo tengo ${sorteosVistos} sorteos de ese juego — muy poco para generar jugadas.`;
+
+  const universo = [];
+  for (let v = rango[0]; v <= rango[1]; v++) universo.push(v);
+  const ranking = [...universo].sort((a, b) => (pesos[b] || 0) - (pesos[a] || 0));
+  const frios = [...universo].sort((a, b) => (ultimaVez[a] ?? -1) - (ultimaVez[b] ?? -1));
+  const alAzar = () => {
+    const bolsa = [...universo], out = [];
+    while (out.length < tam) out.push(bolsa.splice(Math.floor(Math.random() * bolsa.length), 1)[0]);
+    return out.sort((a, b) => a - b);
+  };
+  const mezclar = (a, b) => {
+    const out = [...new Set([...a.slice(0, Math.ceil(tam / 2)), ...b])].slice(0, tam);
+    let i = 0; while (out.length < tam) { const c = ranking[i++]; if (!out.includes(c)) out.push(c); }
+    return out.sort((x, y) => x - y);
+  };
+
+  const estrategias = [
+    ['🔥 Caliente ponderada', ranking.slice(0, tam).sort((a, b) => a - b)],
+    ['🎯 Segunda línea',      ranking.slice(tam, tam * 2).sort((a, b) => a - b)],
+    ['❄️ Fríos por ciclo',    frios.slice(0, tam).sort((a, b) => a - b)],
+    ['⚖️ Mixta (hot+frío)',   mezclar(ranking, frios.slice(0, tam))],
+    ['🎲 Azar puro (control)', alAzar()],
+  ].slice(0, n);
+
+  const f2 = v => String(v).padStart(2, '0');
+  const nombre = esQuiniela ? (estado.sorteos[clave].nombre + ' (palé)') : estado.especiales[clave].nombre;
+  const lineas = estrategias.map(([tit, nums], i) => `${i + 1}. ${tit}\n    <b>${nums.map(f2).join(' - ')}</b>`);
+  return `🎫 <b>${n} JUGADAS — ${nombre}</b>\n<i>(base: ${sorteosVistos} sorteos reales)</i>\n\n` +
+    lineas.join('\n') +
+    `\n\n⚖️ Honestidad de la casa: ante la tómbola las ${n} valen exactamente lo mismo ` +
+    `(el Laboratorio lo certificó) — elige la que te haga sonreír y juega solo lo que puedas perder. 😄`;
+}
 
 // ── 🧪 LABORATORIO DE MÉTODOS ───────────────────────────────────────────────
 // Backtest walk-forward HONESTO de métodos folclóricos + el del Radar sobre
@@ -2582,6 +2666,8 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId, comandoEstado());
     } else if (comando === '/backtesting' || comando === '/backtest') {
       await responderChat(chatId, textoBacktesting(args[0]));
+    } else if (comando === '/jugada') {
+      await responderChat(chatId, generarJugadas(args[0], args[1]));
     } else if (comando === '/codigoq') {
       await responderChat(chatId, textoCodigoQ());
     } else if (comando === '/laboratorio') {
