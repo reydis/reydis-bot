@@ -1647,7 +1647,7 @@ const MESES_ABREV = {
 
 // "jue, 11 jun 2026" -> "2026-06-11"
 function fechaGanamas(texto) {
-  const m = texto.match(/(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?\s+(\d{4})/i);
+  const m = texto.match(/(\d{1,2})\s+(?:de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?,?\s+(\d{4})/i); // acepta 'jue, 11 jun 2026' (ganamas) y '17 de Julio 2026' (yelu)
   if (!m) return null;
   return `${m[3]}-${MESES_ABREV[m[2].toLowerCase()]}-${String(m[1]).padStart(2, '0')}`;
 }
@@ -1788,6 +1788,46 @@ async function ejecutarBackfillGanamas(paginas, guardar) {
   }
 }
 
+
+// ── RESPALDO 3: yelu.do ─────────────────────────────────────────────────────
+// Activado tras la crisis del 17-jul (conectate muerto + enloteria congelado).
+// yelu.do es SSR, auditado contra nuestros propios datos (coincidencia exacta
+// en fechas de control). Reutiliza parsearGanamas (parser lineal blindado).
+// v1: solo las 4 quinielas de un-sorteo-por-día (sin ambigüedad de horario).
+const YELU_FUENTES = {
+  gana_mas: 'lottery/results/gana-mas',
+  nacional: 'lottery/results/loteria-nacional',
+  leidsa:   'leidsa/results/quiniela-pale',
+  loteka:   'loteria-loteka/results/quiniela-loteka',
+};
+
+async function scrapeYelu() {
+  const objetivos = Object.entries(YELU_FUENTES)
+    .filter(([k]) => estado.sorteos[k] && estado.sorteos[k].numeros.length < 3);
+  if (!objetivos.length) return 0;
+  console.log(`📡 [RESPALDO 3] yelu.do — ${objetivos.map(([k]) => k).join(', ')}...`);
+  const hoy = fechaRD();
+  let conteo = 0;
+  for (const [clave, ruta] of objetivos) {
+    try {
+      const res = await axios.get(`https://www.yelu.do/${ruta}`, { headers: HEADERS, timeout: 15000 });
+      const tarjetas = parsearGanamas(res.data, 3, [0, 99]);
+      const nums = tarjetas[hoy];
+      if (nums && nums.length === 3 && !nums.every(n => n === nums[0])) {
+        estado.sorteos[clave].numeros = nums;
+        estado.sorteos[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [yelu] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      }
+    } catch (e) {
+      console.error(`  ⚠️ [yelu] ${clave} ERROR: ${e.response?.status || e.message}`);
+    }
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  console.log(`✅ [RESPALDO 3] yelu.do: ${conteo} sorteos`);
+  return conteo;
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1844,6 +1884,10 @@ async function sincronizar() {
   // Si aún faltan, intentar enloteria.com (SSR, números en el HTML)
   pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 0) await scrapeEnloteria();
+
+  // Si aún faltan, RESPALDO 3: yelu.do (crisis 17-jul: enloteria congelado)
+  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes > 0) await scrapeYelu();
 
   pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 8) await scrapeQuinielasRD();
@@ -2053,7 +2097,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.38-JUGADAS',
+    version: 'v7.39-RESPALDO-YELU',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
