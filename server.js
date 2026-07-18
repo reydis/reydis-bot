@@ -493,7 +493,7 @@ function crearJuegosEspeciales() {
     lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40],  cant:7  },
     quemaito:  { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, // FIX: era Loteka/3 dígitos, es LoteDom/1 número,
     megachance:{ nombre:'Mega Chance',   empresa:'LOTEKA',  hora:'7:55 PM',  tipo:'chance',  numeros:[], estado:'pendiente', rango:[0,99],  cant:5  }, // FIX: 5 de 00-99, no 15 de 1-60,
-    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
+    pega4king: { nombre:'Pega 4 Real',   empresa:'REAL',    hora:'12:55 PM', tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  }, // FIX v7.40: era 'King 7PM' mal etiquetado; es de Lotería REAL (clave interna se mantiene por compatibilidad de histórico)
   };
 }
 
@@ -1828,6 +1828,28 @@ async function scrapeYelu() {
   return conteo;
 }
 
+
+// ── Pega 4 Real vía yelu.do (v7.40) ────────────────────────────────────────
+// enloteria no publica el Pega 4; yelu sí: tabla SSR de fechas + 4 cifras 0-9.
+async function scrapePega4Yelu() {
+  const juego = estado.especiales.pega4king;
+  if (!juego || juego.numeros.length > 0) return 0;
+  try {
+    const res = await axios.get('https://www.yelu.do/loteria-real/results/pega-4-real', { headers: HEADERS, timeout: 15000 });
+    const tarjetas = parsearGanamas(res.data, 4, [0, 9]);
+    const nums = tarjetas[fechaRD()];
+    if (nums && nums.length === 4) {
+      juego.numeros = nums;
+      juego.estado = 'disponible';
+      console.log(`  ✓ [yelu] Pega 4 Real: ${nums.join('-')}`);
+      return 1;
+    }
+  } catch (e) {
+    console.error(`  ⚠️ [yelu] pega4real ERROR: ${e.response?.status || e.message}`);
+  }
+  return 0;
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1902,6 +1924,9 @@ async function sincronizar() {
   // Especiales que leidsa.com no cubrió: enloteria.com (kino, loto, megachance)
   const pendEsp2 = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
   if (pendEsp2 > 0) await scrapeEspecialesEnloteria();
+
+  // Pega 4 Real: fuente propia en yelu (v7.40)
+  await scrapePega4Yelu();
 
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
@@ -2097,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.39-RESPALDO-YELU',
+    version: 'v7.40-PEGA4-JALADERA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2333,6 +2358,9 @@ function backtestLaboratorio(filtroLoteria) {
     paleAyer:   { nombre: 'Pale de ayer (1ro-2do)',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     paleEspejo: { nombre: 'Pale espejo (1ro+espejo)', tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     radarTop2:  { nombre: 'Radar top-2 ponderado',    tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    jala5:      { nombre: 'Jaladera ±5 (1ro+comp)',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    jala45:     { nombre: 'Jaladera equiv +45',       tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    jala50:     { nombre: 'Jaladera atraccion +50',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     codigoQ:    { nombre: 'Codigo Q (1ro ayer +12/+20)', tipo: 'pale', ev: 0, pale: 0, medio: 0 },
     codigoQ7:   { nombre: 'Ventana Q7 (7 pales x dia)',  tipo: 'pale', ev: 0, pale: 0, medio: 0 },
   };
@@ -2396,6 +2424,15 @@ function backtestLaboratorio(filtroLoteria) {
         }
         if (mejor >= 2) met.codigoQ7.pale++;
         if (mejor >= 1) met.codigoQ7.medio++;
+      }
+
+      // Jaladera: la "tabla de compañeros" de las bancas, a juicio
+      for (const [mk, delta] of [['jala5', 5], ['jala45', 45], ['jala50', 50]]) {
+        met[mk].ev++;
+        const jug = [...new Set([ayer[0], (ayer[0] + delta) % 100])];
+        const hits = jug.filter(n => hoy.has(n)).length;
+        if (hits >= 2) met[mk].pale++;
+        if (hits >= 1) met[mk].medio++;
       }
 
       met.radarTop2.ev++;
