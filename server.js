@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.40-PEGA4-JALADERA',
+    version: 'v7.41-TERMINAL',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2361,6 +2361,7 @@ function backtestLaboratorio(filtroLoteria) {
     jala5:      { nombre: 'Jaladera ±5 (1ro+comp)',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     jala45:     { nombre: 'Jaladera equiv +45',       tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
     jala50:     { nombre: 'Jaladera atraccion +50',   tipo: 'pale',  ev: 0, pale: 0, medio: 0 },
+    terminal:   { nombre: 'Terminal del 1ro (folclor)', tipo: 'punto', ev: 0, punto: 0, azar: '27.10%' }, // azar propio: 1-(9/10)^3
     codigoQ:    { nombre: 'Codigo Q (1ro ayer +12/+20)', tipo: 'pale', ev: 0, pale: 0, medio: 0 },
     codigoQ7:   { nombre: 'Ventana Q7 (7 pales x dia)',  tipo: 'pale', ev: 0, pale: 0, medio: 0 },
   };
@@ -2426,6 +2427,13 @@ function backtestLaboratorio(filtroLoteria) {
         if (mejor >= 1) met.codigoQ7.medio++;
       }
 
+      // Terminal: ¿algún número de hoy comparte última cifra con el 1ro de ayer?
+      met.terminal.ev++;
+      {
+        const t = ayer[0] % 10;
+        if ([...hoy].some(n => n % 10 === t)) met.terminal.punto++;
+      }
+
       // Jaladera: la "tabla de compañeros" de las bancas, a juicio
       for (const [mk, delta] of [['jala5', 5], ['jala45', 45], ['jala50', 50]]) {
         met[mk].ev++;
@@ -2457,7 +2465,7 @@ function backtestLaboratorio(filtroLoteria) {
   for (const [k, m] of Object.entries(met)) {
     if (m.tipo === 'punto') {
       resumen[k] = { metodo: m.nombre, evaluaciones: m.ev, aciertos: m.punto,
-        tasa_real: pct(m.punto, m.ev) + '%', azar_espera: '3.00%' };
+        tasa_real: pct(m.punto, m.ev) + '%', azar_espera: m.azar || '3.00%' };
     } else {
       const esQ7 = (k === 'codigoQ7');
       resumen[k] = { metodo: m.nombre, evaluaciones: m.ev,
