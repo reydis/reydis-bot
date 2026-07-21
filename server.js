@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.41-TERMINAL',
+    version: 'v7.42-Q7-CLARO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2631,13 +2631,24 @@ function textoCodigoQ() {
   const activos = palesQ7Activos();
   if (!activos.length) return '🅠 Aún no hay sorteos de Loteka en el histórico para la Ventana Q7.';
   const f2 = n => String(n).padStart(2, '0');
-  const lineas = activos.map((x, i) =>
-    `${i + 1}. <b>${x.pale.map(f2).join('-')}</b>  <i>(nació ${x.nacimiento.slice(5)}, 1ro fue ${f2(x.primero)})</i>`);
-  return `🅠 <b>VENTANA Q7 — Loteka</b> (${activos.length} palés activos)\n\n` +
-    lineas.join('\n') +
-    `\n\n🎫 Jugada del día: los ${activos.length} palés × RD$1 = RD$${activos.length}` +
-    `\n♻️ Mañana entra el palé del sorteo de hoy y se jubila el #1.` +
-    `\n\n⚗️ Estrategia en PRUEBA (1 mes) — auditada en /laboratorio y /backtesting. ` +
+
+  // El palé DE HOY es el que nació del último premio mayor (el más reciente).
+  const hoy = activos[activos.length - 1];
+  // Los demás (del más nuevo al más viejo) siguen "vivos" en la ventana.
+  const resto = activos.slice(0, -1).reverse();
+  const lineasResto = resto.map((x, i) =>
+    `${i + 2}. <b>${x.pale.map(f2).join('-')}</b>  <i>(1ro ${f2(x.primero)}, ${x.nacimiento.slice(5)})</i>`);
+
+  return `🅠 <b>VENTANA Q7 — Loteka</b>\n\n` +
+    `🎯 <b>PALÉ DE HOY: ${hoy.pale.map(f2).join('-')}</b>\n` +
+    `<i>(del último premio mayor de Loteka: ${f2(hoy.primero)})</i>\n\n` +
+    `— — — — —\n` +
+    `<b>Ventana completa (${activos.length} palés vivos):</b>\n` +
+    `1. <b>${hoy.pale.map(f2).join('-')}</b>  <i>(1ro ${f2(hoy.primero)}, ${hoy.nacimiento.slice(5)}) ← HOY</i>\n` +
+    lineasResto.join('\n') +
+    `\n\n🎫 Jugada completa: los ${activos.length} palés × RD$1 = RD$${activos.length}` +
+    `\n♻️ Mañana el 1ro de hoy genera el palé nuevo y se jubila el más viejo.` +
+    `\n\n⚗️ Estrategia en PRUEBA — auditada en /laboratorio. ` +
     `Juega solo lo que puedas permitirte perder.`;
 }
 
