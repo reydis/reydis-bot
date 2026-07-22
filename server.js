@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.42-Q7-CLARO',
+    version: 'v7.43-LAB-FILTRO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2656,6 +2656,46 @@ app.get('/api/codigo-q', (req, res) => {
   res.json({ mensaje: textoCodigoQ().replace(/<[^>]+>/g, '') });
 });
 
+// 🧪 Texto del Laboratorio para el bot, con filtro opcional por lotería.
+// Los métodos folclóricos (repite, espejo, jaladera, terminal, Q) son de
+// QUINIELAS de 3 números — no aplican al Kino/Loto/especiales, que tienen
+// otra mecánica. Si piden uno de esos, se explica en vez de confundir.
+function textoLaboratorio(arg) {
+  const alias = { kino: 'superkino', superkino: 'superkino', loto: 'loto', lotomas: 'lotomas',
+    mega: 'megachance', megachance: 'megachance', pega3: 'pega3mas', quemaito: 'quemaito', pega4: 'pega4king' };
+  const pedido = (arg || '').toLowerCase();
+
+  // ¿Pidió un juego especial? El Laboratorio no lo cubre (aún).
+  if (pedido && (alias[pedido] || pedido.includes('kino') || pedido.includes('loto'))) {
+    return `🧪 <b>LABORATORIO</b>\n\nEl Laboratorio evalúa métodos de <b>quinielas</b> (punto/palé de 3 números): repite, espejo, jaladera, terminal, Código Q.\n\n` +
+      `El <b>${arg}</b> es un juego de otra mecánica (más números por sorteo), así que esos métodos no aplican. ` +
+      `Para el ${arg} usa <b>/jugada ${pedido} 5</b> — te da jugadas con estrategias (caliente, frío, mixta, azar).\n\n` +
+      `⚖️ Recuerda: el Laboratorio ya probó que ningún método le gana al azar de forma sostenida.`;
+  }
+
+  // ¿Filtro por una quiniela concreta? Resolver su clave.
+  let filtro = null;
+  if (pedido) {
+    for (const [k, s] of Object.entries(estado.sorteos)) {
+      if (k === pedido || (s.nombre || '').toLowerCase().includes(pedido)) { filtro = k; break; }
+    }
+    if (!filtro) {
+      return `🧪 No encontré la quiniela "${arg}". Prueba: /laboratorio (todas), o /laboratorio loteka, /laboratorio gana_mas, etc.`;
+    }
+  }
+
+  const lab = backtestLaboratorio(filtro);
+  const titulo = filtro ? (estado.sorteos[filtro].nombre) : 'TODAS las quinielas';
+  const lineas = Object.values(lab.resumen).map(m =>
+    m.aciertos !== undefined
+      ? `• ${m.metodo}: <b>${m.tasa_real}</b> (azar: ${m.azar_espera}) en ${m.evaluaciones} pruebas`
+      : `• ${m.metodo}: ${m.pales_completos} palés (<b>${m.tasa_pale}</b> vs azar ${m.azar_pale}) · medios ${m.tasa_medio}`);
+  return `🧪 <b>LABORATORIO — ${titulo}</b> (${lab.dias_historial} días)\n\n` +
+    lineas.join('\n') +
+    `\n\n⚖️ Walk-forward honesto: cada método probado solo con datos anteriores a cada sorteo.` +
+    (filtro ? '' : `\n💡 Filtra una sola: /laboratorio loteka`);
+}
+
 app.get('/api/laboratorio', (req, res) => {
   try {
     res.json(backtestLaboratorio(req.query.loteria || null));
@@ -2771,14 +2811,7 @@ app.post('/api/telegram-webhook', async (req, res) => {
     } else if (comando === '/codigoq') {
       await responderChat(chatId, textoCodigoQ());
     } else if (comando === '/laboratorio') {
-      const lab = backtestLaboratorio(null);
-      const lineas = Object.values(lab.resumen).map(m =>
-        m.aciertos !== undefined
-          ? `• ${m.metodo}: <b>${m.tasa_real}</b> (azar: ${m.azar_espera}) en ${m.evaluaciones} pruebas`
-          : `• ${m.metodo}: ${m.pales_completos} palés (<b>${m.tasa_pale}</b> vs azar ${m.azar_pale}) · medios ${m.tasa_medio}`);
-      await responderChat(chatId,
-        `🧪 <b>LABORATORIO DE MÉTODOS</b> — ${lab.dias_historial} días\n\n` +
-        lineas.join('\n') + `\n\n⚖️ Walk-forward honesto: cada método probado solo con datos anteriores a cada sorteo.`);
+      await responderChat(chatId, textoLaboratorio(args[0]));
     } else if (comando.startsWith('/')) {
       await responderChat(chatId, 'Comando no reconocido. Usa /start para ver el menú.');
     }
