@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.43-LAB-FILTRO',
+    version: 'v7.44-AUDIT-JALADERA',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2696,6 +2696,71 @@ function textoLaboratorio(arg) {
     (filtro ? '' : `\n💡 Filtra una sola: /laboratorio loteka`);
 }
 
+
+// ── 🔬 AUDITORÍA PROFUNDA: Jaladera +50 ─────────────────────────────────────
+// La única que asomó sobre el azar. Aquí la disecamos con rigor:
+// 1) Desglose lotería por lotería (¿el exceso está repartido o concentrado?)
+// 2) Test binomial aproximado (z-score) para saber si es señal o ruido
+// 3) Chequeo del "medio palé" que es donde apareció el exceso
+function auditarJaladera50() {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const claves = new Set();
+  for (const d of dias) for (const k of Object.keys(d.sorteos || {})) claves.add(k);
+
+  const P_MEDIO = 1 - Math.pow(0.98, 3); // prob de que 1 nº fijo esté en 3 tómbolas ≈ 0.0594
+  const porLot = [];
+  let totEv = 0, totMedio = 0;
+
+  for (const clave of claves) {
+    const serie = [];
+    for (const d of dias) {
+      const s = d.sorteos && d.sorteos[clave];
+      if (s && s.numeros && s.numeros.length >= 3) serie.push(s.numeros.map(Number));
+    }
+    if (serie.length < 5) continue;
+    let ev = 0, medio = 0;
+    for (let i = 1; i < serie.length; i++) {
+      const comp = (serie[i - 1][0] + 50) % 100;
+      ev++;
+      if (serie[i].includes(comp)) medio++;
+    }
+    totEv += ev; totMedio += medio;
+    const tasa = medio / ev;
+    // z-score binomial: (observado - esperado) / sqrt(esp*(1-esp)/n)
+    const z = (tasa - P_MEDIO) / Math.sqrt(P_MEDIO * (1 - P_MEDIO) / ev);
+    porLot.push({
+      loteria: (estado.sorteos[clave] && estado.sorteos[clave].nombre) || clave,
+      evaluaciones: ev, aciertos: medio,
+      tasa: (tasa * 100).toFixed(1) + '%',
+      z_score: z.toFixed(2)
+    });
+  }
+  porLot.sort((a, b) => parseFloat(b.z_score) - parseFloat(a.z_score));
+
+  const tasaGlobal = totMedio / totEv;
+  const zGlobal = (tasaGlobal - P_MEDIO) / Math.sqrt(P_MEDIO * (1 - P_MEDIO) / totEv);
+
+  return {
+    metodo: 'Jaladera atraccion +50 (medio pale: 1er premio de ayer +50 aparece hoy)',
+    azar_esperado: (P_MEDIO * 100).toFixed(2) + '%',
+    global: {
+      evaluaciones: totEv, aciertos: totMedio,
+      tasa_real: (tasaGlobal * 100).toFixed(2) + '%',
+      z_score: zGlobal.toFixed(2),
+      veredicto: Math.abs(zGlobal) < 2 ? 'RUIDO (dentro del azar, |z|<2)'
+        : zGlobal >= 2 ? '⚠️ SEÑAL POSITIVA sostenida (|z|>=2) — investigar'
+        : 'Por debajo del azar'
+    },
+    nota: 'z-score = cuántas desviaciones estándar sobre el azar. |z|<2 = ruido normal. z>=2 = ~97.5% de confianza de que NO es casualidad. z>=3 = casi seguro real. OJO: con muchas loterias, alguna saldra alta por puro azar (comparaciones multiples).',
+    por_loteria: porLot
+  };
+}
+
+app.get('/api/auditar-jaladera', (req, res) => {
+  try { res.json(auditarJaladera50()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/laboratorio', (req, res) => {
   try {
     res.json(backtestLaboratorio(req.query.loteria || null));
@@ -2810,6 +2875,17 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId, generarJugadas(args[0], args[1]));
     } else if (comando === '/codigoq') {
       await responderChat(chatId, textoCodigoQ());
+    } else if (comando === '/jaladera') {
+      const a = auditarJaladera50();
+      const top = a.por_loteria.slice(0, 8).map(l =>
+        `• ${l.loteria}: ${l.tasa} (z=${l.z_score}) en ${l.evaluaciones}`);
+      await responderChat(chatId,
+        `🔬 <b>AUDITORÍA JALADERA +50</b>\n<i>(1er premio de ayer +50, ¿aparece hoy?)</i>\n\n` +
+        `<b>GLOBAL:</b> ${a.global.tasa_real} vs azar ${a.azar_esperado}\n` +
+        `z-score: <b>${a.global.z_score}</b> → ${a.global.veredicto}\n` +
+        `(${a.global.aciertos} aciertos en ${a.global.evaluaciones} pruebas)\n\n` +
+        `<b>Por lotería (mayor z arriba):</b>\n${top.join('\n')}\n\n` +
+        `⚖️ z entre -2 y 2 = ruido normal. Con 20 loterías, que 1 salga alta es esperable por azar puro.`);
     } else if (comando === '/laboratorio') {
       await responderChat(chatId, textoLaboratorio(args[0]));
     } else if (comando.startsWith('/')) {
