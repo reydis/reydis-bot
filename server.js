@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.44-AUDIT-JALADERA',
+    version: 'v7.45-BARBAROLOGO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2364,6 +2364,7 @@ function backtestLaboratorio(filtroLoteria) {
     terminal:   { nombre: 'Terminal del 1ro (folclor)', tipo: 'punto', ev: 0, punto: 0, azar: '27.10%' }, // azar propio: 1-(9/10)^3
     codigoQ:    { nombre: 'Codigo Q (1ro ayer +12/+20)', tipo: 'pale', ev: 0, pale: 0, medio: 0 },
     codigoQ7:   { nombre: 'Ventana Q7 (7 pales x dia)',  tipo: 'pale', ev: 0, pale: 0, medio: 0 },
+    barbarologo:{ nombre: 'Tabla Barbarologo (dia del mes)', tipo: 'punto', ev: 0, punto: 0 },
   };
   const porLoteriaM1 = {};
   const claves = new Set();
@@ -2428,6 +2429,13 @@ function backtestLaboratorio(filtroLoteria) {
       }
 
       // Terminal: ¿algún número de hoy comparte última cifra con el 1ro de ayer?
+      // Barbarólogo: número del día del mes como punto (tabla del almanaque)
+      met.barbarologo.ev++;
+      {
+        const dia = parseInt((serie[i].f || '').slice(-2), 10);
+        if (!isNaN(dia) && hoy.has(dia)) met.barbarologo.punto++;
+      }
+
       met.terminal.ev++;
       {
         const t = ayer[0] % 10;
