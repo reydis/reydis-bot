@@ -2769,6 +2769,87 @@ app.get('/api/auditar-jaladera', (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── 🔗 ANÁLISIS DE SALTOS DE ANGUILA (hipótesis de Ireynold) ────────────────
+// 3 preguntas: ¿un número de Anguila salta a OTRA lotería el mismo día?
+// ¿reaparece al día siguiente (D+1)? ¿a los 2-3 días (D+2, D+3)?
+// Todo con z-score para separar señal de la ilusión de las 4 tómbolas diarias.
+function analizarSaltosAnguila() {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  // Índice: fecha -> { clave -> [nums] }
+  const idx = {};
+  for (const d of dias) {
+    idx[d.fecha] = {};
+    for (const [k, s] of Object.entries(d.sorteos || {})) {
+      if (s && s.numeros && s.numeros.length >= 3) idx[d.fecha][k] = s.numeros.map(Number);
+    }
+  }
+  const fechas = dias.map(d => d.fecha);
+  const clavesAnguila = Object.keys(estado.sorteos).filter(k => (estado.sorteos[k].nombre || '').toLowerCase().includes('anguila'));
+  const otras = Object.keys(estado.sorteos).filter(k => !clavesAnguila.includes(k));
+
+  // Prob de que 1 nº fijo aparezca en un sorteo de 3 de 100 ≈ 0.0297
+  const P1 = 1 - Math.pow(0.97, 3);
+  const z = (obs, ev, p) => ev ? ((obs / ev - p) / Math.sqrt(p * (1 - p) / ev)).toFixed(2) : '0';
+
+  // 1) SALTO ESPACIAL: 1er premio de una Anguila del día -> aparece en OTRA lotería MISMO día
+  let evEsp = 0, hitEsp = 0;
+  for (const f of fechas) {
+    const dia = idx[f]; if (!dia) continue;
+    for (const ka of clavesAnguila) {
+      if (!dia[ka]) continue;
+      const num = dia[ka][0];
+      for (const ko of otras) {
+        if (!dia[ko]) continue;
+        evEsp++;
+        if (dia[ko].includes(num)) hitEsp++;
+      }
+    }
+  }
+
+  // 2,3) SALTO TEMPORAL D+1, D+2, D+3: 1er premio de Anguila (cualquiera del día)
+  //      -> aparece en CUALQUIER lotería N días después
+  const temporal = {};
+  for (const delta of [1, 2, 3]) {
+    let ev = 0, hit = 0;
+    for (let i = 0; i < fechas.length - delta; i++) {
+      const hoy = idx[fechas[i]], fut = idx[fechas[i + delta]];
+      if (!hoy || !fut) continue;
+      const numsAnguila = new Set();
+      for (const ka of clavesAnguila) if (hoy[ka]) numsAnguila.add(hoy[ka][0]);
+      for (const num of numsAnguila) {
+        for (const ko of Object.keys(fut)) {
+          ev++;
+          if (fut[ko].includes(num)) hit++;
+        }
+      }
+    }
+    temporal['D+' + delta] = {
+      evaluaciones: ev, apariciones: hit,
+      tasa: ev ? (100 * hit / ev).toFixed(2) + '%' : '—',
+      z_score: z(hit, ev, P1)
+    };
+  }
+
+  return {
+    nota: 'Hipótesis: ¿los números de Anguila "saltan" a otras loterías o días? P1 azar por sorteo ≈ ' + (P1 * 100).toFixed(2) + '%. z entre -2 y 2 = ruido.',
+    salto_espacial_mismo_dia: {
+      descripcion: '1er premio de una Anguila aparece en OTRA lotería el mismo día',
+      evaluaciones: evEsp, apariciones: hitEsp,
+      tasa: evEsp ? (100 * hitEsp / evEsp).toFixed(2) + '%' : '—',
+      azar: (P1 * 100).toFixed(2) + '%',
+      z_score: z(hitEsp, evEsp, P1)
+    },
+    salto_temporal: temporal,
+    aviso: 'OJO: Anguila tiene 4 sorteos/día — su alto ranking en el tablero es probablemente artefacto de eso, no señal. Este análisis lo verifica con z-score.'
+  };
+}
+
+app.get('/api/anguila', (req, res) => {
+  try { res.json(analizarSaltosAnguila()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/laboratorio', (req, res) => {
   try {
     res.json(backtestLaboratorio(req.query.loteria || null));
@@ -2894,6 +2975,19 @@ app.post('/api/telegram-webhook', async (req, res) => {
         `(${a.global.aciertos} aciertos en ${a.global.evaluaciones} pruebas)\n\n` +
         `<b>Por lotería (mayor z arriba):</b>\n${top.join('\n')}\n\n` +
         `⚖️ z entre -2 y 2 = ruido normal. Con 20 loterías, que 1 salga alta es esperable por azar puro.`);
+    } else if (comando === '/anguila') {
+      const a = analizarSaltosAnguila();
+      const e = a.salto_espacial_mismo_dia;
+      const t = a.salto_temporal;
+      await responderChat(chatId,
+        `🔗 <b>SALTOS DE ANGUILA</b>\n<i>(¿los números saltan a otras loterías/días?)</i>\n\n` +
+        `<b>1) A otra lotería (mismo día):</b>\n` +
+        `   ${e.tasa} vs azar ${e.azar} · z=<b>${e.z_score}</b>\n\n` +
+        `<b>2) Al día siguiente y más:</b>\n` +
+        `   D+1: ${t['D+1'].tasa} · z=<b>${t['D+1'].z_score}</b>\n` +
+        `   D+2: ${t['D+2'].tasa} · z=<b>${t['D+2'].z_score}</b>\n` +
+        `   D+3: ${t['D+3'].tasa} · z=<b>${t['D+3'].z_score}</b>\n\n` +
+        `⚖️ z entre -2 y 2 = ruido normal. El alto ranking de Anguila en el tablero es por sus 4 sorteos/día, no por ser predecible.`);
     } else if (comando === '/laboratorio') {
       await responderChat(chatId, textoLaboratorio(args[0]));
     } else if (comando.startsWith('/')) {
