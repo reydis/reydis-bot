@@ -2122,7 +2122,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.45-BARBAROLOGO',
+    version: 'v7.46-FIX-AZAR',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2715,7 +2715,7 @@ function auditarJaladera50() {
   const claves = new Set();
   for (const d of dias) for (const k of Object.keys(d.sorteos || {})) claves.add(k);
 
-  const P_MEDIO = 1 - Math.pow(0.98, 3); // prob de que 1 nº fijo esté en 3 tómbolas ≈ 0.0594
+  const P_MEDIO = 1 - Math.pow(0.99, 3); // FIX v7.46: 1 nº ESPECÍFICO en 3 tómbolas = 1-(99/100)^3 ≈ 0.0297 (antes usaba 0.98 = 0.0594, inflado al doble)
   const porLot = [];
   let totEv = 0, totMedio = 0;
 
@@ -2788,8 +2788,8 @@ function analizarSaltosAnguila() {
   const clavesAnguila = Object.keys(estado.sorteos).filter(k => (estado.sorteos[k].nombre || '').toLowerCase().includes('anguila'));
   const otras = Object.keys(estado.sorteos).filter(k => !clavesAnguila.includes(k));
 
-  // Prob de que 1 nº fijo aparezca en un sorteo de 3 de 100 ≈ 0.0297
-  const P1 = 1 - Math.pow(0.97, 3);
+  // Prob de que 1 nº ESPECÍFICO aparezca en un sorteo de 3 de 100 = 1-(99/100)^3 ≈ 0.0297
+  const P1 = 1 - Math.pow(0.99, 3); // FIX v7.46: antes usaba 0.97 (=prob de cualquiera de 3), inflaba el azar 3x
   const z = (obs, ev, p) => ev ? ((obs / ev - p) / Math.sqrt(p * (1 - p) / ev)).toFixed(2) : '0';
 
   // 1) SALTO ESPACIAL: 1er premio de una Anguila del día -> aparece en OTRA lotería MISMO día
