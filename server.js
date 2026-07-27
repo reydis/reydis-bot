@@ -1850,6 +1850,77 @@ async function scrapePega4Yelu() {
   return 0;
 }
 
+// ── 🎯 CAZADOR DE ACIERTOS ─────────────────────────────────────────────────
+// Compara las jugadas que los métodos AUTOMÁTICOS generaron (Jaladera +50,
+// Radar top-2, Ventana Q7) contra el resultado REAL de hoy. Avisa SOLO cuando
+// pegan — pero cada aviso carga su marcador de por vida (tasa vs azar) para no
+// caer en el truco de "solo te enseño los premios".
+const yaChequeado = {}; // clave|metodo -> true (se limpia al cambiar de día)
+
+async function cazarAciertos({ enviar = true, marcar = true } = {}) {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const lab = backtestLaboratorio(null).resumen; // denominadores honestos
+  const f2 = n => String(n).padStart(2, '0');
+  const marcador = k => {
+    const m = lab[k]; if (!m) return '';
+    return m.tasa_pale
+      ? ` · lleva ${m.pales_completos} palés (${m.tasa_pale} vs azar ${m.azar_pale})`
+      : ` · lleva ${m.aciertos}/${m.evaluaciones} (${m.tasa_real} vs azar ${m.azar_espera})`;
+  };
+  const avisos = [];
+
+  for (const [clave, s] of Object.entries(estado.sorteos)) {
+    if (!s.numeros || s.numeros.length < 3) continue;      // aún sin resultado
+    const hoy = new Set(s.numeros.map(Number));
+    const salio = s.numeros.map(f2).join('-');
+
+    // serie histórica previa (walk-forward: nunca incluye el día de hoy)
+    const serie = [];
+    for (const d of dias) {
+      const ds = d.sorteos && d.sorteos[clave];
+      if (ds && ds.numeros && ds.numeros.length >= 3) serie.push(ds.numeros.map(Number));
+    }
+    const prev = serie.length ? serie[serie.length - 1] : null;
+
+    // ── Jaladera +50 (el compañero específico del 1ro de ayer) ──
+    if (prev && !yaChequeado[`${clave}|jala50`]) {
+      const comp = (prev[0] + 50) % 100;
+      if (hoy.has(comp))
+        avisos.push(`🎯 <b>Jaladera +50</b> — ${s.nombre}\n     jugó <b>${f2(comp)}</b> · salió ${salio}${marcador('jala50')}`);
+      if (marcar) yaChequeado[`${clave}|jala50`] = true;
+    }
+
+    // ── Radar top-2 ponderado (¡palé completo!) ──
+    if (serie.length >= 2 && !yaChequeado[`${clave}|radar`]) {
+      const pesos = {};
+      serie.forEach((nums, j) => {
+        const w = 0.5 + 0.5 * (j + 1) / serie.length;
+        nums.forEach((n, pos) => pesos[n] = (pesos[n] || 0) + w * (pos === 0 ? 60 : pos === 1 ? 8 : 4));
+      });
+      const top = Object.entries(pesos).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => +x[0]);
+      if ([...new Set(top)].filter(n => hoy.has(n)).length >= 2)
+        avisos.push(`🎯 <b>Radar top-2</b> ¡PALÉ! — ${s.nombre}\n     jugó <b>${top.map(f2).join('-')}</b> · salió ${salio}${marcador('radarTop2')}`);
+      if (marcar) yaChequeado[`${clave}|radar`] = true;
+    }
+  }
+
+  // ── Ventana Q7 (solo Loteka) ──
+  const lot = estado.sorteos.loteka;
+  if (lot?.numeros?.length >= 3 && !yaChequeado['loteka|q7']) {
+    const hoy = new Set(lot.numeros.map(Number));
+    const ganan = palesQ7Activos().filter(a => [...new Set(a.pale)].filter(n => hoy.has(n)).length >= 2);
+    if (ganan.length)
+      avisos.push(`🅠 <b>Ventana Q7</b> ¡PALÉ! — Loteka\n     ${ganan.map(g => `<b>${g.pale.map(f2).join('-')}</b>`).join(' · ')} · salió ${lot.numeros.map(f2).join('-')}${marcador('codigoQ7')}`);
+    if (marcar) yaChequeado['loteka|q7'] = true;
+  }
+
+  if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
+    `🎯 <b>ACIERTOS DE HOY</b> — ${fechaRD()}\n<i>(solo los que pegaron; el marcador es de por vida, para no vender humo)</i>\n\n` +
+    avisos.join('\n\n'));
+
+  return avisos;
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1890,6 +1961,7 @@ async function sincronizar() {
     estado.fecha = hoy;
     // Limpiar notificados del día anterior
     Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+    Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]);
 
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
     guardarEnDisco();
@@ -1936,6 +2008,7 @@ async function sincronizar() {
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
+  await cazarAciertos();
   await chequearEnvioAutomaticoPredicciones();
   } catch(e) {
     console.error('⚠️ Error en sincronizar:', e.message);
@@ -2200,6 +2273,14 @@ app.get('/api/backfill-enloteria', (req, res) => {
 });
 
 app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
+// Fuerza el chequeo de aciertos contra los resultados de HOY (para probar).
+// /api/forzar-aciertos          -> chequea y envía a Telegram si hay aciertos
+// /api/forzar-aciertos?enviar=0 -> solo muestra en pantalla, no manda Telegram
+app.get('/api/forzar-aciertos', async (req, res) => {
+  Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]);
+  const avisos = await cazarAciertos({ enviar: req.query.enviar !== '0' });
+  res.json({ total: avisos.length, avisos: avisos.map(a => a.replace(/<[^>]+>/g, '')) });
+});
 
 // Endpoint de prueba: ver TODO lo que enloteria.com devuelve (mapeado o no)
 // Uso: /api/test-enloteria          → resultados de hoy
@@ -2988,6 +3069,10 @@ app.post('/api/telegram-webhook', async (req, res) => {
         `   D+2: ${t['D+2'].tasa} · z=<b>${t['D+2'].z_score}</b>\n` +
         `   D+3: ${t['D+3'].tasa} · z=<b>${t['D+3'].z_score}</b>\n\n` +
         `⚖️ z entre -2 y 2 = ruido normal. El alto ranking de Anguila en el tablero es por sus 4 sorteos/día, no por ser predecible.`);
+    } else if (comando === '/aciertos') {
+      const avisos = await cazarAciertos({ enviar: false, marcar: false });
+      if (avisos.length) await responderChat(chatId, `🎯 <b>ACIERTOS DE HOY</b>\n\n` + avisos.join('\n\n'));
+      else await responderChat(chatId, '🎯 Hoy ningún método ha pegado todavía. Te aviso solo cuando alguno acierte — el silencio es honesto.');
     } else if (comando === '/laboratorio') {
       await responderChat(chatId, textoLaboratorio(args[0]));
     } else if (comando.startsWith('/')) {
