@@ -2195,7 +2195,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.48-DIAG-HITS',
+    version: 'v7.49-DIAG-CLONES',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2856,6 +2856,45 @@ app.get('/api/auditar-jaladera', (req, res) => {
 // 🔬 Aciertos CRUDOS de la Jaladera +50 + distribución de números.
 // Para VER si los matches son coincidencia o si la data tiene pares +50
 // metidos por algún artefacto. Solo LEE, no modifica nada.
+
+// 🔬 Detecta DÍAS CLONADOS: fechas donde varias loterías comparten la MISMA
+// terna (imposible en la vida real → contaminación de backfill). Es la causa
+// real del z inflado en /jaladera. Solo LEE, no borra nada.
+app.get('/api/diag-clones', (req, res) => {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const clonados = [];
+  let diasRevisados = 0;
+  for (const d of dias) {
+    if (!d.sorteos) continue;
+    diasRevisados++;
+    // Agrupar loterías por su terna (ordenada) ese día
+    const porTerna = {};
+    for (const [k, s] of Object.entries(d.sorteos)) {
+      if (!s || !s.numeros || s.numeros.length < 3) continue;
+      const key = s.numeros.slice(0, 3).map(Number).sort((a, b) => a - b).join('-');
+      (porTerna[key] = porTerna[key] || []).push((estado.sorteos[k] && estado.sorteos[k].nombre) || k);
+    }
+    // ¿Alguna terna la comparten 3+ loterías? (2 podría ser coincidencia rara)
+    for (const [terna, lots] of Object.entries(porTerna)) {
+      if (lots.length >= 3) {
+        clonados.push({ fecha: d.fecha, terna, loterias: lots.length, cuales: lots });
+      }
+    }
+  }
+  clonados.sort((a, b) => b.loterias - a.loterias);
+  const fechasAfectadas = [...new Set(clonados.map(c => c.fecha))].sort();
+  res.json({
+    dias_revisados: diasRevisados,
+    dias_con_clonacion: fechasAfectadas.length,
+    pct_dias_afectados: diasRevisados ? (+(100 * fechasAfectadas.length / diasRevisados).toFixed(1)) + '%' : '0%',
+    nota: fechasAfectadas.length === 0
+      ? 'Sin dias clonados: la causa del z inflado seria otra.'
+      : 'Estos dias tienen la MISMA terna en 3+ loterias (imposible real = contaminacion de backfill). Son la causa del z inflado.',
+    fechas_afectadas: fechasAfectadas,
+    detalle: clonados.slice(0, 40)
+  });
+});
+
 app.get('/api/diag-jaladera-hits', (req, res) => {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const claves = new Set();
