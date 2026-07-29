@@ -72,35 +72,26 @@ async function notificarNuevosSorteos() {
 
   if (nuevos.length === 0) return;
 
-  console.log(`📱 Notificando ${nuevos.length} resultado(s) a Telegram...`);
+  console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje (modo resumen anti-ban)...`);
 
-  // Marcar todos como notificados ANTES de enviar — evita duplicados
+  // Marcar todos como notificados ANTES de enviar para evitar duplicados
   for (const n of nuevos) yaNotificado[n.clave] = true;
 
-  // Agrupar de a 5 por mensaje — menos spam, más legible en el celular
-  const LOTE = 5;
-  for (let i = 0; i < nuevos.length; i += LOTE) {
-    const bloque = nuevos.slice(i, i + LOTE);
-    const lineas = bloque.map(n => {
-      const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
-      const ico = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '🎯';
-      return `${ico} <b>${n.nombre}</b> · <b>${nums}</b> <i>(${n.hora})</i>`;
-    });
-
-    const msg =
-      `🇩🇴 <b>REYDIS RADAR PRO</b> · ${fechaRD()}\n` +
-      `✅ <b>RESULTADOS REALES</b>\n` +
-      `─────────────────────\n` +
-      lineas.join('\n');
-
-    await enviarTelegram(msg);
-    console.log(`  ✅ Bloque ${Math.floor(i/LOTE)+1}: ${bloque.map(n=>n.nombre).join(', ')}`);
-    if (i + LOTE < nuevos.length) await new Promise(r => setTimeout(r, 1500));
-  }
-
-  console.log(`📱 Completado: ${nuevos.length} resultado(s) notificado(s)`);
+  // MODO RESUMEN: un solo mensaje con todos los resultados del lote.
+  // El bot anterior fue baneado por mandar ráfagas de 15+ mensajes —
+  // este patrón (1 mensaje consolidado) es el perfil sano para Telegram.
+  const lineas = nuevos.map(n => {
+    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
+    const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
+    const extra = n.empresa ? ` [${n.empresa}]` : '';
+    return `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora})\n     🔢 <b>${nums}</b>`;
+  });
+  const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n` +
+    `📥 <b>${nuevos.length} resultado(s) nuevo(s):</b>\n\n` +
+    lineas.join('\n\n');
+  await enviarTelegram(msg);
+  console.log(`📱 Completado: ${nuevos.length} resultado(s) en 1 mensaje`);
 }
-
 
 // ── PREDICCIONES por Telegram ─────────────────────────────────────────────────
 // Mismo método que el frontend: peso por posición 60-8-4 para quinielas
@@ -332,6 +323,7 @@ async function chequearEnvioAutomaticoPredicciones() {
   if (hh === 7 && ultimaPrediccionFecha !== estado.fecha) {
     ultimaPrediccionFecha = estado.fecha;
     await enviarPrediccionesTelegram();
+    try { await enviarTelegram(textoCodigoQ()); } catch (e) { console.error('⚠️ Código Q diario:', e.message); }
   }
 }
 
@@ -495,13 +487,13 @@ function crearCuartetas() {
 //       'lotomas' = 6+1 números de 38+1
 function crearJuegosEspeciales() {
   return {
-    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
+    pega3mas:  { nombre:'Pega 3 Más',    empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,50],  cant:3  }, // FIX: es 0-50, no 0-9
     superkino: { nombre:'Super Kino TV', empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,80],  cant:20 },
-    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,38],  cant:6  },
-    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,38],  cant:7  },
-    quemaito:  { nombre:'El Quemaito',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'pega3',   numeros:[], estado:'pendiente', rango:[0,9],   cant:3  },
-    megachance:{ nombre:'Mega Chance',   empresa:'Loteka',  hora:'6:55 PM',  tipo:'kino',    numeros:[], estado:'pendiente', rango:[1,60],  cant:15 },
-    pega4king: { nombre:'Pega 4',        empresa:'King',    hora:'7:00 PM',  tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  },
+    loto:      { nombre:'Loto',          empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'loto',    numeros:[], estado:'pendiente', rango:[1,40],  cant:6  },
+    lotomas:   { nombre:'Loto Más',      empresa:'LEIDSA',  hora:'9:00 PM',  tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40],  cant:7  },
+    quemaito:  { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, // FIX: era Loteka/3 dígitos, es LoteDom/1 número,
+    megachance:{ nombre:'Mega Chance',   empresa:'LOTEKA',  hora:'7:55 PM',  tipo:'chance',  numeros:[], estado:'pendiente', rango:[0,99],  cant:5  }, // FIX: 5 de 00-99, no 15 de 1-60,
+    pega4king: { nombre:'Pega 4 Real',   empresa:'REAL',    hora:'12:55 PM', tipo:'pega4',   numeros:[], estado:'pendiente', rango:[0,9],   cant:4  }, // FIX v7.40: era 'King 7PM' mal etiquetado; es de Lotería REAL (clave interna se mantiene por compatibilidad de histórico)
   };
 }
 
@@ -803,68 +795,94 @@ async function scrapeConectateAPI() {
 //   <div class="game-scores p-2 ball-mode">
 //     <span class="score ">67</span><span class="score ">66</span><span class="score ">37</span>
 //   </div>
-// ── SCRAPER RESPALDO: enloteria.com ──────────────────────────────────────────
-// enloteria.com es Ruby on Rails con HTML estático — los números sí están en el HTML.
-const ENLOTERIA_MAPA = {
-  'la primera': 'laprimera_d', 'lotedom': 'lotedom',
-  'la suerte': 'suerte_m', 'real': 'real_t',
-  'gana más': 'gana_mas', 'gana mas': 'gana_mas',
-  'new york tarde': 'new_york_t', 'florida tarde': 'florida_d',
-  'la suerte 6pm': 'suerte_t2', 'king lottery noche': 'king_n',
-  'loteka': 'loteka', 'la primera noche': 'laprimera_n',
-  'leidsa': 'leidsa', 'nacional noche': 'nacional',
-  'new york noche': 'new_york_n', 'florida noche': 'florida_n',
-  'anguilla 10am': 'anguila_m', 'anguilla 1pm': 'anguila_t',
-  'anguilla 6pm': 'anguila_n', 'anguilla 9pm': 'anguila_nn',
-  'king lottery día': 'king_t', 'king lottery dia': 'king_t',
-};
-
 async function scrapeLotDominicanas() {
-  const pendientes = new Set(
-    Object.entries(estado.sorteos)
-      .filter(([, s]) => s.numeros.length < 3).map(([k]) => k)
+  // loteriasdominicanas.com usa Nuxt.js — los resultados NO están en el HTML,
+  // se cargan vía JS. Sin embargo, Nuxt SSR expone los datos en _payload.json.
+  // Usamos ese endpoint JSON directamente para cada lotería pendiente.
+
+  const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) =>
+    estado.sorteos[k] && estado.sorteos[k].numeros.length < 3
   );
-  if (pendientes.size === 0) return 0;
-  console.log(`📡 [RESPALDO] enloteria.com — ${pendientes.size} loterías pendientes...`);
+  if (pendientesMap.length === 0) return 0;
+
+  console.log(`📡 [RESPALDO] loteriasdominicanas.com _payload.json — ${pendientesMap.length} loterías pendientes...`);
   let conteo = 0;
+
+  // Primero intentar la página principal (tiene todos los sorteos del día)
   try {
-    const res = await axios.get('https://enloteria.com/', {
-      headers: { ...HEADERS, 'Accept': 'text/html,application/xhtml+xml,*/*' },
-      timeout: 15000
+    const payloadUrl = 'https://loteriasdominicanas.com/_payload.json';
+    const res = await axios.get(payloadUrl, {
+      headers: { ...HEADERS, 'Accept': 'application/json' },
+      timeout: 12000
     });
-    const $ = cheerio.load(res.data);
-    // Los resultados aparecen en bloques con h5 (nombre) + números como texto
-    $('h5').each((i, el) => {
-      const h = $(el);
-      const titulo = h.text().trim().toLowerCase().replace(/\s+/g, ' ');
-      const clave = ENLOTERIA_MAPA[titulo];
-      if (!clave || !pendientes.has(clave)) return;
-      const bloque = h.parent();
-      const nums = [];
-      bloque.find('*').each((j, elem) => {
-        if (nums.length >= 3) return false;
-        if ($(elem).children().length > 0) return; // solo nodos hoja
-        const txt = $(elem).text().trim();
-        if (/^\d{1,2}$/.test(txt)) {
-          const n = parseInt(txt, 10);
-          if (!isNaN(n) && n >= 0 && n <= 99) nums.push(n);
-        }
-      });
-      if (nums.length >= 3) {
-        const tres = nums.slice(0, 3);
-        if (!(tres.includes(0) && tres.includes(99))) {
-          estado.sorteos[clave].numeros = tres;
-          estado.sorteos[clave].estado = 'disponible';
-          pendientes.delete(clave);
-          conteo++;
-          console.log(`  ✓ [enloteria] ${estado.sorteos[clave].nombre}: ${tres.join('-')}`);
+
+    // El payload.json de Nuxt es un array dehydratado — buscar scores
+    const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    const rawStr = JSON.stringify(raw);
+
+    // Buscar patrones de scores: arrays de 3 números entre 0-99
+    const matches = [];
+    if (Array.isArray(raw)) {
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        if (Array.isArray(item) && item.length === 3) {
+          const nums = item.map(Number);
+          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) && !(nums[0]===0&&nums[1]===0&&nums[2]===0)) {
+            matches.push({ idx: i, nums });
+          }
         }
       }
-    });
+    }
+
+    if (matches.length > 0) {
+      console.log(`  📊 Encontrados ${matches.length} posibles resultados en payload.json`);
+      // Por ahora logueamos — necesitamos confirmar la estructura
+      matches.slice(0, 5).forEach(m => console.log(`    [${m.idx}] = ${m.nums.join('-')}`));
+    } else {
+      console.log(`  ⚠️  payload.json no tiene resultados en formato esperado`);
+    }
   } catch (e) {
-    console.error(`⚠️ enloteria.com ERROR: ${e.message}`);
+    console.log(`  ⚠️  _payload.json: ${e.message} — intentando páginas individuales`);
   }
-  console.log(`✅ enloteria.com: ${conteo} loterías capturadas`);
+
+  // Fallback: páginas individuales con el payload específico de cada una
+  for (const [path, clave] of pendientesMap.slice(0, 5)) { // límite 5 para no saturar
+    try {
+      const payloadUrl = `https://loteriasdominicanas.com/${path}/_payload.json`;
+      const res = await axios.get(payloadUrl, {
+        headers: { ...HEADERS, 'Accept': 'application/json' },
+        timeout: 10000
+      });
+
+      const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!Array.isArray(raw)) continue;
+
+      // Buscar en el array del payload arrays de 3 números válidos
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        if (Array.isArray(item) && item.length === 3) {
+          const nums = item.map(Number);
+          if (nums.every(n => !isNaN(n) && n >= 0 && n <= 99) &&
+              !(nums.includes(0) && nums.includes(99))) {
+            // Verificar que es un resultado real (aparece después de metadata)
+            if (i > 10) { // los primeros índices son navegación/config
+              estado.sorteos[clave].numeros = nums;
+              estado.sorteos[clave].estado = 'disponible';
+              conteo++;
+              console.log(`  ✓ [payload] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+              break;
+            }
+          }
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 600));
+    } catch (e) {
+      console.log(`  ⚠️  [payload] ${clave}: ${e.message}`);
+    }
+  }
+
+  console.log(`✅ loteriasdominicanas.com: ${conteo}/${pendientesMap.length} capturadas`);
   return conteo;
 }
 
@@ -1113,6 +1131,796 @@ async function scrapeQuinielasRD_DESACTIVADO() {
 // ── Sincronización principal ───────────────────────────────────────────────────
 let sincronizando = false;
 
+// ── SCRAPER RESPALDO 2: enloteria.com ──────────────────────────────────────────
+// Rails con SSR: los números SÍ vienen en el HTML (sin el problema Nuxt de
+// loteriasdominicanas.com). Portada: /resultados-loterias-hoy (también -ayer
+// y -antes-de-ayer para backfill).
+// El parser NO depende de clases CSS: busca enlaces /resultados-{slug},
+// sube al contenedor con fecha en español y extrae los números.
+// Los slugs se identifican con reglas regex (ENLOTERIA_REGLAS) porque los
+// slugs exactos del sitio no están confirmados — usar /api/test-enloteria
+// para ver qué captura y ajustar.
+
+const ENLOTERIA_REGLAS = [
+  // [regex sobre el slug normalizado, clave interna]
+  // (Anguila se maneja aparte en claveEnloteria con token exacto de hora,
+  //  porque /1.*pm/ matcheaba también "12pm" y contaminaba anguila_t)
+  [/primera.*noche/,          'laprimera_n'],
+  [/primera/,                 'laprimera'],
+  [/lotedom/,                 'lotedom'],
+  [/suerte.*(6|18|tarde)/,    'suerte_t2'],
+  [/suerte/,                  'suerte'],
+  [/king.*(noche|7)/,         'king_n'],
+  [/king/,                    'king_t'],
+  [/^(quiniela )?real$/,      'real_t'],   // exacto: NO chance-real ni loto-real
+  [/gana.*mas/,               'gana_mas'],
+  [/(new.*york|nueva.*york).*(noche|10)/, 'new_york_n'],
+  [/(new.*york|nueva.*york)/, 'new_york_t'],
+  [/florida.*(noche|10)/,     'florida_n'],
+  [/florida/,                 'florida_d'],
+  [/^(quiniela )?loteka$/,    'loteka'],   // exacto: NO lotto-loteka
+  [/^(quiniela )?leidsa$/,    'leidsa'],   // exacto: NO otros juegos leidsa
+  [/nacional/,                'nacional'],
+];
+
+// Sorteos horarios de Anguila en enloteria.com → solo mapeamos los 4
+// clásicos que rastrea el sistema. Los demás (8am, 9am, 11am, 12pm,
+// 2pm...) quedan sin mapear a propósito (visibles en /api/test-enloteria).
+const ANGUILA_HORAS = {
+  '10am': 'anguila_m',
+  '1pm':  'anguila_t',
+  '6pm':  'anguila_n',
+  '9pm':  'anguila_nn',
+};
+
+function claveEnloteria(slug) {
+  const s = slug.toLowerCase().replace(/-/g, ' ');
+  // Anguila: extraer token exacto de hora ("1pm" NO matchea "12pm")
+  const ang = s.match(/anguil+a\s+(\d{1,2})\s*(am|pm)/);
+  if (ang) return ANGUILA_HORAS[ang[1] + ang[2]] || null;
+  if (/anguil/.test(s)) return null; // otras variantes anguila: no adivinar
+
+  for (const [re, clave] of ENLOTERIA_REGLAS) {
+    if (re.test(s)) return clave;
+  }
+  return null;
+}
+
+const MESES_ES = {
+  enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06',
+  julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12'
+};
+
+// "Jue 02 de julio, 2026" -> "2026-07-02"
+function fechaEnloteria(texto) {
+  const m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(\d{4})/i);
+  if (!m) return null;
+  const mes = MESES_ES[m[2].toLowerCase()];
+  return mes ? `${m[3]}-${mes}-${String(m[1]).padStart(2,'0')}` : null;
+}
+
+// Parser genérico de la portada de enloteria.com.
+// Devuelve TODAS las tarjetas encontradas (mapeadas o no) para debug.
+function parsearEnloteria(html) {
+  const $ = cheerio.load(html);
+  const tarjetas = [];
+  const vistos = new Set();
+
+  $('a[href*="/resultados-"]').each((_, a) => {
+    const href = $(a).attr('href') || '';
+    const m = href.match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer|-\d{4}-\d{2}-\d{2})?$/);
+    if (!m) return;
+    const slug = m[1];
+    if (slug === 'loterias') return; // enlaces de navegación
+
+    // Subir hasta el contenedor con fecha en español (máx 6 niveles)
+    let $card = $(a).parent();
+    let fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) {
+      fecha = fechaEnloteria($card.text());
+      if (fecha) break;
+      $card = $card.parent();
+    }
+    if (!fecha) return;
+
+    const textoCard = $card.text();
+    if (/Avísame cuando salga/i.test(textoCard)) return; // pendiente
+
+    // Números: nodos de texto que son exactamente 1-2 dígitos
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type !== 'text') return;
+      const t = $(node).text().trim();
+      if (/^\d{1,2}$/.test(t)) {
+        const n = parseInt(t, 10);
+        if (n >= 0 && n <= 99) nums.push(n);
+      }
+    });
+    if (nums.length < 3) return;
+
+    const key = `${slug}|${fecha}`;
+    if (vistos.has(key)) return; // tarjeta repetida en portada
+    vistos.add(key);
+
+    tarjetas.push({ slug, clave: claveEnloteria(slug), fecha, numeros: nums.slice(0, 6) });
+  });
+
+  return tarjetas;
+}
+
+async function scrapeEnloteria() {
+  let conteo = 0;
+  const pendientes = Object.entries(estado.sorteos)
+    .filter(([, s]) => s.numeros.length < 3).length;
+  if (pendientes === 0) return 0;
+
+  console.log(`📡 [RESPALDO 2] enloteria.com — ${pendientes} loterías pendientes...`);
+  try {
+    const res = await axios.get('https://enloteria.com/resultados-loterias-hoy', {
+      headers: HEADERS, timeout: 15000
+    });
+    const tarjetas = parsearEnloteria(res.data);
+    const hoy = fechaRD();
+
+    for (const t of tarjetas) {
+      if (!t.clave || !estado.sorteos[t.clave]) continue;
+      if (estado.sorteos[t.clave].numeros.length >= 3) continue;
+      if (t.fecha !== hoy) continue; // solo resultados de HOY (honestidad)
+
+      const nums = t.numeros.slice(0, 3);
+      // Guard anti-placeholder (como el bug de quinielasrd: 0-99-0)
+      if (nums.every(n => n === nums[0])) {
+        console.log(`  ⏭️  [enloteria] ${t.slug}: patrón sospechoso ${nums.join('-')}`);
+        continue;
+      }
+      estado.sorteos[t.clave].numeros = nums;
+      estado.sorteos[t.clave].estado = 'disponible';
+      conteo++;
+      console.log(`  ✓ [enloteria] ${estado.sorteos[t.clave].nombre}: ${nums.join('-')}`);
+    }
+    console.log(`✅ [RESPALDO 2] enloteria.com: ${conteo} sorteos`);
+    return conteo;
+  } catch (e) {
+    console.error(`⚠️ [RESPALDO 2] enloteria.com ERROR: ${e.message}`);
+    return 0;
+  }
+}
+
+// ── ESPECIALES desde enloteria.com (páginas por juego, SSR) ────────────────────
+// Cada juego tiene su página /resultados-{slug} con la tarjeta de HOY primero
+// y el historial con URLs por fecha (/resultados-{slug}-YYYY-MM-DD).
+// NOTA HONESTIDAD: solo se mapean juegos inequívocos.
+//  - pega3mas: NO existe en enloteria (Leidsa solo tiene quiniela/loto/kino/pool)
+//  - quemaito: ambiguo (enloteria tiene "toca-3" en Loteka y
+//    "el-quemaito-mayor" en LoteDom) — inspeccionar con
+//    /api/test-enloteria?juego=toca-3 antes de mapear.
+const ESPECIALES_ENLOTERIA = {
+  superkino:  'super-kino-tv',
+  loto:       'loto',
+  lotomas:    'loto',        // misma página: Loto + Más (se toman 7 válidos)
+  megachance: 'megachance',
+  pega3mas:   'pega-3-mas',  // slug no confirmado en el menú: si da 404 se ignora
+  pega4king:  'pega-4',      // slug no confirmado: si da 404 se ignora
+  quemaito:   'el-quemaito-mayor', // RESUELTO: LoteDom, 1 número 00-99, 1:55 PM
+};
+
+// Filtro por nombre: en páginas con varias tarjetas evita capturar el juego
+// equivocado (ej. que la quiniela Leidsa se cuele como Pega 3)
+const ESPECIALES_ENLOTERIA_RE = {
+  superkino:  /kino/i,
+  loto:       /loto/i,
+  lotomas:    /loto/i,
+  megachance: /mega\s*chance/i,
+  pega3mas:   /pega\s*3/i,
+  pega4king:  /pega\s*4/i,
+  quemaito:   /quemaito/i,
+};
+
+// Parser de página por juego: NO depende de anclas (la tarjeta de HOY no
+// tiene link a sí misma). Busca cada <h5> del juego y sube hasta el
+// contenedor con UNA sola fecha en español.
+function parsearPaginaJuegoEnloteria(html, nombreRe) {
+  const $ = cheerio.load(html);
+  const tarjetas = [];
+
+  $('h5').each((_, h) => {
+    if (nombreRe && !nombreRe.test($(h).text())) return; // otro juego
+    let $card = $(h).parent();
+    let fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) {
+      fecha = fechaEnloteria($card.text());
+      if (fecha) break;
+      $card = $card.parent();
+    }
+    if (!fecha) return;
+
+    const texto = $card.text();
+    // Si el contenedor tiene más de una fecha, nos pasamos de nivel: descartar
+    const fechas = texto.match(/\d{1,2}\s+de\s+[a-záéíóú]+,?\s+\d{4}/gi) || [];
+    if (fechas.length !== 1) return;
+    if (/Avísame cuando salga/i.test(texto)) return; // pendiente
+
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type !== 'text') return;
+      const t = $(node).text().trim();
+      if (/^\d{1,2}$/.test(t)) nums.push(parseInt(t, 10));
+    });
+    if (nums.length === 0) return;
+
+    tarjetas.push({ fecha, numeros: nums });
+  });
+
+  return tarjetas;
+}
+
+async function scrapeEspecialesEnloteria() {
+  const pendientes = Object.entries(estado.especiales)
+    .filter(([k, e]) => e.numeros.length === 0 && ESPECIALES_ENLOTERIA[k]);
+  if (pendientes.length === 0) return 0;
+
+  console.log(`📡 [RESPALDO 2] enloteria.com especiales — ${pendientes.map(([k]) => k).join(', ')}...`);
+  const hoy = fechaRD();
+  let conteo = 0;
+  const cachePaginas = {}; // loto y lotomas comparten página
+
+  for (const [clave, juego] of pendientes) {
+    const slug = ESPECIALES_ENLOTERIA[clave];
+    try {
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      const cacheKey = slug + '|' + (re ? re.source : '');
+      if (!cachePaginas[cacheKey]) {
+        const res = await axios.get(`https://enloteria.com/resultados-${slug}`, {
+          headers: HEADERS, timeout: 15000
+        });
+        cachePaginas[cacheKey] = parsearPaginaJuegoEnloteria(res.data, re);
+        await new Promise(r => setTimeout(r, 1200)); // pausa entre páginas
+      }
+      const tarjetaHoy = cachePaginas[cacheKey].find(t => t.fecha === hoy);
+      if (!tarjetaHoy) continue; // aún no sale o no publicado: NO inventar
+
+      // Validar contra rango del juego
+      const validos = tarjetaHoy.numeros.filter(n => n >= juego.rango[0] && n <= juego.rango[1]);
+      // Kino/loto exigen números únicos; pega3/pega4 permiten dígitos repetidos
+      const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+      const usar = esDigitos ? validos : [...new Set(validos)];
+
+      if (usar.length >= juego.cant) {
+        juego.numeros = usar.slice(0, juego.cant);
+        juego.estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [enloteria] ${juego.nombre}: ${juego.numeros.join('-')}`);
+      } else {
+        console.log(`  ⏭️  [enloteria] ${juego.nombre}: solo ${usar.length}/${juego.cant} números válidos, descartado`);
+      }
+    } catch (e) {
+      console.error(`  ⚠️ [enloteria] ${clave} ERROR: ${e.message}`);
+    }
+  }
+  console.log(`✅ [RESPALDO 2] enloteria especiales: ${conteo}`);
+  return conteo;
+}
+
+
+// ── BACKFILL histórico desde enloteria.com ─────────────────────────────────
+// Rellena el hueco de la caída de conectate (jun 23 - jul 1).
+// NUNCA pisa datos existentes: solo llena sorteos vacíos.
+let estadoBackfill = { activo: false, inicio: null, log: [], resumen: null };
+
+function logBF(msg) {
+  console.log(`[BACKFILL] ${msg}`);
+  estadoBackfill.log.push(msg);
+  if (estadoBackfill.log.length > 200) estadoBackfill.log.shift();
+}
+
+function listaFechas(desde, hasta) {
+  const fechas = [];
+  let d = new Date(desde + 'T12:00:00Z');
+  const fin = new Date(hasta + 'T12:00:00Z');
+  while (d <= fin && fechas.length < 15) {
+    fechas.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return fechas;
+}
+
+async function ejecutarBackfill(desde, hasta, guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    const fechas = listaFechas(desde, hasta);
+    logBF(`Rango: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} dias) - guardar=${guardar}`);
+
+    // 1) Leer lo que YA existe en Supabase para no pisarlo
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    // 2) Quinielas: pagina por fecha /resultados-loterias-YYYY-MM-DD
+    const quinielasPorDia = {};
+    for (const f of fechas) {
+      quinielasPorDia[f] = {};
+      try {
+        const res = await axios.get(`https://enloteria.com/resultados-loterias-${f}`, { headers: HEADERS, timeout: 15000 });
+        const tarjetas = parsearEnloteria(res.data);
+        let n = 0;
+        for (const t of tarjetas) {
+          if (t.fecha !== f || !t.clave) continue;
+          const nums = t.numeros.slice(0, 3);
+          if (nums.length < 3 || nums.every(x => x === nums[0])) continue;
+          quinielasPorDia[f][t.clave] = nums; n++;
+        }
+        logBF(`${f}: ${n} quinielas`);
+      } catch (e) {
+        logBF(`${f}: AVISO ${e.response?.status || e.message} (pagina por fecha no disponible?)`);
+      }
+      await pausa(1300);
+    }
+
+    // 3) Especiales: una pagina por juego (traen ~10 dias de historial)
+    const slugsMalos = new Set();
+    const especialesPorDia = {};
+    for (const f of fechas) especialesPorDia[f] = {};
+    const plantilla = crearJuegosEspeciales();
+    const cachePag = {};
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego) continue;
+      try {
+        const re = ESPECIALES_ENLOTERIA_RE[clave];
+        const ck = slug + '|' + (re ? re.source : '');
+        if (!cachePag[ck]) {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}`, { headers: HEADERS, timeout: 15000 });
+          cachePag[ck] = parsearPaginaJuegoEnloteria(res.data, re);
+          await pausa(1300);
+        }
+        let n = 0;
+        for (const t of cachePag[ck]) {
+          if (!especialesPorDia[t.fecha]) continue; // fuera de rango
+          const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+          const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+          const usar = esDig ? validos : [...new Set(validos)];
+          if (usar.length >= juego.cant) { especialesPorDia[t.fecha][clave] = usar.slice(0, juego.cant); n++; }
+        }
+        logBF(`especial ${clave} (${slug}): ${n} dias en rango`);
+      } catch (e) {
+        logBF(`especial ${clave} (${slug}): AVISO ${e.response?.status || e.message}`);
+        slugsMalos.add(slug); // landing 404 = el juego no existe en enloteria
+      }
+    }
+
+    // 3b) EXCAVACIÓN PROFUNDA: para fechas viejas que la página de aterrizaje
+    // no cubre (~12 días), enloteria tiene URLs por fecha:
+    // /resultados-{slug}-YYYY-MM-DD — se piden una a una, con pausa.
+    // 404 en una fecha = ese día no hay página (ej. Loto en día sin sorteo):
+    // se salta honestamente, no se inventa nada.
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego || slugsMalos.has(slug)) continue;
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      let nProf = 0, n404 = 0;
+      for (const f of fechas) {
+        if (especialesPorDia[f][clave]) continue; // ya lo tenemos del landing
+        try {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+          const tarjetas = parsearPaginaJuegoEnloteria(res.data, re);
+          const t = tarjetas.find(x => x.fecha === f);
+          if (t) {
+            const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+            const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+            const usar = esDig ? validos : [...new Set(validos)];
+            if (usar.length >= juego.cant) { especialesPorDia[f][clave] = usar.slice(0, juego.cant); nProf++; }
+          }
+        } catch (e) {
+          n404++;
+        }
+        await pausa(1100);
+      }
+      if (nProf > 0 || n404 > 0) logBF(`especial ${clave} EXCAVACION: +${nProf} fechas antiguas (${n404} sin pagina)`);
+    }
+
+    // 4) Fusionar SIN pisar datos + guardar
+    const resumen = [];
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const [clave, nums] of Object.entries(quinielasPorDia[f] || {})) {
+        const s = base.sorteos[clave];
+        if (s && (!s.numeros || s.numeros.length < 3)) { s.numeros = nums; s.estado = 'disponible'; nuevos++; }
+      }
+      for (const [clave, nums] of Object.entries(especialesPorDia[f] || {})) {
+        const j = base.especiales[clave];
+        if (j && (!j.numeros || j.numeros.length === 0)) { j.numeros = nums; j.estado = 'disponible'; nuevos++; }
+      }
+      let guardado = false;
+      if (guardar && nuevos > 0) guardado = await guardarEnSupabase(base);
+      resumen.push({ fecha: f, existia: !!existentes[f], nuevos, guardado });
+      logBF(`${f}: +${nuevos} sorteos nuevos${guardar ? (guardado ? ' -> GUARDADO' : (nuevos > 0 ? ' -> ERROR al guardar' : '')) : ' (simulacion)'}`);
+    }
+    estadoBackfill.resumen = resumen;
+    logBF('LISTO Backfill terminado');
+  } catch (e) {
+    logBF(`ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
+}
+
+
+// ── SEMILLA GANAMAS (datos históricos raspados el 4 jul 2026) ──────────────
+// ganamas.com.do bloquea la IP de Render (403), así que estos datos fueron
+// extraídos externamente y verificados: Cuartetas (4 núm 00-99) y Pega 3 Más
+// (3 núm 00-50), del 23 abr al 11 jun 2026. El sitio está congelado desde el
+// 11 jun, por lo que esta semilla es estable y no necesita actualizarse.
+const GANAMAS_SEED = {"cuarteta_m":{"2026-06-11":[94,30,5,83],"2026-06-10":[42,90,83,87],"2026-06-09":[59,89,94,56],"2026-06-08":[21,91,15,0],"2026-06-07":[39,46,60,30],"2026-06-06":[90,54,96,47],"2026-06-05":[69,32,56,8],"2026-06-04":[62,74,43,8],"2026-06-03":[21,38,99,17],"2026-06-02":[48,52,7,40],"2026-06-01":[24,86,12,93],"2026-05-31":[18,67,7,67],"2026-05-30":[45,93,99,56],"2026-05-29":[34,7,29,61],"2026-05-28":[78,21,71,10],"2026-05-27":[65,64,99,91],"2026-05-26":[62,98,99,87],"2026-05-25":[19,87,65,81],"2026-05-24":[99,66,27,58],"2026-05-23":[9,58,25,38],"2026-05-22":[92,46,87,91],"2026-05-21":[35,35,19,64],"2026-05-20":[86,36,15,33],"2026-05-19":[21,23,54,14],"2026-05-18":[96,17,67,82],"2026-05-17":[35,73,60,26],"2026-05-16":[34,49,11,3],"2026-05-15":[31,25,35,80],"2026-05-14":[12,18,32,56],"2026-05-13":[91,58,5,36],"2026-05-12":[35,42,64,91],"2026-05-11":[76,37,38,29],"2026-05-10":[42,61,20,89],"2026-05-09":[19,80,6,95],"2026-05-08":[70,81,99,84],"2026-05-07":[71,30,18,77],"2026-05-06":[34,39,23,72],"2026-05-05":[47,28,65,59],"2026-05-04":[72,84,29,72],"2026-05-03":[90,34,76,34],"2026-05-02":[63,62,3,48],"2026-05-01":[73,41,86,24],"2026-04-30":[69,75,77,47],"2026-04-29":[67,61,0,54],"2026-04-28":[68,31,10,26],"2026-04-27":[30,70,87,10],"2026-04-26":[73,35,97,43],"2026-04-25":[0,1,23,88]},"cuarteta_md":{"2026-06-11":[67,2,45,66],"2026-06-10":[70,90,18,35],"2026-06-09":[74,89,65,68],"2026-06-08":[11,7,11,84],"2026-06-07":[48,36,78,33],"2026-06-06":[49,83,62,99],"2026-06-05":[85,31,46,73],"2026-06-04":[19,4,93,78],"2026-06-03":[16,79,24,16],"2026-06-02":[74,17,83,82],"2026-06-01":[61,28,77,30],"2026-05-31":[14,56,53,53],"2026-05-30":[68,8,78,60],"2026-05-29":[17,51,51,12],"2026-05-28":[18,95,40,74],"2026-05-27":[3,56,39,52],"2026-05-26":[14,73,80,38],"2026-05-25":[96,64,37,54],"2026-05-24":[78,60,65,12],"2026-05-23":[18,20,81,40],"2026-05-22":[30,98,0,90],"2026-05-21":[67,64,3,33],"2026-05-20":[43,79,74,29],"2026-05-19":[38,72,15,67],"2026-05-18":[86,83,69,87],"2026-05-17":[88,49,98,59],"2026-05-16":[43,10,94,68],"2026-05-15":[13,15,5,51],"2026-05-14":[12,56,70,14],"2026-05-13":[11,94,82,87],"2026-05-12":[68,7,41,75],"2026-05-11":[66,97,40,18],"2026-05-10":[6,4,63,8],"2026-05-09":[68,36,71,92],"2026-05-08":[57,7,78,58],"2026-05-07":[92,64,18,93],"2026-05-06":[70,21,42,96],"2026-05-05":[60,92,49,99],"2026-05-04":[64,64,88,50],"2026-05-03":[49,76,72,36],"2026-05-02":[42,62,34,97],"2026-05-01":[53,14,39,69],"2026-04-30":[97,80,88,64],"2026-04-29":[27,90,18,42],"2026-04-28":[78,42,7,63],"2026-04-27":[75,11,36,66],"2026-04-26":[85,28,92,25],"2026-04-25":[33,7,99,43],"2026-04-24":[58,70,31,44]},"cuarteta_t":{"2026-06-11":[41,5,95,38],"2026-06-10":[93,98,63,75],"2026-06-09":[42,69,72,13],"2026-06-08":[70,43,96,89],"2026-06-07":[29,16,44,84],"2026-06-06":[33,82,0,3],"2026-06-05":[29,9,11,60],"2026-06-04":[43,39,81,99],"2026-06-03":[68,11,56,21],"2026-06-02":[1,60,44,30],"2026-06-01":[44,81,91,7],"2026-05-31":[18,87,0,67],"2026-05-30":[22,0,71,37],"2026-05-29":[4,69,8,39],"2026-05-28":[93,71,54,43],"2026-05-27":[40,48,83,41],"2026-05-26":[15,34,5,26],"2026-05-25":[82,94,75,80],"2026-05-24":[96,29,70,47],"2026-05-23":[62,44,99,90],"2026-05-22":[58,95,86,4],"2026-05-21":[51,68,91,34],"2026-05-20":[79,85,75,82],"2026-05-19":[74,34,58,64],"2026-05-18":[27,72,5,68],"2026-05-17":[99,90,60,80],"2026-05-16":[7,66,15,47],"2026-05-15":[19,9,70,11],"2026-05-14":[67,6,42,78],"2026-05-13":[37,95,0,15],"2026-05-12":[4,87,24,90],"2026-05-11":[29,67,49,41],"2026-05-10":[14,63,46,11],"2026-05-09":[80,33,23,5],"2026-05-08":[73,25,61,44],"2026-05-07":[81,57,50,55],"2026-05-06":[63,79,33,45],"2026-05-05":[38,89,84,61],"2026-05-04":[20,2,71,63],"2026-05-03":[94,94,22,52],"2026-05-02":[67,73,32,58],"2026-05-01":[33,48,38,12],"2026-04-30":[73,37,69,13],"2026-04-29":[83,84,31,93],"2026-04-28":[72,58,26,23],"2026-04-27":[22,94,31,91],"2026-04-26":[6,62,86,95],"2026-04-25":[19,83,44,43]},"cuarteta_n":{"2026-06-11":[59,59,62,30],"2026-06-10":[72,93,72,74],"2026-06-09":[61,16,85,44],"2026-06-08":[99,4,55,61],"2026-06-07":[55,7,4,76],"2026-06-06":[77,55,30,9],"2026-06-05":[39,79,43,83],"2026-06-04":[17,16,79,28],"2026-06-03":[19,7,97,36],"2026-06-02":[81,40,52,86],"2026-06-01":[11,1,21,15],"2026-05-31":[59,73,1,35],"2026-05-30":[36,26,1,7],"2026-05-29":[47,10,28,83],"2026-05-28":[5,63,48,83],"2026-05-27":[30,89,0,73],"2026-05-26":[17,62,66,93],"2026-05-25":[25,13,1,66],"2026-05-24":[86,45,72,76],"2026-05-23":[22,11,95,56],"2026-05-22":[95,6,87,45],"2026-05-21":[62,41,50,32],"2026-05-20":[20,8,44,46],"2026-05-19":[13,6,14,66],"2026-05-18":[93,9,40,95],"2026-05-17":[23,23,74,92],"2026-05-16":[37,4,78,39],"2026-05-15":[28,28,22,65],"2026-05-14":[29,67,32,7],"2026-05-13":[49,89,22,47],"2026-05-12":[18,79,61,53],"2026-05-11":[48,76,56,32],"2026-05-10":[19,90,94,65],"2026-05-09":[69,92,44,27],"2026-05-08":[52,31,72,94],"2026-05-07":[3,18,17,69],"2026-05-06":[4,6,31,25],"2026-05-05":[23,91,59,41],"2026-05-04":[97,85,30,59],"2026-05-03":[98,23,19,28],"2026-05-02":[57,33,53,56],"2026-05-01":[85,14,91,34],"2026-04-30":[67,66,11,43],"2026-04-29":[32,93,17,25],"2026-04-28":[36,35,98,88],"2026-04-27":[92,74,26,10],"2026-04-26":[98,14,46,49],"2026-04-25":[14,40,95,44],"2026-04-24":[37,17,38,46]},"pega3mas":{"2026-06-11":[14,32,8],"2026-06-10":[22,22,4],"2026-06-09":[46,13,38],"2026-06-08":[37,27,31],"2026-06-07":[48,45,16],"2026-06-06":[19,7,26],"2026-06-05":[22,37,40],"2026-06-04":[29,49,29],"2026-06-03":[30,10,3],"2026-06-02":[49,22,31],"2026-06-01":[10,38,16],"2026-05-31":[16,4,13],"2026-05-30":[6,14,38],"2026-05-29":[2,33,46],"2026-05-28":[43,6,30],"2026-05-27":[20,2,36],"2026-05-26":[21,7,15],"2026-05-25":[49,4,6],"2026-05-24":[14,49,0],"2026-05-23":[45,45,22],"2026-05-22":[6,29,47],"2026-05-21":[38,22,15],"2026-05-20":[23,24,38],"2026-05-19":[19,3,38],"2026-05-18":[32,22,41],"2026-05-17":[47,19,17],"2026-05-16":[33,29,42],"2026-05-15":[2,35,42],"2026-05-14":[7,19,42],"2026-05-13":[38,47,33],"2026-05-12":[10,18,12],"2026-05-11":[30,24,50],"2026-05-10":[20,43,32],"2026-05-09":[6,16,13],"2026-05-08":[8,43,1],"2026-05-07":[31,8,50],"2026-05-06":[21,39,41],"2026-05-05":[39,7,33],"2026-05-04":[18,37,1],"2026-05-03":[28,2,45],"2026-05-02":[13,39,43],"2026-05-01":[23,20,4],"2026-04-30":[27,7,19],"2026-04-29":[24,22,3],"2026-04-28":[10,39,36],"2026-04-27":[11,4,4],"2026-04-26":[48,28,0],"2026-04-25":[18,22,25],"2026-04-24":[29,13,41],"2026-04-23":[3,37,33]}};
+
+async function ejecutarBackfillSeed(guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  try {
+    const hoy = fechaRD();
+    const fechasSet = new Set();
+    for (const clave of Object.keys(GANAMAS_SEED)) {
+      for (const f of Object.keys(GANAMAS_SEED[clave])) if (f < hoy) fechasSet.add(f);
+    }
+    const fechas = [...fechasSet].sort();
+    logBF(`SEED: ${fechas.length} fechas (${fechas[0]} a ${fechas[fechas.length-1]}) - guardar=${guardar}`);
+
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length-1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 20000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    let totalNuevos = 0, diasGuardados = 0;
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const clave of Object.keys(GANAMAS_SEED)) {
+        const nums = GANAMAS_SEED[clave][f];
+        if (!nums) continue;
+        const dest = clave === 'pega3mas' ? base.especiales[clave] : base.cuartetas[clave];
+        if (dest && (!dest.numeros || dest.numeros.length === 0)) {
+          dest.numeros = nums;
+          dest.estado = 'disponible';
+          nuevos++;
+        }
+      }
+      if (nuevos > 0) {
+        totalNuevos += nuevos;
+        if (guardar) {
+          const ok = await guardarEnSupabase(base);
+          if (ok) diasGuardados++;
+          await new Promise(r => setTimeout(r, 150));
+        }
+      }
+    }
+    logBF(`RESUMEN SEED: +${totalNuevos} sorteos en ${fechas.length} fechas${guardar ? ` -> ${diasGuardados} dias GUARDADOS` : ' (simulacion)'}`);
+    estadoBackfill.resumen = { fechas: fechas.length, nuevos: totalNuevos, guardados: diasGuardados, modo: guardar ? 'GUARDADO' : 'SIMULACION' };
+    logBF('LISTO Backfill seed terminado');
+  } catch (e) {
+    logBF(`ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
+}
+
+// ── BACKFILL histórico desde ganamas.com.do ────────────────────────────────
+// ganamas.com.do es SSR pero está CONGELADO desde el 11 jun 2026 — no sirve
+// como fuente en vivo, pero tiene ~2 meses de historial real (abr → 11 jun)
+// de las 4 Cuartetas y el Pega 3 Más, juegos que hoy tienen CERO historial.
+// Parser lineal defensivo: recorre los nodos de texto en orden y agrupa
+// "fecha → números" sin depender de clases CSS.
+
+const GANAMAS_JUEGOS = {
+  // clave interna -> { url, destino ('cuartetas'|'especiales'), cant, rango }
+  cuarteta_m:  { slug: 'la-cuarteta-manana',    destino: 'cuartetas',  cant: 4, rango: [0, 99] },
+  cuarteta_md: { slug: 'la-cuarteta-medio-dia', destino: 'cuartetas',  cant: 4, rango: [0, 99] },
+  cuarteta_t:  { slug: 'la-cuarteta-tarde',     destino: 'cuartetas',  cant: 4, rango: [0, 99] },
+  cuarteta_n:  { slug: 'la-cuarteta-noche',     destino: 'cuartetas',  cant: 4, rango: [0, 99] },
+  pega3mas:    { slug: 'pega-3-mas-leidsa',     destino: 'especiales', cant: 3, rango: [0, 50] },
+};
+
+const MESES_ABREV = {
+  ene:'01', feb:'02', mar:'03', abr:'04', may:'05', jun:'06',
+  jul:'07', ago:'08', sep:'09', oct:'10', nov:'11', dic:'12'
+};
+
+// "jue, 11 jun 2026" -> "2026-06-11"
+function fechaGanamas(texto) {
+  const m = texto.match(/(\d{1,2})\s+(?:de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?,?\s+(\d{4})/i); // acepta 'jue, 11 jun 2026' (ganamas) y '17 de Julio 2026' (yelu)
+  if (!m) return null;
+  return `${m[3]}-${MESES_ABREV[m[2].toLowerCase()]}-${String(m[1]).padStart(2, '0')}`;
+}
+
+// Parser lineal: stream de nodos de texto en orden del documento.
+// Una fecha abre una "tarjeta"; los números de 1-2 dígitos que siguen
+// le pertenecen hasta la próxima fecha. Se toman máximo `cant`.
+function parsearGanamas(html, cant, rango) {
+  const $ = cheerio.load(html);
+  const porFecha = {};
+  let fechaActual = null;
+
+  $('body *').addBack().contents().each((_, node) => {
+    if (node.type !== 'text') return;
+    const t = $(node).text().trim();
+    if (!t) return;
+
+    // Ignorar dígitos dentro de enlaces/nav/footer (paginación "2 3 4...8",
+    // menús, etc.) — solo un número de paginación bastaría para completar
+    // con basura una tarjeta incompleta
+    let p = node.parent;
+    let excluido = false;
+    while (p && p.type === 'tag') {
+      const tag = (p.tagName || p.name || '').toLowerCase();
+      if (tag === 'a' || tag === 'nav' || tag === 'header' || tag === 'footer' || tag === 'script' || tag === 'style') { excluido = true; break; }
+      p = p.parent;
+    }
+
+    const f = fechaGanamas(t);
+    if (f) { fechaActual = f; if (!porFecha[f]) porFecha[f] = []; return; }
+    if (excluido) return;
+
+    if (fechaActual && /^\d{1,2}$/.test(t)) {
+      const n = parseInt(t, 10);
+      if (n >= rango[0] && n <= rango[1] && porFecha[fechaActual].length < cant) {
+        porFecha[fechaActual].push(n);
+      }
+    }
+  });
+
+  // Solo tarjetas completas (cant exacto) — sin datos a medias
+  const resultado = {};
+  for (const [f, nums] of Object.entries(porFecha)) {
+    if (nums.length === cant) resultado[f] = nums;
+  }
+  return resultado;
+}
+
+async function ejecutarBackfillGanamas(paginas, guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    logBF(`GANAMAS: hasta ${paginas} paginas por juego - guardar=${guardar}`);
+    const hoy = fechaRD();
+
+    // 1) Raspar cada juego, página por página
+    const datos = {}; // clave -> { fecha: [nums] }
+    for (const [clave, cfg] of Object.entries(GANAMAS_JUEGOS)) {
+      datos[clave] = {};
+      for (let p = 1; p <= paginas; p++) {
+        const url = p === 1
+          ? `https://ganamas.com.do/${cfg.slug}`
+          : `https://ganamas.com.do/${cfg.slug}/pagina/${p}`;
+        try {
+          const res = await axios.get(url, { headers: HEADERS, timeout: 15000 });
+          const tarjetas = parsearGanamas(res.data, cfg.cant, cfg.rango);
+          let n = 0;
+          for (const [f, nums] of Object.entries(tarjetas)) {
+            if (f >= hoy) continue; // solo pasado
+            if (!datos[clave][f]) { datos[clave][f] = nums; n++; }
+          }
+          logBF(`${clave} pag ${p}: +${n} fechas`);
+          if (n === 0 && p > 1) break; // se acabó el historial
+        } catch (e) {
+          logBF(`${clave} pag ${p}: AVISO ${e.response?.status || e.message}`);
+          break; // 404 en página = fin de paginación (o slug malo en pag 1)
+        }
+        await pausa(1300);
+      }
+      logBF(`${clave}: TOTAL ${Object.keys(datos[clave]).length} fechas`);
+    }
+
+    // 2) Consolidar el conjunto de fechas y leer lo existente en Supabase
+    const fechasSet = new Set();
+    for (const clave of Object.keys(datos)) {
+      for (const f of Object.keys(datos[clave])) fechasSet.add(f);
+    }
+    const fechas = [...fechasSet].sort();
+    if (fechas.length === 0) { logBF('Sin datos utilizables'); return; }
+    logBF(`Rango encontrado: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} fechas)`);
+
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 20000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    // 3) Fusionar SIN pisar + guardar
+    let totalNuevos = 0, diasGuardados = 0;
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const [clave, cfg] of Object.entries(GANAMAS_JUEGOS)) {
+        const nums = datos[clave][f];
+        if (!nums) continue;
+        const dest = base[cfg.destino][clave];
+        if (dest && (!dest.numeros || dest.numeros.length === 0)) {
+          dest.numeros = nums;
+          dest.estado = 'disponible';
+          nuevos++;
+        }
+      }
+      if (nuevos > 0) {
+        totalNuevos += nuevos;
+        if (guardar) {
+          const ok = await guardarEnSupabase(base);
+          if (ok) diasGuardados++;
+          await pausa(150);
+        }
+      }
+    }
+    logBF(`RESUMEN: +${totalNuevos} sorteos en ${fechas.length} fechas${guardar ? ` -> ${diasGuardados} dias GUARDADOS` : ' (simulacion)'}`);
+    estadoBackfill.resumen = { fechas: fechas.length, nuevos: totalNuevos, guardados: diasGuardados, modo: guardar ? 'GUARDADO' : 'SIMULACION' };
+    logBF('LISTO Backfill ganamas terminado');
+  } catch (e) {
+    logBF(`ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
+}
+
+
+// ── RESPALDO 3: yelu.do ─────────────────────────────────────────────────────
+// Activado tras la crisis del 17-jul (conectate muerto + enloteria congelado).
+// yelu.do es SSR, auditado contra nuestros propios datos (coincidencia exacta
+// en fechas de control). Reutiliza parsearGanamas (parser lineal blindado).
+// v1: solo las 4 quinielas de un-sorteo-por-día (sin ambigüedad de horario).
+const YELU_FUENTES = {
+  gana_mas: 'lottery/results/gana-mas',
+  nacional: 'lottery/results/loteria-nacional',
+  leidsa:   'leidsa/results/quiniela-pale',
+  loteka:   'loteria-loteka/results/quiniela-loteka',
+};
+
+async function scrapeYelu() {
+  const objetivos = Object.entries(YELU_FUENTES)
+    .filter(([k]) => estado.sorteos[k] && estado.sorteos[k].numeros.length < 3);
+  if (!objetivos.length) return 0;
+  console.log(`📡 [RESPALDO 3] yelu.do — ${objetivos.map(([k]) => k).join(', ')}...`);
+  const hoy = fechaRD();
+  let conteo = 0;
+  for (const [clave, ruta] of objetivos) {
+    try {
+      const res = await axios.get(`https://www.yelu.do/${ruta}`, { headers: HEADERS, timeout: 15000 });
+      const tarjetas = parsearGanamas(res.data, 3, [0, 99]);
+      const nums = tarjetas[hoy];
+      if (nums && nums.length === 3 && !nums.every(n => n === nums[0])) {
+        estado.sorteos[clave].numeros = nums;
+        estado.sorteos[clave].estado = 'disponible';
+        conteo++;
+        console.log(`  ✓ [yelu] ${estado.sorteos[clave].nombre}: ${nums.join('-')}`);
+      }
+    } catch (e) {
+      console.error(`  ⚠️ [yelu] ${clave} ERROR: ${e.response?.status || e.message}`);
+    }
+    await new Promise(r => setTimeout(r, 1200));
+  }
+  console.log(`✅ [RESPALDO 3] yelu.do: ${conteo} sorteos`);
+  return conteo;
+}
+
+
+// ── Pega 4 Real vía yelu.do (v7.40) ────────────────────────────────────────
+// enloteria no publica el Pega 4; yelu sí: tabla SSR de fechas + 4 cifras 0-9.
+async function scrapePega4Yelu() {
+  const juego = estado.especiales.pega4king;
+  if (!juego || juego.numeros.length > 0) return 0;
+  try {
+    const res = await axios.get('https://www.yelu.do/loteria-real/results/pega-4-real', { headers: HEADERS, timeout: 15000 });
+    const tarjetas = parsearGanamas(res.data, 4, [0, 9]);
+    const nums = tarjetas[fechaRD()];
+    if (nums && nums.length === 4) {
+      juego.numeros = nums;
+      juego.estado = 'disponible';
+      console.log(`  ✓ [yelu] Pega 4 Real: ${nums.join('-')}`);
+      return 1;
+    }
+  } catch (e) {
+    console.error(`  ⚠️ [yelu] pega4real ERROR: ${e.response?.status || e.message}`);
+  }
+  return 0;
+}
+
+// ── 🎯 CAZADOR DE ACIERTOS ─────────────────────────────────────────────────
+// Compara las jugadas que los métodos AUTOMÁTICOS generaron (Jaladera +50,
+// Radar top-2, Ventana Q7) contra el resultado REAL de hoy. Avisa SOLO cuando
+// pegan — pero cada aviso carga su marcador de por vida (tasa vs azar) para no
+// caer en el truco de "solo te enseño los premios".
+const yaChequeado = {}; // clave|metodo -> true (se limpia al cambiar de día)
+
+async function cazarAciertos({ enviar = true, marcar = true } = {}) {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const lab = backtestLaboratorio(null).resumen; // denominadores honestos
+  const f2 = n => String(n).padStart(2, '0');
+  const marcador = k => {
+    const m = lab[k]; if (!m) return '';
+    return m.tasa_pale
+      ? ` · lleva ${m.pales_completos} palés (${m.tasa_pale} vs azar ${m.azar_pale})`
+      : ` · lleva ${m.aciertos}/${m.evaluaciones} (${m.tasa_real} vs azar ${m.azar_espera})`;
+  };
+  const avisos = [];
+
+  for (const [clave, s] of Object.entries(estado.sorteos)) {
+    if (!s.numeros || s.numeros.length < 3) continue;      // aún sin resultado
+    const hoy = new Set(s.numeros.map(Number));
+    const salio = s.numeros.map(f2).join('-');
+
+    // serie histórica previa (walk-forward: nunca incluye el día de hoy)
+    const serie = [];
+    for (const d of dias) {
+      const ds = d.sorteos && d.sorteos[clave];
+      if (ds && ds.numeros && ds.numeros.length >= 3) serie.push(ds.numeros.map(Number));
+    }
+    const prev = serie.length ? serie[serie.length - 1] : null;
+
+    // ── Jaladera +50 (el compañero específico del 1ro de ayer) ──
+    if (prev && !yaChequeado[`${clave}|jala50`]) {
+      const comp = (prev[0] + 50) % 100;
+      if (hoy.has(comp))
+        avisos.push(`🎯 <b>Jaladera +50</b> — ${s.nombre}\n     jugó <b>${f2(comp)}</b> · salió ${salio}${marcador('jala50')}`);
+      if (marcar) yaChequeado[`${clave}|jala50`] = true;
+    }
+
+    // ── Radar top-2 ponderado (¡palé completo!) ──
+    if (serie.length >= 2 && !yaChequeado[`${clave}|radar`]) {
+      const pesos = {};
+      serie.forEach((nums, j) => {
+        const w = 0.5 + 0.5 * (j + 1) / serie.length;
+        nums.forEach((n, pos) => pesos[n] = (pesos[n] || 0) + w * (pos === 0 ? 60 : pos === 1 ? 8 : 4));
+      });
+      const top = Object.entries(pesos).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => +x[0]);
+      if ([...new Set(top)].filter(n => hoy.has(n)).length >= 2)
+        avisos.push(`🎯 <b>Radar top-2</b> ¡PALÉ! — ${s.nombre}\n     jugó <b>${top.map(f2).join('-')}</b> · salió ${salio}${marcador('radarTop2')}`);
+      if (marcar) yaChequeado[`${clave}|radar`] = true;
+    }
+  }
+
+  // ── Ventana Q7 (solo Loteka) ──
+  const lot = estado.sorteos.loteka;
+  if (lot?.numeros?.length >= 3 && !yaChequeado['loteka|q7']) {
+    const hoy = new Set(lot.numeros.map(Number));
+    const ganan = palesQ7Activos().filter(a => [...new Set(a.pale)].filter(n => hoy.has(n)).length >= 2);
+    if (ganan.length)
+      avisos.push(`🅠 <b>Ventana Q7</b> ¡PALÉ! — Loteka\n     ${ganan.map(g => `<b>${g.pale.map(f2).join('-')}</b>`).join(' · ')} · salió ${lot.numeros.map(f2).join('-')}${marcador('codigoQ7')}`);
+    if (marcar) yaChequeado['loteka|q7'] = true;
+  }
+
+  if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
+    `🎯 <b>ACIERTOS DE HOY</b> — ${fechaRD()}\n<i>(solo los que pegaron; el marcador es de por vida, para no vender humo)</i>\n\n` +
+    avisos.join('\n\n'));
+
+  return avisos;
+}
+
 async function sincronizar() {
   if (sincronizando) {
     console.log('⏭️  Sync ya en curso, saltando...');
@@ -1153,6 +1961,7 @@ async function sincronizar() {
     estado.fecha = hoy;
     // Limpiar notificados del día anterior
     Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
+    Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]);
 
     console.log(`📅 Nuevo día ${hoy}. Histórico preservado: ${estado.historico.length} días.`);
     guardarEnDisco();
@@ -1166,6 +1975,14 @@ async function sincronizar() {
   let pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 0) await scrapeLotDominicanas();
 
+  // Si aún faltan, intentar enloteria.com (SSR, números en el HTML)
+  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes > 0) await scrapeEnloteria();
+
+  // Si aún faltan, RESPALDO 3: yelu.do (crisis 17-jul: enloteria congelado)
+  pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
+  if (pendientes > 0) await scrapeYelu();
+
   pendientes = Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length;
   if (pendientes > 8) await scrapeQuinielasRD();
 
@@ -1176,6 +1993,13 @@ async function sincronizar() {
   const pendEsp = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
   if (pendEsp > 0) await scrapeLeidsa();
 
+  // Especiales que leidsa.com no cubrió: enloteria.com (kino, loto, megachance)
+  const pendEsp2 = Object.values(estado.especiales).filter(e => e.numeros.length === 0).length;
+  if (pendEsp2 > 0) await scrapeEspecialesEnloteria();
+
+  // Pega 4 Real: fuente propia en yelu (v7.40)
+  await scrapePega4Yelu();
+
   estado.hora_actualizacion = horaRD();
   const disp = Object.values(estado.sorteos).filter(s => s.numeros.length >= 3).length;
   const dispC = Object.values(estado.cuartetas).filter(c => c.numeros.length >= 4).length;
@@ -1184,6 +2008,7 @@ async function sincronizar() {
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
+  await cazarAciertos();
   await chequearEnvioAutomaticoPredicciones();
   } catch(e) {
     console.error('⚠️ Error en sincronizar:', e.message);
@@ -1317,185 +2142,4 @@ app.get('/api/debug2', async (req, res) => {
       const scores = [];
       $(b).find('.game-scores.ball-mode span.score').each((j, s) => scores.push($(s).text().trim()));
       const clave = buscarClave(titulo);
-      const claveCuarteta = buscarClaveCuarteta(titulo);
-      bloques.push({ titulo, clave, claveCuarteta, tieneBallMode, scores });
-    });
-    res.json({ total_bloques: bloques.length, bloques });
-  } catch (e) {
-    res.status(200).json({ error: e.message, code: e.code });
-  }
-});
-
-app.get('/api/debug-db', async (req, res) => {
-  if (!SUPABASE_ACTIVO) {
-    return res.json({ activo: false, mensaje: 'SUPABASE_URL / SUPABASE_KEY no configuradas en Render todavía.' });
-  }
-  const datos = await cargarDeSupabase();
-  if (datos === null) {
-    return res.json({ activo: true, conectado: false, mensaje: 'Variables configuradas pero la conexión falló.' });
-  }
-  res.json({ activo: true, conectado: true, dias_guardados: datos.length, fechas: datos.slice(0, 5).map(d => d.fecha) });
-});
-
-// Ver exactamente lo que manda la API de conectate.com.do para cualquier juego
-// Uso: /api/debug-api?filtro=pega  (filtra por nombre, vacío = todos)
-app.get('/api/debug-api', async (req, res) => {
-  try {
-    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', {
-      headers: { ...HEADERS, 'Accept': 'application/json, text/plain, */*', 'X-Requested-With': 'XMLHttpRequest' },
-      timeout: 10000
-    });
-    const items = r.data?.response?.data || r.data?.data || r.data || [];
-    const filtro = (req.query.filtro || '').toLowerCase();
-    const resultado = items
-      .filter(i => !filtro || (i.game_title || '').toLowerCase().includes(filtro))
-      .map(i => ({
-        nombre: i.game_title,
-        today: i.today,
-        fecha: i.date,
-        score_raw: i.score,
-        score_tipo: Array.isArray(i.score) ? `array[${i.score.length}]` : typeof i.score,
-        mapeado_como: buscarClave(i.game_title || '') || buscarClaveEspecial(i.game_title || '') || '⚠️ sin mapeo'
-      }));
-    res.json({ total_items_api: items.length, filtrados: resultado.length, resultado });
-  } catch(e) {
-    res.status(200).json({
-      error: e.message,
-      status_real: e.response?.status,
-      data_real: e.response?.data,
-      url_usada: 'https://www.conectate.com.do/loterias/api/widget'
-    });
-  }
-});
-
-app.get('/', (req, res) => {
-  res.json({
-    version: 'v7.27-NOTIF-MEJORADA',
-    status: 'ok',
-    persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
-    telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
-    fecha_rd: fechaRD(),
-    hora_rd: horaRD(),
-    sorteos_hoy: Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length,
-    cuartetas_hoy: Object.values(estado.cuartetas).filter(c=>c.numeros.length>=4).length,
-    especiales_hoy: Object.values(estado.especiales).filter(e=>e.numeros.length>0).length,
-    historico_dias: estado.historico.length,
-    endpoints: ['/api/hoy','/api/radar','/api/consultar','/api/estadisticas','/api/historico','/api/debug','/api/debug2','/api/debug-db','/api/test-telegram','/api/predicciones-telegram']
-  });
-});
-
-// Endpoint para probar el bot manualmente
-app.get('/api/test-telegram', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Faltan TELEGRAM_TOKEN / TELEGRAM_CHAT_IDS en Render.' });
-  await enviarTelegram(
-    `✅ <b>REYDIS RADAR PRO</b> — Test de conexión\n\n` +
-    `🤖 Bot conectado correctamente.\n` +
-    `👥 Destinatarios: <b>${TG_CHAT_IDS.length}</b>\n` +
-    `📅 Fecha RD: ${fechaRD()} ${horaRD()}\n` +
-    `📊 Sorteos hoy: ${Object.values(estado.sorteos).filter(s=>s.numeros.length>=3).length}/${Object.keys(estado.sorteos).length}`
-  );
-  res.json({ activo: true, destinatarios: TG_CHAT_IDS.length, mensaje: `¡Mensaje enviado a ${TG_CHAT_IDS.length} destinatario(s)!` });
-});
-
-// Envía las predicciones del día manualmente, sin esperar a las 7 AM
-app.get('/api/predicciones-telegram', async (req, res) => {
-  const resultado = await enviarPrediccionesTelegram();
-  res.json(resultado);
-});
-
-// Prueba completa de notificación de resultado — muestra la respuesta exacta de Telegram
-app.get('/api/test-resultado', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false, mensaje: 'Telegram no configurado' });
-  const resultados = [];
-  for (const chatId of TG_CHAT_IDS) {
-    try {
-      const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n\n` +
-        `✅ <b>Gana Más</b> (2:30 PM) — RESULTADO REAL\n` +
-        `🔢 <b>41 - 58 - 89</b>\n\n` +
-        `<i>Este es un mensaje de prueba para verificar que las notificaciones llegan correctamente.</i>`;
-      const r = await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-        chat_id: chatId, text: msg, parse_mode: 'HTML'
-      }, { timeout: 8000 });
-      resultados.push({ chat_id: chatId, ok: r.data.ok, message_id: r.data.result?.message_id });
-    } catch(e) {
-      resultados.push({ chat_id: chatId, ok: false, error: e.response?.data || e.message });
-    }
-  }
-  res.json({ resultados, chats_configurados: TG_CHAT_IDS });
-});
-
-// Fuerza el envío de notificaciones de TODOS los sorteos que ya tienen
-// resultado hoy — útil si algo falló durante el día
-app.get('/api/forzar-notif', async (req, res) => {
-  if (!TG_ACTIVO) return res.json({ activo: false });
-  // Limpiar yaNotificado para forzar reenvío
-  Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]);
-  await notificarNuevosSorteos();
-  res.json({
-    enviado: true,
-    sorteos_con_resultado: Object.entries(estado.sorteos)
-      .filter(([,s]) => s.numeros.length >= 3)
-      .map(([k,s]) => ({ k, nombre: s.nombre, numeros: s.numeros }))
-  });
-});
-
-// Ver estado actual de yaNotificado (qué loterías ya fueron notificadas hoy)
-app.get('/api/status-notif', (req, res) => {
-  const sorteosConResultado = Object.entries(estado.sorteos)
-    .filter(([,s]) => s.numeros.length >= 3)
-    .map(([k,s]) => ({ clave: k, nombre: s.nombre, numeros: s.numeros, notificado: !!yaNotificado[k] }));
-  res.json({
-    telegram_activo: TG_ACTIVO,
-    chat_ids: TG_CHAT_IDS,
-    ya_notificados: Object.keys(yaNotificado),
-    sorteos_con_resultado: sorteosConResultado,
-    total_capturados: sorteosConResultado.length,
-    total_notificados: sorteosConResultado.filter(s => s.notificado).length
-  });
-});
-
-// ── Protección anti-crash global ──────────────────────────────────────────────
-// Captura errores no manejados para que el servidor NO se caiga. Los loguea
-// en consola sin detener el proceso — así los sorteos siguen capturándose.
-process.on('uncaughtException', (err) => {
-  console.error('⚠️ [uncaughtException]', err.stack || err.message);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('⚠️ [unhandledRejection]', reason?.stack || reason);
-});
-
-app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v7.12-STABLE en puerto ${PORT}`);
-  console.log(`💾 Supabase: ${SUPABASE_ACTIVO ? '✅' : '❌ no configurado'}`);
-  console.log(`📱 Telegram: ${TG_ACTIVO ? `✅ (${TG_CHAT_IDS.length} destinatario(s))` : '❌ no configurado'}`);
-
-  await inicializarPersistenciaRemota();
-
-  if (TG_ACTIVO) {
-    await enviarTelegram(
-      `🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado\n\n` +
-      `📅 ${fechaRD()} ${horaRD()} RD\n` +
-      `💾 Supabase: ${SUPABASE_ACTIVO ? '✅ conectado' : '❌ no configurado'}\n` +
-      `🔄 Sincronizando sorteos...`
-    );
-  }
-
-  await sincronizar();
-
-  // ── Self-ping para evitar que Render duerma el servicio ──────────────────
-  // Render free tier duerme el servidor tras ~15 min sin peticiones HTTP.
-  // Cuando duerme, pierde todos los resultados en memoria y reinicia —
-  // por eso aparecen tantos "Servidor iniciado" en Telegram.
-  // Este ping propio cada 14 minutos mantiene el servidor despierto.
-  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
-  setInterval(async () => {
-    try {
-      await axios.get(`${SELF_URL}/`, { timeout: 5000 });
-      // ping silencioso — solo loguea si falla
-    } catch (e) {
-      console.log(`⚠️ Self-ping falló: ${e.message}`);
-    }
-  }, 14 * 60 * 1000);
-
-  console.log(`🏓 Self-ping activo cada 14 min → ${SELF_URL}`);
-});
+      co
