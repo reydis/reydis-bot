@@ -81,14 +81,14 @@ async function notificarNuevosSorteos() {
   // El bot anterior fue baneado por mandar ráfagas de 15+ mensajes —
   // este patrón (1 mensaje consolidado) es el perfil sano para Telegram.
   const lineas = nuevos.map(n => {
-    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join(' - ');
+    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join('-');
     const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
     const extra = n.empresa ? ` [${n.empresa}]` : '';
-    return `${etiqueta} <b>${n.nombre}</b>${extra} (${n.hora})\n     🔢 <b>${nums}</b>`;
+    return `${etiqueta} <b>${n.nombre}</b>${extra} — <b>${nums}</b> <i>(${n.hora})</i>`;
   });
   const msg = `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n` +
     `📥 <b>${nuevos.length} resultado(s) nuevo(s):</b>\n\n` +
-    lineas.join('\n\n');
+    lineas.join('\n');
   await enviarTelegram(msg);
   console.log(`📱 Completado: ${nuevos.length} resultado(s) en 1 mensaje`);
 }
@@ -2235,7 +2235,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.53-MITAD',
+    version: 'v7.54-COMPACTO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
