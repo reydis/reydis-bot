@@ -2195,7 +2195,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.49-DIAG-CLONES',
+    version: 'v7.50-LIMPIADOR',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -2860,6 +2860,65 @@ app.get('/api/auditar-jaladera', (req, res) => {
 // 🔬 Detecta DÍAS CLONADOS: fechas donde varias loterías comparten la MISMA
 // terna (imposible en la vida real → contaminación de backfill). Es la causa
 // real del z inflado en /jaladera. Solo LEE, no borra nada.
+
+// 🧹 LIMPIADOR de días clonados (contaminación de backfill: misma terna en
+// 3+ loterías el mismo día). DOBLE SEGURO:
+//   • Sin clave  → VISTA PREVIA: solo dice qué borraría, no toca nada.
+//   • Con clave  → BORRA de Supabase y de memoria.
+// Borrar de verdad: /api/limpiar-clones?confirmar=BORRAR-CLONES-REYDIS-2026
+app.get('/api/limpiar-clones', async (req, res) => {
+  const afectadas = [];
+  for (const d of estado.historico) {
+    if (!d.sorteos) continue;
+    const porTerna = {};
+    for (const [k, s] of Object.entries(d.sorteos)) {
+      if (!s || !s.numeros || s.numeros.length < 3) continue;
+      const key = s.numeros.slice(0, 3).map(Number).sort((a, b) => a - b).join('-');
+      (porTerna[key] = porTerna[key] || []).push(k);
+    }
+    if (Object.values(porTerna).some(l => l.length >= 3)) afectadas.push(d.fecha);
+  }
+  const fechas = [...new Set(afectadas)].sort();
+  const CLAVE = 'BORRAR-CLONES-REYDIS-2026';
+  const confirmado = req.query.confirmar === CLAVE;
+
+  if (!confirmado) {
+    return res.json({
+      modo: '👀 VISTA PREVIA — NO se borró nada',
+      dias_a_borrar: fechas.length,
+      fechas,
+      historico_actual: estado.historico.length,
+      historico_despues_de_borrar: estado.historico.length - fechas.length,
+      para_borrar_de_verdad: 'Agrega  ?confirmar=' + CLAVE + '  al final de la URL'
+    });
+  }
+
+  if (!SUPABASE_ACTIVO) return res.json({ error: 'Supabase no configurado; no se puede borrar.' });
+  if (fechas.length === 0) return res.json({ modo: 'EJECUTADO', dias_borrados: 0, mensaje: 'No hay días clonados.' });
+
+  try {
+    await axios.delete(
+      `${SUPABASE_URL}/rest/v1/historico?fecha=in.(${fechas.join(',')})`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 20000 }
+    );
+  } catch (e) {
+    return res.status(500).json({ error: 'Falló el borrado en Supabase: ' + (e.response?.data?.message || e.message) });
+  }
+
+  const antes = estado.historico.length;
+  const setF = new Set(fechas);
+  estado.historico = estado.historico.filter(d => !setF.has(d.fecha));
+
+  res.json({
+    modo: '✅ EJECUTADO',
+    dias_borrados: fechas.length,
+    fechas_borradas: fechas,
+    historico_antes: antes,
+    historico_despues: estado.historico.length,
+    mensaje: 'Días clonados eliminados de Supabase y memoria. Corre /jaladera — el z debe caer cerca de 0.'
+  });
+});
+
 app.get('/api/diag-clones', (req, res) => {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const clonados = [];
