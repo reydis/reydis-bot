@@ -1857,6 +1857,31 @@ async function scrapePega4Yelu() {
 // caer en el truco de "solo te enseño los premios".
 const yaChequeado = {}; // clave|metodo -> true (se limpia al cambiar de día)
 
+// Punto del Radar (número #1 ponderado) con walk-forward, para el marcador honesto.
+function radarPuntoWF(clave) {
+  const dias = [...estado.historico]
+    .filter(h => h.sorteos && h.sorteos[clave] && h.sorteos[clave].numeros && h.sorteos[clave].numeros.length >= 3)
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(h => h.sorteos[clave].numeros.slice(0, 3).map(Number));
+  let ev = 0, ac = 0;
+  for (let i = 2; i < dias.length; i++) {
+    const score = {};
+    for (let j = 0; j < i; j++) {
+      const rec = j + 1; // más reciente pesa más
+      const n = dias[j];
+      if (n[0] !== undefined) score[n[0]] = (score[n[0]] || 0) + 60 * rec;
+      if (n[1] !== undefined) score[n[1]] = (score[n[1]] || 0) + 8 * rec;
+      if (n[2] !== undefined) score[n[2]] = (score[n[2]] || 0) + 4 * rec;
+    }
+    const ent = Object.entries(score).sort((a, b) => b[1] - a[1]);
+    if (!ent.length) continue;
+    const punto = +ent[0][0];
+    ev++;
+    if (dias[i].includes(punto)) ac++;
+  }
+  return { ac, ev, tasa: ev ? (100 * ac / ev) : 0 };
+}
+
 async function cazarAciertos({ enviar = true, marcar = true } = {}) {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const lab = backtestLaboratorio(null).resumen; // denominadores honestos
@@ -1912,6 +1937,21 @@ async function cazarAciertos({ enviar = true, marcar = true } = {}) {
     if (ganan.length)
       avisos.push(`🅠 <b>Ventana Q7</b> ¡PALÉ! — Loteka\n     ${ganan.map(g => `<b>${g.pale.map(f2).join('-')}</b>`).join(' · ')} · salió ${lot.numeros.map(f2).join('-')}${marcador('codigoQ7')}`);
     if (marcar) yaChequeado['loteka|q7'] = true;
+  }
+
+  // ── Radar punto (el número #1 del día) — la predicción estrella ──
+  for (const [clave, s] of Object.entries(estado.sorteos)) {
+    if (!s.numeros || s.numeros.length < 3) continue;
+    if (yaChequeado[`${clave}|punto`]) continue;
+    const pred = calcularPrediccionQuiniela(clave);
+    if (pred && pred.top1 !== undefined) {
+      const hoy = new Set(s.numeros.map(Number));
+      if (hoy.has(pred.top1)) {
+        const wf = radarPuntoWF(clave);
+        avisos.push(`🎯 <b>Radar punto</b> — ${s.nombre}\n     jugó <b>${f2(pred.top1)}</b> · salió ${s.numeros.map(f2).join('-')} · lleva ${wf.ac}/${wf.ev} (${wf.tasa.toFixed(1)}% vs azar 3%)`);
+      }
+      if (marcar) yaChequeado[`${clave}|punto`] = true;
+    }
   }
 
   if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
@@ -2195,7 +2235,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.50-LIMPIADOR',
+    version: 'v7.52-CAZA-PUNTO',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
@@ -3230,7 +3270,7 @@ app.post('/api/telegram-webhook', async (req, res) => {
       await responderChat(chatId,
         `🔬 <b>AUDITORÍA JALADERA +50</b>\n<i>(1er premio de ayer +50, ¿aparece hoy?)</i>\n\n` +
         `<b>GLOBAL:</b> ${a.global.tasa_real} vs azar ${a.azar_esperado}\n` +
-        `z-score: <b>${a.global.z_score}</b> → ${a.global.veredicto}\n` +
+        `z-score: <b>${a.global.z_score}</b> → ${a.global.veredicto.replace(/</g,"&lt;").replace(/>/g,"&gt;")}\n` +
         `(${a.global.aciertos} aciertos en ${a.global.evaluaciones} pruebas)\n\n` +
         `<b>Por lotería (mayor z arriba):</b>\n${top.join('\n')}\n\n` +
         `⚖️ z entre -2 y 2 = ruido normal. Con 20 loterías, que 1 salga alta es esperable por azar puro.`);
