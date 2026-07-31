@@ -23,6 +23,9 @@ const TG_ACTIVO = !!(TG_TOKEN && TG_CHAT_IDS.length);
 // Registro de sorteos ya notificados hoy (clave → true)
 // Se reinicia al cambiar de día junto con estado.sorteos
 const yaNotificado = {};
+// Al reiniciar Render, lo ya notificado por la instancia anterior no debe reenviarse.
+let primeraSyncTrasArranque = true;
+let primerSyncTrasArranque = true; // v7.55: evita reenviar todo tras cada reinicio de Render
 
 async function enviarTelegram(mensaje) {
   if (!TG_ACTIVO) return;
@@ -52,6 +55,9 @@ async function enviarTelegram(mensaje) {
 async function notificarNuevosSorteos() {
   if (!TG_ACTIVO) return;
 
+  const esArranque = primeraSyncTrasArranque;
+  primeraSyncTrasArranque = false;
+
   // Recopilar todos los resultados nuevos (no notificados aún)
   const nuevos = [];
   for (const [k, s] of Object.entries(estado.sorteos)) {
@@ -70,7 +76,24 @@ async function notificarNuevosSorteos() {
     }
   }
 
+  // 🔇 Anti-repetición tras reinicio: en el PRIMER sync después de un arranque,
+  // marcamos lo que ya había como "visto" SIN reenviarlo (ya se notificó antes
+  // del reinicio). El flag se apaga en sincronizar() tras cazarAciertos.
+  if (primerSyncTrasArranque) {
+    for (const n of nuevos) yaNotificado[n.clave] = true;
+    if (nuevos.length) console.log(`🔇 Arranque: ${nuevos.length} resultado(s) marcados como vistos (no se reenvían)`);
+    return;
+  }
+
   if (nuevos.length === 0) return;
+
+  // Reinicio de Render: estos resultados ya los mandó la instancia anterior.
+  // Los marcamos como notificados SIN reenviar (mata la repetición del lote).
+  if (esArranque) {
+    for (const n of nuevos) yaNotificado[n.clave] = true;
+    console.log(`🔕 Arranque: ${nuevos.length} resultado(s) ya conocidos, marcados sin reenviar`);
+    return;
+  }
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje (modo resumen anti-ban)...`);
 
@@ -1882,6 +1905,21 @@ function radarPuntoWF(clave) {
   return { ac, ev, tasa: ev ? (100 * ac / ev) : 0 };
 }
 
+// Jaladera +50: tasa de que el compañero (1 número) aparezca hoy. Walk-forward honesto.
+function jaladeraWF(clave) {
+  const dias = [...estado.historico]
+    .filter(h => h.sorteos && h.sorteos[clave] && h.sorteos[clave].numeros && h.sorteos[clave].numeros.length >= 3)
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(h => h.sorteos[clave].numeros.slice(0, 3).map(Number));
+  let ev = 0, ac = 0;
+  for (let i = 1; i < dias.length; i++) {
+    const comp = (dias[i - 1][0] + 50) % 100;
+    ev++;
+    if (dias[i].includes(comp)) ac++;
+  }
+  return { ac, ev, tasa: ev ? (100 * ac / ev) : 0 };
+}
+
 async function cazarAciertos({ enviar = true, marcar = true } = {}) {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const lab = backtestLaboratorio(null).resumen; // denominadores honestos
@@ -1910,8 +1948,10 @@ async function cazarAciertos({ enviar = true, marcar = true } = {}) {
     // ── Jaladera +50 (el compañero específico del 1ro de ayer) ──
     if (prev && !yaChequeado[`${clave}|jala50`]) {
       const comp = (prev[0] + 50) % 100;
-      if (hoy.has(comp))
-        avisos.push(`🎯 <b>Jaladera +50</b> — ${s.nombre}\n     jugó <b>${f2(comp)}</b> · salió ${salio}${marcador('jala50')}`);
+      if (hoy.has(comp)) {
+        const wfj = jaladeraWF(clave);
+        avisos.push(`🎯 <b>Jaladera +50</b> — ${s.nombre}\n     jugó <b>${f2(comp)}</b> (1 número) · salió ${salio} · lleva ${wfj.ac}/${wfj.ev} (${wfj.tasa.toFixed(1)}% vs azar 3%)`);
+      }
       if (marcar) yaChequeado[`${clave}|jala50`] = true;
     }
 
@@ -2048,7 +2088,8 @@ async function sincronizar() {
   guardarEnDisco();
   await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   await notificarNuevosSorteos();
-  await cazarAciertos();
+  await cazarAciertos({ enviar: !primerSyncTrasArranque });
+  primerSyncTrasArranque = false;
   await chequearEnvioAutomaticoPredicciones();
   } catch(e) {
     console.error('⚠️ Error en sincronizar:', e.message);
@@ -2235,7 +2276,7 @@ app.get('/api/debug-api', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({
-    version: 'v7.54-COMPACTO',
+    version: 'v7.56-FIX-PALE',
     status: 'ok',
     persistencia: SUPABASE_ACTIVO ? 'supabase (permanente)' : 'solo disco local',
     telegram: TG_ACTIVO ? `activo ✅ (${TG_CHAT_IDS.length} destinatario(s))` : 'no configurado',
