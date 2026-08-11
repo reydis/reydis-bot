@@ -524,7 +524,7 @@ function crearSorteos() {
   return {
     anguila_m:   { nombre:'Anguila Mañana',   hora:'10:00 AM', numeros:[], estado:'pendiente' },
     laprimera:   { nombre:'La Primera Día',   hora:'12:00 PM', numeros:[], estado:'pendiente' },
-    lotedom:     { nombre:'LoteDom',           hora:'12:00 PM', numeros:[], estado:'pendiente' },
+    lotedom:     { nombre:'LoteDom',          hora:'12:00 PM', numeros:[], estado:'pendiente' },
     suerte:      { nombre:'La Suerte 12:30',  hora:'12:30 PM', numeros:[], estado:'pendiente' },
     king_t:      { nombre:'King Tarde',        hora:'12:30 PM', numeros:[], estado:'pendiente' },
     real_t:      { nombre:'Lotería Real',      hora:'1:00 PM',  numeros:[], estado:'pendiente' },
@@ -1862,20 +1862,35 @@ async function scrapeYelu() {
 }
 
 
-// ── Pega 4 Real vía yelu.do (v7.40) ────────────────────────────────────────
-// enloteria no publica el Pega 4; yelu sí: tabla SSR de fechas + 4 cifras 0-9.
+// ── Pega 4 Real vía yelu.do (Scraper Directo) ──────────────────────────────
 async function scrapePega4Yelu() {
   const juego = estado.especiales.pega4king;
   if (!juego || juego.numeros.length > 0) return 0;
+  
   try {
-    const res = await axios.get('https://www.yelu.do/loteria-real/results/pega-4-real', { headers: HEADERS, timeout: 15000 });
-    const tarjetas = parsearGanamas(res.data, 4, [0, 9]);
-    const nums = tarjetas[fechaRD()];
-    if (nums && nums.length === 4) {
+    const res = await axios.get('https://www.yelu.do/loteria-real/results/pega-4-real', { 
+      headers: HEADERS, 
+      timeout: 15000 
+    });
+    const $ = cheerio.load(res.data);
+    const nums = [];
+
+    // Busca los dígitos (0-9) en las clases de esferas o scores de la página
+    $('.score, .ball, .numero, .result-number').each((_, el) => {
+      if (nums.length >= 4) return false;
+      const txt = $(el).text().trim();
+      if (/^\d{1}$/.test(txt)) {
+        nums.push(parseInt(txt, 10));
+      }
+    });
+
+    if (nums.length === 4) {
       juego.numeros = nums;
       juego.estado = 'disponible';
-      console.log(`  ✓ [yelu] Pega 4 Real: ${nums.join('-')}`);
+      console.log(`  ✓ [yelu direct] Pega 4 Real: ${nums.join('-')}`);
       return 1;
+    } else {
+      console.log(`  ⏭️  [yelu direct] Pega 4 Real: se encontraron ${nums.length}/4 dígitos`);
     }
   } catch (e) {
     console.error(`  ⚠️ [yelu] pega4real ERROR: ${e.response?.status || e.message}`);
