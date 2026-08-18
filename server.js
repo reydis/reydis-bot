@@ -46,7 +46,7 @@ async function notificarNuevosSorteos() {
   if (nuevos.length === 0) return;
 
   for (const n of nuevos) yaNotificado[n.clave] = true;
-  if (primerSyncTrasArranque || esArranque) return; // No hacer spam al encender
+  if (primerSyncTrasArranque || esArranque) return; 
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje...`);
   const lineas = nuevos.map(n => {
@@ -331,6 +331,206 @@ async function scrapeCuartetaLotDominicanas() {
   return conteo;
 }
 
+const ESPECIALES_ENLOTERIA = { superkino: 'super-kino-tv', loto: 'loto', lotomas: 'loto', megachance: 'megachance', pega3mas: 'pega-3-mas', pega4king: 'pega-4', quemaito: 'el-quemaito-mayor' };
+const ESPECIALES_ENLOTERIA_RE = { superkino: /kino/i, loto: /loto/i, lotomas: /loto/i, megachance: /mega\s*chance/i, pega3mas: /pega\s*3/i, pega4king: /pega\s*4/i, quemaito: /quemaito/i };
+
+function parsearPaginaJuegoEnloteria(html, nombreRe) {
+  const $ = cheerio.load(html); const tarjetas = [];
+  $('h5').each((_, h) => {
+    if (nombreRe && !nombreRe.test($(h).text())) return;
+    let $card = $(h).parent(), fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) { fecha = fechaEnloteria($card.text()); if (fecha) break; $card = $card.parent(); }
+    if (!fecha || /Avísame cuando salga/i.test($card.text())) return;
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type === 'text' && /^\d{1,2}$/.test($(node).text().trim())) nums.push(parseInt($(node).text().trim(), 10));
+    });
+    if (nums.length > 0) tarjetas.push({ fecha, numeros: nums });
+  });
+  return tarjetas;
+}
+
+async function scrapeLeidsa() {
+  try {
+    const res = await axios.get('https://www.leidsa.com/', { headers: HEADERS, timeout: 12000 });
+    const $ = cheerio.load(res.data);
+    let conteo = 0;
+    $('[class*="result"], [class*="number"], [class*="kino"], [class*="pega"], [class*="loto"]').each((i, el) => {
+      const texto = $(el).text().trim();
+      const nums = texto.match(/\d+/g);
+      if (!nums || nums.length === 0) return;
+      const textoNorm = texto.toLowerCase();
+      let clave = null;
+      if (textoNorm.includes('pega 3')) clave = 'pega3mas'; else if (textoNorm.includes('super kino')) clave = 'superkino'; else if (textoNorm.includes('loto más')) clave = 'lotomas'; else if (textoNorm.includes('loto')) clave = 'loto';
+      if (clave && estado.especiales[clave] && estado.especiales[clave].numeros.length === 0) {
+        const juego = estado.especiales[clave];
+        const validos = nums.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+        if (validos.length >= juego.cant) { juego.numeros = validos.slice(0, juego.cant); juego.estado = 'disponible'; conteo++; }
+      }
+    });
+    return conteo;
+  } catch (e) { return 0; }
+}
+
+async function scrapePega4Yelu() {
+  const juego = estado.especiales.pega4king;
+  if (!juego || juego.numeros.length > 0) return 0;
+  try {
+    const res = await axios.get('https://www.yelu.do/loteria-real/results/pega-4-real', { headers: HEADERS, timeout: 15000 });
+    const $ = cheerio.load(res.data);
+    const nums = [];
+    $('.score, .ball, .numero, .result-number').each((_, el) => {
+      if (nums.length >= 4) return false;
+      const txt = $(el).text().trim();
+      if (/^\d{1}$/.test(txt)) nums.push(parseInt(txt, 10));
+    });
+    if (nums.length === 4) { juego.numeros = nums; juego.estado = 'disponible'; return 1; }
+  } catch (e) { }
+  return 0;
+}
+
+// ── MÁQUINA DEL TIEMPO (BACKFILL RESTAURADO) ───────────────────────────────
+let estadoBackfill = { activo: false, inicio: null, log: [], resumen: null };
+
+function logBF(msg) {
+  console.log(`[BACKFILL] ${msg}`);
+  estadoBackfill.log.push(msg);
+  if (estadoBackfill.log.length > 200) estadoBackfill.log.shift();
+}
+
+function listaFechas(desde, hasta) {
+  const fechas = [];
+  let d = new Date(desde + 'T12:00:00Z');
+  const fin = new Date(hasta + 'T12:00:00Z');
+  while (d <= fin && fechas.length < 15) {
+    fechas.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return fechas;
+}
+
+async function ejecutarBackfill(desde, hasta, guardar) {
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    const fechas = listaFechas(desde, hasta);
+    logBF(`Rango: ${fechas[0]} a ${fechas[fechas.length - 1]} (${fechas.length} dias) - guardar=${guardar}`);
+
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(
+          `${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 }
+        );
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} dias ya existen en el rango`);
+      } catch (e) { logBF(`AVISO no pude leer Supabase: ${e.message}`); }
+    }
+
+    const quinielasPorDia = {};
+    for (const f of fechas) {
+      quinielasPorDia[f] = {};
+      try {
+        const res = await axios.get(`https://enloteria.com/resultados-loterias-${f}`, { headers: HEADERS, timeout: 15000 });
+        const tarjetas = parsearEnloteria(res.data);
+        let n = 0;
+        for (const t of tarjetas) {
+          if (t.fecha !== f || !t.clave) continue;
+          const nums = t.numeros.slice(0, 3);
+          if (nums.length < 3 || nums.every(x => x === nums[0])) continue;
+          quinielasPorDia[f][t.clave] = nums; n++;
+        }
+        logBF(`${f}: ${n} quinielas encontradas`);
+      } catch (e) {
+        logBF(`${f}: AVISO ${e.message}`);
+      }
+      await pausa(1300);
+    }
+
+    const slugsMalos = new Set();
+    const especialesPorDia = {};
+    for (const f of fechas) especialesPorDia[f] = {};
+    const plantilla = crearJuegosEspeciales();
+    const cachePag = {};
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego) continue;
+      try {
+        const re = ESPECIALES_ENLOTERIA_RE[clave];
+        const ck = slug + '|' + (re ? re.source : '');
+        if (!cachePag[ck]) {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}`, { headers: HEADERS, timeout: 15000 });
+          cachePag[ck] = parsearPaginaJuegoEnloteria(res.data, re);
+          await pausa(1300);
+        }
+        let n = 0;
+        for (const t of cachePag[ck]) {
+          if (!especialesPorDia[t.fecha]) continue; 
+          const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+          const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+          const usar = esDig ? validos : [...new Set(validos)];
+          if (usar.length >= juego.cant) { especialesPorDia[t.fecha][clave] = usar.slice(0, juego.cant); n++; }
+        }
+        logBF(`Especial ${clave} (${slug}): ${n} dias en rango (portada)`);
+      } catch (e) {
+        logBF(`Especial ${clave} (${slug}): AVISO ${e.message}`);
+        slugsMalos.add(slug); 
+      }
+    }
+
+    for (const [clave, slug] of Object.entries(ESPECIALES_ENLOTERIA)) {
+      const juego = plantilla[clave];
+      if (!juego || slugsMalos.has(slug)) continue;
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      let nProf = 0, n404 = 0;
+      for (const f of fechas) {
+        if (especialesPorDia[f][clave]) continue; 
+        try {
+          const res = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+          const tarjetas = parsearPaginaJuegoEnloteria(res.data, re);
+          const t = tarjetas.find(x => x.fecha === f);
+          if (t) {
+            const validos = t.numeros.filter(x => x >= juego.rango[0] && x <= juego.rango[1]);
+            const esDig = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+            const usar = esDig ? validos : [...new Set(validos)];
+            if (usar.length >= juego.cant) { especialesPorDia[f][clave] = usar.slice(0, juego.cant); nProf++; }
+          }
+        } catch (e) { n404++; }
+        await pausa(1100);
+      }
+      if (nProf > 0 || n404 > 0) logBF(`Especial ${clave} EXCAVACION: +${nProf} fechas antiguas rescatadas`);
+    }
+
+    const resumen = [];
+    for (const f of fechas) {
+      const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let nuevos = 0;
+      for (const [clave, nums] of Object.entries(quinielasPorDia[f] || {})) {
+        const s = base.sorteos[clave];
+        if (s && (!s.numeros || s.numeros.length < 3)) { s.numeros = nums; s.estado = 'disponible'; nuevos++; }
+      }
+      for (const [clave, nums] of Object.entries(especialesPorDia[f] || {})) {
+        const j = base.especiales[clave];
+        if (j && (!j.numeros || j.numeros.length === 0)) { j.numeros = nums; j.estado = 'disponible'; nuevos++; }
+      }
+      let guardado = false;
+      if (guardar && nuevos > 0) guardado = await guardarEnSupabase(base);
+      resumen.push({ fecha: f, existia: !!existentes[f], nuevos, guardado });
+      logBF(`${f}: +${nuevos} sorteos nuevos recuperados ${guardar ? (guardado ? '-> GUARDADO OK' : '-> ERROR GUARDANDO') : '(Simulacion)'}`);
+    }
+    estadoBackfill.resumen = resumen;
+    logBF('✅ Backfill terminado con éxito.');
+  } catch (e) {
+    logBF(`❌ ERROR GENERAL: ${e.message}`);
+  } finally {
+    estadoBackfill.activo = false;
+  }
+}
+
 // ── 🎯 CAZADOR DE ACIERTOS ──────────────────────────────────────────────────
 function radarPuntoWF(clave) {
   const dias = [...estado.historico].filter(h => h.sorteos && h.sorteos[clave] && h.sorteos[clave].numeros && h.sorteos[clave].numeros.length >= 3).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).map(h => h.sorteos[clave].numeros.slice(0, 3).map(Number));
@@ -380,7 +580,6 @@ async function cazarAciertos({ enviar = true } = {}) {
     }
 
     if (!yaChequeado[`${clave}|punto`]) {
-      // Logic for punto prediction inside cazarAciertos directly
       if (serie.length >= 2) {
         const pesosP = {};
         serie.forEach((nums, j) => {
@@ -457,7 +656,18 @@ app.get('/api/debug-db', async (req, res) => {
   if (datos === null) return res.json({ activo: true, conectado: false, mensaje: 'Conexión a Supabase falló.' });
   res.json({ activo: true, conectado: true, dias_guardados: datos.length, ultimas_fechas: datos.slice(0, 5).map(d => d.fecha) });
 });
-app.get('/', (req, res) => res.json({ version: 'v8.3-URGENT-FIX', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.4-BACKFILL-RESTORED', status: 'ok', fecha_rd: fechaRD() }));
+
+// ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
+app.get('/api/backfill-enloteria', (req, res) => {
+  const { desde, hasta } = req.query;
+  if (!desde || !hasta) return res.status(400).json({ error: 'Faltan desde/hasta. Ejemplo: ?desde=2026-08-05&hasta=2026-08-17' });
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const guardar = req.query.guardar === '1';
+  ejecutarBackfill(desde, hasta, guardar);
+  res.json({ iniciado: true, desde, hasta, modo: guardar ? 'GUARDAR EN SUPABASE' : 'SIMULACION' });
+});
+app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
 
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
@@ -482,7 +692,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.3-URGENT-FIX en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v8.4-BACKFILL-RESTORED en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
