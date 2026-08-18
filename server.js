@@ -324,7 +324,7 @@ function buscarClaveCuarteta(texto) { const t = texto.toLowerCase().trim(); for 
 
 const HEADERS = { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html,application/json' };
 
-// ── SCRAPERS ─────────────────────────────────────────────────────────────────
+// ── SCRAPERS Y RESPALDOS (RESTAURADOS Y ROBUSTOS) ────────────────────────────
 async function scrapeConectateAPI() {
   try {
     const res = await axios.get('https://www.conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
@@ -380,7 +380,7 @@ async function scrapeLotDominicanas() {
   const pendientesMap = LOTS_SCRAPER_MAP.filter(([, k]) => estado.sorteos[k] && estado.sorteos[k].numeros.length < 3);
   if (pendientesMap.length === 0) return 0;
   let conteo = 0;
-  for (const [path, clave] of pendientesMap.slice(0, 5)) {
+  for (const [path, clave] of pendientesMap) {
     try {
       const res = await axios.get(`https://loteriasdominicanas.com/${path}/_payload.json`, { headers: HEADERS, timeout: 10000 });
       const raw = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
@@ -392,6 +392,161 @@ async function scrapeLotDominicanas() {
             estado.sorteos[clave].numeros = nums; estado.sorteos[clave].estado = 'disponible'; conteo++; break;
           }
         }
+      }
+    } catch (e) {}
+  }
+  return conteo;
+}
+
+// ── RESPALDO 2: enloteria.com ──
+const ENLOTERIA_REGLAS = [
+  [/primera.*noche/, 'laprimera_n'], [/primera/, 'laprimera'], [/lotedom/, 'lotedom'],
+  [/suerte.*(6|18|tarde)/, 'suerte_t2'], [/suerte/, 'suerte'], [/king.*(noche|7)/, 'king_n'],
+  [/king/, 'king_t'], [/^(quiniela )?real$/, 'real_t'], [/gana.*mas/, 'gana_mas'],
+  [/(new.*york|nueva.*york).*(noche|10)/, 'new_york_n'], [/(new.*york|nueva.*york)/, 'new_york_t'],
+  [/florida.*(noche|10)/, 'florida_n'], [/florida/, 'florida_d'], [/^(quiniela )?loteka$/, 'loteka'],
+  [/^(quiniela )?leidsa$/, 'leidsa'], [/nacional/, 'nacional'],
+];
+const ANGUILA_HORAS = { '10am': 'anguila_m', '1pm': 'anguila_t', '6pm': 'anguila_n', '9pm': 'anguila_nn' };
+function claveEnloteria(slug) {
+  const s = slug.toLowerCase().replace(/-/g, ' ');
+  const ang = s.match(/anguil+a\s+(\d{1,2})\s*(am|pm)/);
+  if (ang) return ANGUILA_HORAS[ang[1] + ang[2]] || null;
+  if (/anguil/.test(s)) return null;
+  for (const [re, clave] of ENLOTERIA_REGLAS) if (re.test(s)) return clave;
+  return null;
+}
+const MESES_ES = { enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06', julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12' };
+function fechaEnloteria(texto) {
+  const m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(\d{4})/i);
+  return m && MESES_ES[m[2].toLowerCase()] ? `${m[3]}-${MESES_ES[m[2].toLowerCase()]}-${String(m[1]).padStart(2,'0')}` : null;
+}
+function parsearEnloteria(html) {
+  const $ = cheerio.load(html);
+  const tarjetas = [];
+  const vistos = new Set();
+  $('a[href*="/resultados-"]').each((_, a) => {
+    const m = ($(a).attr('href') || '').match(/\/resultados-([a-z0-9-]+?)(?:-hoy|-ayer|-antes-de-ayer|-\d{4}-\d{2}-\d{2})?$/);
+    if (!m || m[1] === 'loterias') return;
+    let $c = $(a).parent(), fecha = null;
+    for (let i = 0; i < 6 && $c.length; i++) { fecha = fechaEnloteria($c.text()); if (fecha) break; $c = $c.parent(); }
+    if (!fecha || /Avísame cuando salga/i.test($c.text())) return;
+    const nums = [];
+    $c.find('*').addBack().contents().each((_, n) => {
+      if (n.type === 'text' && /^\d{1,2}$/.test($(n).text().trim())) nums.push(parseInt($(n).text().trim(), 10));
+    });
+    if (nums.length < 3) return;
+    const key = `${m[1]}|${fecha}`;
+    if (vistos.has(key)) return;
+    vistos.add(key);
+    tarjetas.push({ slug: m[1], clave: claveEnloteria(m[1]), fecha, numeros: nums.slice(0, 6) });
+  });
+  return tarjetas;
+}
+
+async function scrapeEnloteria() {
+  if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length === 0) return 0;
+  try {
+    const res = await axios.get('https://enloteria.com/resultados-loterias-hoy', { headers: HEADERS, timeout: 15000 });
+    const tarjetas = parsearEnloteria(res.data);
+    const hoy = fechaRD();
+    let conteo = 0;
+    for (const t of tarjetas) {
+      if (t.clave && estado.sorteos[t.clave] && estado.sorteos[t.clave].numeros.length < 3 && t.fecha === hoy) {
+        const nums = t.numeros.slice(0, 3);
+        if (!nums.every(n => n === nums[0])) { estado.sorteos[t.clave].numeros = nums; estado.sorteos[t.clave].estado = 'disponible'; conteo++; }
+      }
+    }
+    return conteo;
+  } catch (e) { return 0; }
+}
+
+const ESPECIALES_ENLOTERIA = { superkino: 'super-kino-tv', loto: 'loto', lotomas: 'loto', megachance: 'megachance', pega3mas: 'pega-3-mas', pega4king: 'pega-4', quemaito: 'el-quemaito-mayor' };
+const ESPECIALES_ENLOTERIA_RE = { superkino: /kino/i, loto: /loto/i, lotomas: /loto/i, megachance: /mega\s*chance/i, pega3mas: /pega\s*3/i, pega4king: /pega\s*4/i, quemaito: /quemaito/i };
+
+function parsearPaginaJuegoEnloteria(html, nombreRe) {
+  const $ = cheerio.load(html); const tarjetas = [];
+  $('h5').each((_, h) => {
+    if (nombreRe && !nombreRe.test($(h).text())) return;
+    let $card = $(h).parent(), fecha = null;
+    for (let i = 0; i < 6 && $card.length; i++) { fecha = fechaEnloteria($card.text()); if (fecha) break; $card = $card.parent(); }
+    if (!fecha || /Avísame cuando salga/i.test($card.text())) return;
+    const nums = [];
+    $card.find('*').addBack().contents().each((_, node) => {
+      if (node.type === 'text' && /^\d{1,2}$/.test($(node).text().trim())) nums.push(parseInt($(node).text().trim(), 10));
+    });
+    if (nums.length > 0) tarjetas.push({ fecha, numeros: nums });
+  });
+  return tarjetas;
+}
+
+async function scrapeEspecialesEnloteria() {
+  const pendientes = Object.entries(estado.especiales).filter(([k, e]) => e.numeros.length === 0 && ESPECIALES_ENLOTERIA[k]);
+  if (pendientes.length === 0) return 0;
+  const hoy = fechaRD(); let conteo = 0; const cachePaginas = {};
+  for (const [clave, juego] of pendientes) {
+    const slug = ESPECIALES_ENLOTERIA[clave];
+    try {
+      const re = ESPECIALES_ENLOTERIA_RE[clave];
+      const cacheKey = slug + '|' + (re ? re.source : '');
+      if (!cachePaginas[cacheKey]) {
+        const res = await axios.get(`https://enloteria.com/resultados-${slug}`, { headers: HEADERS, timeout: 15000 });
+        cachePaginas[cacheKey] = parsearPaginaJuegoEnloteria(res.data, re);
+      }
+      const tarjetaHoy = cachePaginas[cacheKey].find(t => t.fecha === hoy);
+      if (!tarjetaHoy) continue;
+      const validos = tarjetaHoy.numeros.filter(n => n >= juego.rango[0] && n <= juego.rango[1]);
+      const esDigitos = juego.tipo === 'pega3' || juego.tipo === 'pega4';
+      const usar = esDigitos ? validos : [...new Set(validos)];
+      if (usar.length >= juego.cant) {
+        juego.numeros = usar.slice(0, juego.cant); juego.estado = 'disponible'; conteo++;
+      }
+    } catch (e) {}
+  }
+  return conteo;
+}
+
+// ── RESPALDO 3: yelu.do ──
+const YELU_FUENTES = { gana_mas: 'lottery/results/gana-mas', nacional: 'lottery/results/loteria-nacional', leidsa: 'leidsa/results/quiniela-pale', loteka: 'loteria-loteka/results/quiniela-loteka' };
+const MESES_ABREV = { ene:'01', feb:'02', mar:'03', abr:'04', may:'05', jun:'06', jul:'07', ago:'08', sep:'09', oct:'10', nov:'11', dic:'12' };
+function fechaGanamas(texto) {
+  const m = texto.match(/(\d{1,2})\s+(?:de\s+)?(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\.?,?\s+(\d{4})/i);
+  return m ? `${m[3]}-${MESES_ABREV[m[2].toLowerCase()]}-${String(m[1]).padStart(2, '0')}` : null;
+}
+function parsearGanamas(html, cant, rango) {
+  const $ = cheerio.load(html); const porFecha = {}; let fAct = null;
+  $('body *').addBack().contents().each((_, n) => {
+    if (n.type !== 'text') return;
+    const t = $(n).text().trim(); if (!t) return;
+    let p = n.parent, excl = false;
+    while (p && p.type === 'tag') {
+      const tg = (p.tagName || p.name || '').toLowerCase();
+      if (tg === 'a' || tg === 'nav' || tg === 'header' || tg === 'footer' || tg === 'script' || tg === 'style') { excl = true; break; }
+      p = p.parent;
+    }
+    const f = fechaGanamas(t);
+    if (f) { fAct = f; if (!porFecha[f]) porFecha[f] = []; return; }
+    if (excl) return;
+    if (fAct && /^\d{1,2}$/.test(t)) {
+      const num = parseInt(t, 10);
+      if (num >= rango[0] && num <= rango[1] && porFecha[fAct].length < cant) porFecha[fAct].push(num);
+    }
+  });
+  const res = {}; for (const [f, nums] of Object.entries(porFecha)) if (nums.length === cant) res[f] = nums;
+  return res;
+}
+
+async function scrapeYelu() {
+  const obj = Object.entries(YELU_FUENTES).filter(([k]) => estado.sorteos[k] && estado.sorteos[k].numeros.length < 3);
+  if (!obj.length) return 0;
+  const hoy = fechaRD(); let conteo = 0;
+  for (const [k, r] of obj) {
+    try {
+      const res = await axios.get(`https://www.yelu.do/${r}`, { headers: HEADERS, timeout: 15000 });
+      const tarjetas = parsearGanamas(res.data, 3, [0, 99]);
+      const nums = tarjetas[hoy];
+      if (nums && nums.length === 3 && !nums.every(n => n === nums[0])) {
+        estado.sorteos[k].numeros = nums; estado.sorteos[k].estado = 'disponible'; conteo++;
       }
     } catch (e) {}
   }
@@ -550,8 +705,14 @@ async function sincronizar() {
 
     await scrapeConectateAPI();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeLotDominicanas();
+    
+    // RESPALDOS RESTAURADOS 🛡️
+    if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeEnloteria();
+    if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeYelu();
+
     if (Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length > 0) await scrapeCuartetaLotDominicanas();
     if (Object.values(estado.especiales).filter(e => e.numeros.length === 0).length > 0) await scrapeLeidsa();
+    if (Object.values(estado.especiales).filter(e => e.numeros.length === 0).length > 0) await scrapeEspecialesEnloteria();
     await scrapePega4Yelu();
 
     estado.hora_actualizacion = horaRD();
@@ -569,7 +730,7 @@ setInterval(sincronizar, 15 * 60 * 1000);
 // ── ENDPOINTS Frontend ─────────────────────────────────────────────────────
 app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales }); });
 app.get('/api/historico', (req, res) => res.json({ historico: estado.historico, total: estado.historico.length }));
-app.get('/', (req, res) => res.json({ version: 'v8.0-CLEAN', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.1-FALLBACKS-RESTORED', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── 🧪 LABORATORIO DE MÉTODOS (Limpiado y Optimizado) ─────────────────────
 function backtestLaboratorio(filtroLoteria) {
@@ -595,7 +756,6 @@ function backtestLaboratorio(filtroLoteria) {
       const ayer = serie[i - 1].nums;
       const hoy = new Set(serie[i].nums);
 
-      // Top 1 de ayer para estadisticas generales (para saber dónde repite más el 1ro por pura curiosidad estadística)
       if (hoy.has(ayer[0])) {
         porLoteriaM1[clave] = (porLoteriaM1[clave] || 0) + 1;
       }
@@ -778,16 +938,15 @@ app.post('/api/telegram-webhook', async (req, res) => {
 });
 
 app.get('/api/laboratorio', (req, res) => { res.json(backtestLaboratorio(req.query.loteria || null)); });
-app.get('/api/jaladera-mitad', (req, res) => { res.json({ nota: 'Audit retirado en limpieza de supersticiones.' }); });
 
 // ── Protección anti-crash global ──────────────────────────────────────────────
 process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtException]', err.message));
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.0-CLEAN en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v8.1-FALLBACKS-RESTORED en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
-  if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado (Clean Version)`);
+  if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor iniciado (Fallbacks Restored)`);
   await sincronizar();
 
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
