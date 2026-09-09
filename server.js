@@ -223,9 +223,17 @@ function claveEnloteria(slug) {
   return null;
 }
 const MESES_ES = { enero:'01', febrero:'02', marzo:'03', abril:'04', mayo:'05', junio:'06', julio:'07', agosto:'08', septiembre:'09', octubre:'10', noviembre:'11', diciembre:'12' };
+const MESES_ABREV_ENLOTERIA = { ene:'01', feb:'02', mar:'03', abr:'04', may:'05', jun:'06', jul:'07', ago:'08', sep:'09', oct:'10', nov:'11', dic:'12' };
 function fechaEnloteria(texto) {
-  const m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(\d{4})/i);
-  return m && MESES_ES[m[2].toLowerCase()] ? `${m[3]}-${MESES_ES[m[2].toLowerCase()]}-${String(m[1]).padStart(2,'0')}` : null;
+  let m = texto.match(/(\d{1,2})\s+de\s+([a-záéíóú]+),?\s+(?:de\s+)?(\d{4})/i);
+  if (m && MESES_ES[m[2].toLowerCase()]) {
+    return `${m[3]}-${MESES_ES[m[2].toLowerCase()]}-${String(m[1]).padStart(2,'0')}`;
+  }
+  m = texto.match(/(\d{1,2})\s+([a-z]{3,4})\.?,?\s+(\d{4})/i);
+  if (m && MESES_ABREV_ENLOTERIA[m[2].toLowerCase()]) {
+    return `${m[3]}-${MESES_ABREV_ENLOTERIA[m[2].toLowerCase()]}-${String(m[1]).padStart(2,'0')}`;
+  }
+  return null;
 }
 function parsearEnloteria(html) {
   const $ = cheerio.load(html); const tarjetas = []; const vistos = new Set();
