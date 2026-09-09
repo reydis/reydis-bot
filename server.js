@@ -256,20 +256,64 @@ function parsearEnloteria(html) {
   return tarjetas;
 }
 
+// Usamos las clases CSS reales de enloteria.com (.result-card, .result-date,
+// .result-number), que son mucho más estables que adivinar por posición de texto.
+// Tomamos SOLO el primer .result-card (el más reciente) y verificamos que su
+// fecha coincida con "hoy" (según nuestro propio reloj de RD) antes de aceptar
+// los números — así nunca confundimos el resultado de ayer con el de hoy,
+// ni tomamos el placeholder vacío del sorteo de hoy que aún no ha salido.
+function extraerResultadoHoyEnloteria(html, cantidadNumeros) {
+  const $ = cheerio.load(html);
+  const card = $('.result-card').first();
+  if (!card.length) return [];
+  const fechaTexto = card.find('.result-date').first().text().trim();
+  const fecha = fechaEnloteria(fechaTexto);
+  if (fecha !== fechaRD()) return [];
+  const nums = [];
+  card.find('.result-number').each((_, el) => {
+    const t = $(el).text().trim();
+    if (/^\d{1,2}$/.test(t)) nums.push(parseInt(t, 10));
+  });
+  return nums.length >= cantidadNumeros ? nums.slice(0, cantidadNumeros) : [];
+}
+
+const ENLOTERIA_SORTEO_SLUGS = {
+  'leidsa': 'leidsa',
+  'real': 'real_t',
+  'nacional-noche': 'nacional',
+  'gana-mas': 'gana_mas',
+  'la-primera': 'laprimera',
+  'la-primera-noche': 'laprimera_n',
+  'lotedom': 'lotedom',
+  'la-suerte': 'suerte',
+  'la-suerte-6pm': 'suerte_t2',
+  'new-york-tarde': 'new_york_t',
+  'new-york-noche': 'new_york_n',
+  'florida-tarde': 'florida_d',
+  'florida-noche': 'florida_n',
+  'king-lottery-dia': 'king_t',
+  'king-lottery-noche': 'king_n',
+  'loteka': 'loteka',
+  'anguilla-8am': 'anguila_m',
+  'anguilla-1pm': 'anguila_t',
+  'anguilla-6pm': 'anguila_n',
+  'anguilla-9pm': 'anguila_nn',
+};
+
 async function scrapeEnloteria() {
-  if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length === 0) return 0;
-  try {
-    const res = await axios.get('https://enloteria.com/resultados-loterias-hoy', { headers: HEADERS, timeout: 15000 });
-    const tarjetas = parsearEnloteria(res.data);
-    const hoy = fechaRD(); let conteo = 0;
-    for (const t of tarjetas) {
-      if (t.clave && estado.sorteos[t.clave] && estado.sorteos[t.clave].numeros.length < 3 && t.fecha === hoy) {
-        const nums = t.numeros.slice(0, 3);
-        if (!nums.every(n => n === nums[0])) { estado.sorteos[t.clave].numeros = nums; estado.sorteos[t.clave].estado = 'disponible'; conteo++; }
+  const pendientes = Object.entries(ENLOTERIA_SORTEO_SLUGS).filter(([, clave]) => estado.sorteos[clave] && estado.sorteos[clave].numeros.length < 3);
+  if (!pendientes.length) return 0;
+  let conteo = 0;
+  for (const [slug, clave] of pendientes) {
+    try {
+      const res = await axios.get(`https://enloteria.com/resultados-${slug}-hoy`, { headers: HEADERS, timeout: 15000 });
+      const nums = extraerResultadoHoyEnloteria(res.data, 3);
+      if (nums.length === 3 && !nums.every(n => n === nums[0])) {
+        estado.sorteos[clave].numeros = nums; estado.sorteos[clave].estado = 'disponible'; conteo++;
       }
-    }
-    return conteo;
-  } catch (e) { return 0; }
+    } catch (e) {}
+  }
+  return conteo;
 }
 
 const YELU_FUENTES = { gana_mas: 'lottery/results/gana-mas', nacional: 'lottery/results/loteria-nacional', leidsa: 'leidsa/results/quiniela-pale', loteka: 'loteria-loteka/results/quiniela-loteka' };
@@ -418,11 +462,11 @@ async function diagnosticarFuentes() {
     resultado.loteriasdominicanas = { ok: false, error: e.message, status: e.response?.status || null };
   }
 
-  // 3. Enloteria
+  // 3. Enloteria (prueba directa con Leidsa, usando la lógica robusta por clases CSS)
   try {
-    const r = await axios.get('https://enloteria.com/resultados-loterias-hoy', { headers: HEADERS, timeout: 15000 });
-    const tarjetas = parsearEnloteria(r.data);
-    resultado.enloteria = { ok: true, status: r.status, tarjetas_encontradas: tarjetas.length, muestra: tarjetas.slice(0, 3) };
+    const r = await axios.get('https://enloteria.com/resultados-leidsa-hoy', { headers: HEADERS, timeout: 15000 });
+    const nums = extraerResultadoHoyEnloteria(r.data, 3);
+    resultado.enloteria = { ok: true, status: r.status, numeros_leidsa_hoy: nums, funciono: nums.length === 3, nota: nums.length === 0 ? 'Puede ser normal si el sorteo de hoy aun no ha salido' : undefined };
   } catch (e) {
     resultado.enloteria = { ok: false, error: e.message, status: e.response?.status || null };
   }
