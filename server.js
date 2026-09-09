@@ -389,6 +389,47 @@ async function scrapePega4Yelu() {
   return 0;
 }
 
+// ── DIAGNÓSTICO DE FUENTES DE SCRAPING ──────────────────────────────────────
+async function diagnosticarFuentes() {
+  const resultado = {};
+
+  // 1. Conéctate
+  try {
+    const r = await axios.get('https://www.conectate.com.do/loterias/api/widget', { headers: HEADERS, timeout: 10000 });
+    const items = Array.isArray(r.data) ? r.data : (r.data?.data || []);
+    resultado.conectate = { ok: true, status: r.status, items: items.length };
+  } catch (e) {
+    resultado.conectate = { ok: false, error: e.message, status: e.response?.status || null };
+  }
+
+  // 2. LoteriasDominicanas
+  try {
+    const r = await axios.get('https://loteriasdominicanas.com/anguila/anguila-manana/_payload.json', { headers: HEADERS, timeout: 10000 });
+    resultado.loteriasdominicanas = { ok: true, status: r.status, tipo: typeof r.data, muestra: JSON.stringify(r.data).slice(0, 200) };
+  } catch (e) {
+    resultado.loteriasdominicanas = { ok: false, error: e.message, status: e.response?.status || null };
+  }
+
+  // 3. Enloteria
+  try {
+    const r = await axios.get('https://enloteria.com/resultados-loterias-hoy', { headers: HEADERS, timeout: 15000 });
+    const tarjetas = parsearEnloteria(r.data);
+    resultado.enloteria = { ok: true, status: r.status, tarjetas_encontradas: tarjetas.length, muestra: tarjetas.slice(0, 3) };
+  } catch (e) {
+    resultado.enloteria = { ok: false, error: e.message, status: e.response?.status || null };
+  }
+
+  // 4. Yelu
+  try {
+    const r = await axios.get('https://www.yelu.do/lottery/results/gana-mas', { headers: HEADERS, timeout: 15000 });
+    resultado.yelu = { ok: true, status: r.status, tamano_html: r.data.length };
+  } catch (e) {
+    resultado.yelu = { ok: false, error: e.message, status: e.response?.status || null };
+  }
+
+  return resultado;
+}
+
 // ── MÁQUINA DEL TIEMPO (BACKFILL RESTAURADO) ───────────────────────────────
 let estadoBackfill = { activo: false, inicio: null, log: [], resumen: null };
 
@@ -655,6 +696,10 @@ app.get('/api/debug-db', async (req, res) => {
   const datos = await cargarDeSupabase();
   if (datos === null) return res.json({ activo: true, conectado: false, mensaje: 'Conexión a Supabase falló.' });
   res.json({ activo: true, conectado: true, dias_guardados: datos.length, ultimas_fechas: datos.slice(0, 5).map(d => d.fecha) });
+});
+app.get('/api/debug-scrapers', async (req, res) => {
+  const r = await diagnosticarFuentes();
+  res.json(r);
 });
 app.get('/', (req, res) => res.json({ version: 'v8.4-BACKFILL-RESTORED', status: 'ok', fecha_rd: fechaRD() }));
 
