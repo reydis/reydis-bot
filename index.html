@@ -1684,7 +1684,7 @@
           <div id="back-ins"></div>
         </div>
 
-        <!-- RANKING POR LOTERÍA — la novedad principal -->
+        <!-- RANKING POR LOTERÍA -->
         <div
           class="cardX"
           style="margin-bottom: 12px"
@@ -1833,6 +1833,40 @@
       <!-- ══ CONSULTAR ══ -->
       <div class="sec" id="sec-cons">
         <div class="cons-panel">
+          <div class="cons-tit">🔍 Rastreador de Número</div>
+          <div
+            style="font-size: 12px; color: var(--muted2); margin-bottom: 10px"
+          >
+            Escribe un número (00-99) y ve dónde y cuándo ha salido en TODO el
+            historial.
+          </div>
+          <div
+            style="
+              display: flex;
+              gap: 10px;
+              flex-wrap: wrap;
+              margin-bottom: 12px;
+            "
+          >
+            <input
+              type="number"
+              id="rastreo-num"
+              class="cons-input"
+              min="0"
+              max="99"
+              placeholder="Ej: 99"
+              style="max-width: 120px"
+            />
+            <button
+              class="btn btn-neon"
+              style="max-width: 180px"
+              onclick="rastrearNumero()"
+            >
+              🔍 RASTREAR
+            </button>
+          </div>
+          <div id="rastreo-res"></div>
+          <hr style="border-color: var(--border); margin: 18px 0" />
           <div class="cons-tit">📅 Motor de Consultas a la Base de Datos</div>
           <p style="color: var(--muted); font-size: 12px; margin-bottom: 14px">
             Filtra por fecha y lotería. 4 loterias (Gana Más, Leidsa, Nacional,
@@ -1875,6 +1909,70 @@
             salga el resultado. Esto es 100% suyo — se guarda solo en este
             navegador, nadie más lo ve.
           </p>
+          <div
+            class="cons-panel"
+            style="
+              border: 1px solid var(--neon);
+              background: linear-gradient(145deg, var(--card), var(--card2));
+            "
+          >
+            <div class="cons-tit">🎰 Generador Inteligente Multijuego</div>
+            <p
+              style="color: var(--muted); font-size: 12px; margin-bottom: 12px"
+            >
+              Elige un juego especial y la cantidad de boletos según tu
+              presupuesto. El sistema analiza el historial y genera jugadas
+              combinando los números más calientes con factores de probabilidad.
+            </p>
+            <div
+              style="
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-bottom: 16px;
+              "
+            >
+              <select
+                id="gen-juego"
+                class="cons-select"
+                style="flex: 2; min-width: 160px"
+              >
+                <option value="pega3mas">Pega 3 Más (LEIDSA)</option>
+                <option value="superkino">Super Kino TV (LEIDSA)</option>
+                <option value="loto">Loto (LEIDSA)</option>
+                <option value="lotomas">Loto Más (LEIDSA)</option>
+                <option value="quemaito">El Quemaito Mayor (LoteDom)</option>
+                <option value="megachance">Mega Chance (Loteka)</option>
+                <option value="pega4king">Pega 4 Real (REAL)</option>
+              </select>
+              <input
+                id="gen-cant"
+                type="number"
+                min="1"
+                max="12"
+                value="3"
+                class="cons-input"
+                style="flex: 1; min-width: 80px"
+                title="Cantidad de boletos a generar"
+                placeholder="Boletos"
+              />
+              <button
+                onclick="generarBoletosEspeciales()"
+                class="btn btn-neon"
+                style="flex: 1; min-width: 120px"
+              >
+                🎲 Generar
+              </button>
+            </div>
+            <div
+              id="gen-out"
+              style="
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 12px;
+              "
+            ></div>
+          </div>
           <div class="cons-filtros">
             <div>
               <label class="cons-label">Lotería</label>
@@ -1960,7 +2058,7 @@
 
     <script>
       // ═══════════════════════════════════════════════════════
-      // CONFIG
+      // CONFIG - SERVIDOR RENDER (backend real y vivo)
       // ═══════════════════════════════════════════════════════
       const API = "https://reydis-bot-service.onrender.com";
 
@@ -1994,10 +2092,6 @@
         { k: "florida_n", n: "Florida Noche", h: "10:30 PM" },
       ];
 
-      // La Cuarteta: variante de 4 dígitos exclusiva de Anguila, pareada con
-      // cada uno de sus 4 horarios. Se rastrea y predice por separado porque
-      // el premio es por combinación SIN orden (no usa el peso 60-8-4 de la
-      // quiniela posicional).
       const CUARTETAS = [
         { k: "cuarteta_m", n: "La Cuarteta Mañana", h: "10:00 AM" },
         { k: "cuarteta_md", n: "La Cuarteta Medio Día", h: "1:00 PM" },
@@ -2005,9 +2099,6 @@
         { k: "cuarteta_n", n: "La Cuarteta Noche", h: "9:00 PM" },
       ];
 
-      // Juegos especiales (formato distinto: dígitos posicionales o Kino/Loto
-      // sin orden). Definidos aquí arriba para que INFO_LOOKUP y las funciones
-      // de predicción más abajo puedan usarlos.
       const ESPECIALES_PRED_LIST = [
         {
           k: "pega3mas",
@@ -2047,34 +2138,32 @@
         },
         {
           k: "quemaito",
-          n: "El Quemaito",
-          empresa: "Loteka",
-          tipo: "pega3",
-          hora: "6:55 PM",
-          h: "6:55 PM",
-          cant: 3,
+          n: "El Quemaito Mayor",
+          empresa: "LoteDom",
+          tipo: "quiniela",
+          hora: "1:55 PM",
+          h: "1:55 PM",
+          cant: 1,
         },
         {
           k: "megachance",
           n: "Mega Chance",
           empresa: "Loteka",
-          tipo: "kino",
-          hora: "6:55 PM",
-          h: "6:55 PM",
-          cant: 15,
+          tipo: "chance",
+          hora: "7:55 PM",
+          h: "7:55 PM",
+          cant: 5,
         },
         {
           k: "pega4king",
-          n: "Pega 4",
-          empresa: "King",
+          n: "Pega 4 Real",
+          empresa: "REAL",
           tipo: "pega4",
-          hora: "7:00 PM",
-          h: "7:00 PM",
+          hora: "12:55 PM",
+          h: "12:55 PM",
           cant: 4,
         },
       ];
-      // Pega 3, Pega 4 y El Quemaito ahora usan números del 00-99
-      // igual que las quinielas — ya NO son dígitos posicionales 0-9
       const TIPO_PRED_CANT_FE = {
         kino: 10,
         loto: 6,
@@ -2083,267 +2172,16 @@
         pega4: 4,
       };
 
-      // Lookup unificado de nombre/hora por clave — usado en Consultas y
-      // Predicciones en vez del viejo LOTS4 (que solo cubría 4 loterías).
       const INFO_LOOKUP = {};
       for (const l of LOTS18) INFO_LOOKUP[l.k] = { n: l.n, h: l.h };
       for (const l of CUARTETAS) INFO_LOOKUP[l.k] = { n: l.n, h: l.h };
       for (const l of ESPECIALES_PRED_LIST)
         INFO_LOOKUP[l.k] = { n: l.n, h: l.h, empresa: l.empresa, tipo: l.tipo };
 
-      // ═══════════════════════════════════════════════════════
-      // HISTORIAL SEMILLA — 35 días REALES de quinielasrd.com
-      // ═══════════════════════════════════════════════════════
       const SEMILLA = [
         { f: "2026-06-10", gana_mas: [], leidsa: [], nacional: [], loteka: [] },
-        {
-          f: "2026-06-09",
-          gana_mas: [67, 66, 37],
-          leidsa: [14, 31, 78],
-          nacional: [76, 80, 58],
-          loteka: [41, 58, 24],
-        },
-        {
-          f: "2026-06-08",
-          gana_mas: [81, 88, 82],
-          leidsa: [33, 61, 24],
-          nacional: [37, 17, 73],
-          loteka: [83, 48, 35],
-        },
-        {
-          f: "2026-06-07",
-          gana_mas: [96, 51, 78],
-          leidsa: [52, 91, 77],
-          nacional: [53, 39, 92],
-          loteka: [37, 56, 11],
-        },
-        {
-          f: "2026-06-06",
-          gana_mas: [27, 51, 83],
-          leidsa: [14, 29, 70],
-          nacional: [3, 47, 96],
-          loteka: [31, 58, 77],
-        },
-        {
-          f: "2026-06-05",
-          gana_mas: [8, 44, 69],
-          leidsa: [22, 36, 81],
-          nacional: [15, 52, 64],
-          loteka: [4, 27, 90],
-        },
-        {
-          f: "2026-06-04",
-          gana_mas: [33, 57, 72],
-          leidsa: [11, 48, 95],
-          nacional: [28, 61, 74],
-          loteka: [16, 43, 85],
-        },
-        {
-          f: "2026-06-03",
-          gana_mas: [19, 46, 88],
-          leidsa: [7, 33, 76],
-          nacional: [44, 59, 83],
-          loteka: [2, 35, 71],
-        },
-        {
-          f: "2026-06-02",
-          gana_mas: [5, 38, 91],
-          leidsa: [25, 54, 87],
-          nacional: [11, 37, 66],
-          loteka: [20, 49, 78],
-        },
-        {
-          f: "2026-05-31",
-          gana_mas: [22, 47, 75],
-          leidsa: [9, 42, 79],
-          nacional: [17, 53, 92],
-          loteka: [6, 34, 68],
-        },
-        {
-          f: "2026-05-30",
-          gana_mas: [11, 29, 84],
-          leidsa: [31, 63, 97],
-          nacional: [8, 45, 77],
-          loteka: [23, 56, 89],
-        },
-        {
-          f: "2026-05-29",
-          gana_mas: [36, 64, 93],
-          leidsa: [4, 28, 72],
-          nacional: [33, 61, 86],
-          loteka: [12, 41, 75],
-        },
-        {
-          f: "2026-05-28",
-          gana_mas: [7, 43, 76],
-          leidsa: [18, 55, 91],
-          nacional: [6, 39, 57],
-          loteka: [27, 64, 93],
-        },
-        {
-          f: "2026-05-27",
-          gana_mas: [24, 58, 87],
-          leidsa: [13, 37, 84],
-          nacional: [21, 48, 73],
-          loteka: [8, 38, 82],
-        },
-        {
-          f: "2026-05-26",
-          gana_mas: [14, 39, 68],
-          leidsa: [26, 61, 89],
-          nacional: [35, 62, 95],
-          loteka: [15, 44, 70],
-        },
-        {
-          f: "2026-05-24",
-          gana_mas: [3, 48, 79],
-          leidsa: [7, 34, 93],
-          nacional: [14, 52, 68],
-          loteka: [29, 57, 83],
-        },
-        {
-          f: "2026-05-23",
-          gana_mas: [31, 55, 92],
-          leidsa: [19, 46, 77],
-          nacional: [27, 43, 81],
-          loteka: [5, 36, 74],
-        },
-        {
-          f: "2026-05-22",
-          gana_mas: [16, 42, 71],
-          leidsa: [8, 52, 88],
-          nacional: [9, 38, 67],
-          loteka: [18, 51, 86],
-        },
-        {
-          f: "2026-05-21",
-          gana_mas: [28, 53, 86],
-          leidsa: [23, 47, 74],
-          nacional: [31, 56, 94],
-          loteka: [11, 42, 79],
-        },
-        {
-          f: "2026-05-20",
-          gana_mas: [9, 37, 63],
-          leidsa: [12, 58, 96],
-          nacional: [4, 49, 71],
-          loteka: [24, 63, 91],
-        },
-        {
-          f: "2026-05-19",
-          gana_mas: [44, 67, 85],
-          leidsa: [3, 29, 65],
-          nacional: [18, 44, 78],
-          loteka: [7, 33, 69],
-        },
-        {
-          f: "2026-05-17",
-          gana_mas: [12, 49, 78],
-          leidsa: [36, 68, 94],
-          nacional: [26, 59, 87],
-          loteka: [13, 47, 88],
-        },
-        {
-          f: "2026-05-16",
-          gana_mas: [25, 56, 89],
-          leidsa: [15, 43, 72],
-          nacional: [7, 34, 63],
-          loteka: [19, 54, 92],
-        },
-        {
-          f: "2026-05-15",
-          gana_mas: [6, 34, 73],
-          leidsa: [27, 59, 85],
-          nacional: [42, 68, 97],
-          loteka: [1, 28, 67],
-        },
-        {
-          f: "2026-05-14",
-          gana_mas: [18, 51, 94],
-          leidsa: [2, 38, 77],
-          nacional: [13, 47, 72],
-          loteka: [32, 61, 84],
-        },
-        {
-          f: "2026-05-13",
-          gana_mas: [41, 69, 97],
-          leidsa: [21, 53, 86],
-          nacional: [5, 29, 56],
-          loteka: [14, 46, 73],
-        },
-        {
-          f: "2026-05-12",
-          gana_mas: [13, 47, 82],
-          leidsa: [6, 44, 91],
-          nacional: [23, 51, 79],
-          loteka: [9, 37, 65],
-        },
-        {
-          f: "2026-05-10",
-          gana_mas: [29, 62, 91],
-          leidsa: [17, 48, 83],
-          nacional: [38, 65, 93],
-          loteka: [21, 55, 80],
-        },
-        {
-          f: "2026-05-09",
-          gana_mas: [7, 38, 74],
-          leidsa: [33, 64, 98],
-          nacional: [12, 46, 69],
-          loteka: [3, 43, 87],
-        },
-        {
-          f: "2026-05-08",
-          gana_mas: [20, 54, 88],
-          leidsa: [11, 39, 76],
-          nacional: [25, 58, 84],
-          loteka: [17, 52, 76],
-        },
-        {
-          f: "2026-05-07",
-          gana_mas: [35, 61, 96],
-          leidsa: [24, 57, 92],
-          nacional: [7, 41, 75],
-          loteka: [26, 59, 95],
-        },
-        {
-          f: "2026-05-06",
-          gana_mas: [4, 43, 77],
-          leidsa: [16, 45, 78],
-          nacional: [32, 54, 88],
-          loteka: [8, 39, 72],
-        },
-        {
-          f: "2026-05-05",
-          gana_mas: [17, 48, 83],
-          leidsa: [30, 66, 90],
-          nacional: [19, 46, 70],
-          loteka: [25, 58, 81],
-        },
-        {
-          f: "2026-05-03",
-          gana_mas: [60, 71, 84],
-          leidsa: [39, 55, 72],
-          nacional: [14, 28, 91],
-          loteka: [33, 62, 77],
-        },
-        {
-          f: "2026-05-02",
-          gana_mas: [45, 68, 93],
-          leidsa: [8, 27, 64],
-          nacional: [46, 61, 85],
-          loteka: [4, 52, 88],
-        },
       ];
 
-      // ═══════════════════════════════════════════════════════
-      // STORAGE
-      // ═══════════════════════════════════════════════════════
-      // Trae el historial completo del servidor (Supabase) y lo fusiona con
-      // el localStorage del navegador. Esto soluciona el problema de que
-      // localStorage solo se llena los días que el navegador estuvo abierto
-      // — ahora siempre se completa con lo que el servidor tiene guardado,
-      // sin importar cuántos días pasaron sin visitar la app.
       async function sincronizarHistorialServidor() {
         try {
           const r = await fetch(`${API}/api/historico`);
@@ -2362,7 +2200,6 @@
             const f = dia.fecha;
             if (!f) continue;
             if (!m[f]) m[f] = { f };
-            // Fusionar sorteos, cuartetas y especiales del servidor
             for (const [k, s] of Object.entries(dia.sorteos || {})) {
               const n = s?.numeros || s;
               if (Array.isArray(n) && n.length >= 3 && !m[f][k]) m[f][k] = n;
@@ -2381,9 +2218,6 @@
             .sort((a, b) => b.f.localeCompare(a.f))
             .slice(0, 90);
           localStorage.setItem("rdh5", JSON.stringify(fusionado));
-          console.log(
-            `📦 Historial del servidor sincronizado: ${d.historico.length} días disponibles`
-          );
         } catch (e) {
           console.warn(
             "No se pudo sincronizar historial del servidor:",
@@ -2406,16 +2240,13 @@
         }
         return Object.values(m).sort((a, b) => b.f.localeCompare(a.f));
       }
+
       function saveHist(fecha, sorteos) {
         try {
           let g = [];
           const r = localStorage.getItem("rdh5");
           if (r) g = JSON.parse(r);
           const e = { f: fecha };
-          // BUGFIX: antes se cortaban TODOS los arreglos a 3 números, sin
-          // importar el juego — eso rompía La Cuarteta (necesita 4) y los
-          // especiales tipo Kino/Loto (necesitan 6-20). Ahora cada clave usa
-          // su propia longitud correcta según el tipo de juego.
           const CUARTETA_KEYS = new Set(CUARTETAS.map((c) => c.k));
           const ESPECIAL_CANT = {};
           for (const l of ESPECIALES_PRED_LIST) ESPECIAL_CANT[l.k] = l.cant;
@@ -2440,9 +2271,6 @@
         } catch (e) {}
       }
 
-      // ═══════════════════════════════════════════════════════
-      // TABS
-      // ═══════════════════════════════════════════════════════
       function irTab(id, el) {
         document
           .querySelectorAll(".tabbtn")
@@ -2461,17 +2289,9 @@
         if (id === "jugadas") renderJugadas();
       }
 
-      // ═══════════════════════════════════════════════════════
-      // HOY EN VIVO
-      // ═══════════════════════════════════════════════════════
       let datosSorteosGlobal = {};
       let datosCuartetasGlobal = {};
       let datosEspecialesGlobal = {};
-      // Fecha de "hoy" según el servidor (no el reloj del navegador) — se usa
-      // para EXCLUIR el día en curso del historial de entrenamiento en todas
-      // las predicciones. Sin esto, una lotería que ya salió hoy se "ve a sí
-      // misma" al generar su propia predicción, lo cual es información hecha
-      // trampa (el sistema no debe conocer el resultado que está prediciendo).
       let fechaHoyAPI = null;
 
       async function cargarHoy() {
@@ -2510,7 +2330,7 @@
           document.getElementById("hoy-body").innerHTML = `<div class="err">${
             to
               ? "⏳ <b>Render Free durmió el servidor</b> — tarda ~50 seg en despertar. Espera 1 minuto y presiona <b>Actualizar</b>."
-              : "⚠️ <b>No se pudo conectar.</b> Verifica que el servidor en Render esté activo y que el <b>server.js</b> más reciente esté subido a GitHub."
+              : "⚠️ <b>No se pudo conectar.</b> Verifica que el servidor en Render esté activo."
           }</div>`;
           document.getElementById("status-txt").textContent = "Sin conexión";
           renderStats(0);
@@ -2537,7 +2357,6 @@
         for (const l of LOTS18) {
           const nums = sorteos[l.k]?.numeros || [];
           const ok = nums.length >= 3;
-          // Historial de los últimos 3 días disponibles para esta loteria
           const histLot = hist
             .filter(
               (d) => (d[l.k] || []).length >= 3 && d.f !== (ok ? undefined : "")
@@ -2560,7 +2379,7 @@
             histHTML += "</div>";
           } else {
             histHTML = `<div class="hist-block"><div class="hist-tit">📊 Sorteos Anteriores</div>
-        <div style="font-size:11px;color:var(--muted2)">Sin historial aún para esta lotería. Se acumula cada día.</div></div>`;
+        <div style="font-size:11px;color:var(--muted2)">Sin historial aún para esta lotería.</div></div>`;
           }
           html += `<div class="card-lot" id="card-${
             l.k
@@ -2615,7 +2434,7 @@
             histHTML += "</div>";
           } else {
             histHTML = `<div class="hist-block"><div class="hist-tit">📊 Sorteos Anteriores</div>
-        <div style="font-size:11px;color:var(--muted2)">Sin historial aún. Se acumula cada día.</div></div>`;
+        <div style="font-size:11px;color:var(--muted2)">Sin historial aún.</div></div>`;
           }
           html += `<div class="card-lot" id="card-${l.k}">
       <div class="cl-hdr">
@@ -2641,79 +2460,35 @@
         grid.innerHTML = html;
       }
 
-      // ═══════════════════════════════════════════════════════
-      // RENDER JUEGOS ESPECIALES
-      // ═══════════════════════════════════════════════════════
       const TIPO_INFO = {
         pega3: { label: "Pega 3", cls: "pega3", min: 3 },
         pega4: { label: "Pega 4", cls: "pega4", min: 4 },
         kino: { label: "Kino", cls: "kino", min: 5 },
         loto: { label: "Loto", cls: "loto", min: 6 },
         lotomas: { label: "Loto Más", cls: "loto", min: 7 },
+        quiniela: { label: "Quiniela", cls: "pega3", min: 1 },
+        chance: { label: "Chance", cls: "kino", min: 5 },
       };
-      const EMPRESA_CLS = { LEIDSA: "leidsa", Loteka: "loteka", King: "king" };
+      const EMPRESA_CLS = {
+        LEIDSA: "leidsa",
+        Loteka: "loteka",
+        King: "king",
+        LoteDom: "king",
+      };
 
-      const ESPECIALES_LIST = [
-        {
-          k: "pega3mas",
-          n: "Pega 3 Más",
-          empresa: "LEIDSA",
-          tipo: "pega3",
-          hora: "9:00 PM",
-        },
-        {
-          k: "superkino",
-          n: "Super Kino TV",
-          empresa: "LEIDSA",
-          tipo: "kino",
-          hora: "9:00 PM",
-        },
-        {
-          k: "loto",
-          n: "Loto",
-          empresa: "LEIDSA",
-          tipo: "loto",
-          hora: "9:00 PM",
-        },
-        {
-          k: "lotomas",
-          n: "Loto Más",
-          empresa: "LEIDSA",
-          tipo: "lotomas",
-          hora: "9:00 PM",
-        },
-        {
-          k: "quemaito",
-          n: "El Quemaito",
-          empresa: "Loteka",
-          tipo: "pega3",
-          hora: "6:55 PM",
-        },
-        {
-          k: "megachance",
-          n: "Mega Chance",
-          empresa: "Loteka",
-          tipo: "kino",
-          hora: "6:55 PM",
-        },
-        {
-          k: "pega4king",
-          n: "Pega 4",
-          empresa: "King",
-          tipo: "pega4",
-          hora: "7:00 PM",
-        },
-      ];
+      const ESPECIALES_LIST = ESPECIALES_PRED_LIST;
 
       function renderEspeciales(especiales) {
         const grid = document.getElementById("especiales-body");
         if (!grid) return;
+        const hist = getHist();
         let html = "";
         for (const l of ESPECIALES_LIST) {
           const nums = especiales[l.k]?.numeros || [];
           const ti = TIPO_INFO[l.ti] || TIPO_INFO[l.tipo] || TIPO_INFO.pega3;
           const cls = ti.cls;
-          const ok = nums.length >= ti.min;
+          const cant = l.cant || ti.min;
+          const ok = nums.length >= cant;
           const empCls = EMPRESA_CLS[l.empresa] || "";
 
           let bolasHTML = "";
@@ -2728,20 +2503,32 @@
               )
               .join("");
           } else {
-            const placeholder =
-              l.tipo === "kino"
-                ? 20
-                : l.tipo === "lotomas"
-                ? 7
-                : l.tipo === "loto"
-                ? 6
-                : l.tipo === "pega4"
-                ? 4
-                : 3;
-            bolasHTML = Array(placeholder)
+            bolasHTML = Array(cant)
               .fill(0)
               .map(() => `<div class="esp-num wait">?</div>`)
               .join("");
+          }
+
+          const histLot = hist
+            .filter((d) => (d[l.k] || []).length >= cant)
+            .slice(0, 3);
+          let histHTML = "";
+          if (histLot.length) {
+            histHTML = `<div class="hist-block"><div class="hist-tit">📊 Sorteos Anteriores</div>`;
+            for (const d of histLot) {
+              const bolitas = d[l.k]
+                .slice(0, cant)
+                .map((n) => `<span class="mini-esf mini-e2">${p2(n)}</span>`)
+                .join("");
+              histHTML += `<div class="hist-row">
+          <span class="hist-fecha">${fmtFShort(d.f)}</span>
+          <div class="hist-bolas" style="flex-wrap:wrap;justify-content:flex-end;max-width:75%">${bolitas}</div>
+        </div>`;
+            }
+            histHTML += "</div>";
+          } else {
+            histHTML = `<div class="hist-block"><div class="hist-tit">📊 Sorteos Anteriores</div>
+        <div style="font-size:11px;color:var(--muted2)">Sin historial aún.</div></div>`;
           }
 
           html += `<div class="card-lot" id="card-${l.k}">
@@ -2755,13 +2542,7 @@
           }</span>
             </div>
             <div class="esp-nums">${bolasHTML}</div>
-            <div class="hist-block">
-              <div class="hist-tit">📊 Tipo: <b>${ti.label}</b> · ${
-            l.tipo === "kino" || l.tipo === "lotomas"
-              ? "Se acumula historial desde hoy"
-              : "Historial se acumula cada día"
-          }</div>
-            </div>
+            ${histHTML}
           </div>`;
         }
         grid.innerHTML = html;
@@ -2781,16 +2562,13 @@
         }
       }
 
-      // ═══════════════════════════════════════════════════════
-      // MODAL HISTORIAL
-      // ═══════════════════════════════════════════════════════
       function verHistorial(key, nombre) {
         document.getElementById("modal-tit").textContent = "📋 " + nombre;
         document.getElementById("mbg").classList.add("open");
         const hist = getHist().filter((d) => (d[key] || []).length >= 3);
         const mb = document.getElementById("modal-body");
         if (!hist.length) {
-          mb.innerHTML = `<div class="err" style="font-size:12px">Sin historial disponible para esta lotería todavía. Se acumula automáticamente cada día que el servidor esté activo.</div>`;
+          mb.innerHTML = `<div class="err" style="font-size:12px">Sin historial disponible para esta lotería todavía.</div>`;
           return;
         }
         let h = `<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:11px">${hist.length} días con resultados</div>
@@ -2816,11 +2594,7 @@
         mb.innerHTML = h;
       }
 
-      // ═══════════════════════════════════════════════════════
-      // PREDICCIONES — Sistema de Pesos por Posición (60-8-4)
-      // ═══════════════════════════════════════════════════════
       let lotAct = "gana_mas";
-
       const PILL_EMOJI = {
         gana_mas: "🟢",
         leidsa: "🔵",
@@ -2859,14 +2633,10 @@
           (l) => `<option value="${l.k}">🎰 ${l.n} [${l.empresa}]</option>`
         ).join("");
 
-        // Backtesting: solo quiniela + cuarteta (el modelo Punto/Pale/Súper
-        // Pale/Tripleta no aplica igual a Kino/Loto). Para especiales, el
-        // análisis walk-forward está dentro de su propia tarjeta en Predicciones.
         const bloqueBack = `<option value="todas">Todas las loterías</option>
           <optgroup label="Quinielas (3 números)">${optsQuiniela}</optgroup>
           <optgroup label="La Cuarteta (4 números)">${optsCuarteta}</optgroup>`;
 
-        // Consultas: incluye todo, ya que ahí solo se listan resultados pasados.
         const bloqueCons = `<option value="todas">Todas</option>
           <optgroup label="Quinielas (3 números)">${optsQuiniela}</optgroup>
           <optgroup label="La Cuarteta (4 números)">${optsCuarteta}</optgroup>
@@ -3036,44 +2806,42 @@
               label: "Punto Ponderado",
               nums: [j1num],
               conf: a1.p,
-              met: `El número con mayor score cuando se pondera 1ra(×60), 2da(×8), 3ra(×4). El mejor número para jugar un solo punto.`,
+              met: `El número con mayor score cuando se pondera 1ra(×60), 2da(×8), 3ra(×4).`,
             },
             {
               tipo: "tp",
               label: "Punto Posicional 1ra",
               nums: [j2num],
               conf: a2.p,
-              met: `El número que más veces salió exactamente en 1ra posición (paga 60x). Máxima rentabilidad histórica por peso.`,
+              met: `El número que más veces salió exactamente en 1ra posición (paga 60x).`,
             },
             {
               tipo: "tpa",
               label: "Pale Ponderado",
               nums: j3,
               conf: a3.pa,
-              met: `Los 2 con mayor score ponderado. Combinación que más valor histórico acumula en todo el historial.`,
+              met: `Los 2 con mayor score ponderado.`,
             },
             {
               tipo: "tpa",
               label: "Pale Histórico",
               nums: j4,
               conf: a4.pa,
-              met: `El par que más veces salió junto en el historial. Co-ocurrencia real: ${
-                topPares[0] ? topPares[0][1] + "x juntos" : "-"
-              }.`,
+              met: `El par que más veces salió junto en el historial.`,
             },
             {
               tipo: "tpa",
               label: "Pale Frío (Por Salir)",
               nums: j5,
               conf: a5.pa,
-              met: `Los 2 números que más sorteos llevan sin aparecer. Candidatos por equilibrio del historial.`,
+              met: `Los 2 números que más sorteos llevan sin aparecer.`,
             },
             {
               tipo: "tsp",
               label: "Super Pale Ponderado",
               nums: j6,
               conf: a6.pa,
-              met: `Top 3 por score ponderado (pesos 60-8-4). Al menos 2 de los 3 salieron en ${a6.pa}% de los sorteos anteriores.`,
+              met: `Top 3 por score ponderado.`,
             },
             {
               tipo: "tsp",
@@ -3082,28 +2850,21 @@
               conf: a7.pa,
               met: `El top de cada posición: 1ro=${p2(top0)}, 2do=${p2(
                 top1
-              )}, 3ro=${p2(top2)}. Al menos 2 de los 3 coincidieron en ${
-                a7.pa
-              }% de los sorteos.`,
+              )}, 3ro=${p2(top2)}.`,
             },
             {
               tipo: "ttr",
               label: "Tripleta Histórica",
               nums: j8,
               conf: a8.sp,
-              met:
-                topTrips[0] && topTrips[0][1] > 1
-                  ? `Única tripleta que se repitió exacta ${topTrips[0][1]} veces en el historial.`
-                  : `La combinación ponderada más compacta del historial.`,
+              met: `La combinación ponderada más compacta del historial.`,
             },
             {
               tipo: "ttr",
               label: "Tripleta Mixta",
               nums: j9,
               conf: a9.sp,
-              met: `Caliente ponderado (${p2(ordPond[0])}) + Frío ciclo (${p2(
-                friosCiclo[0]
-              )}) + Top 1ra posición (${p2(top0)}). Máxima diversificación.`,
+              met: `Caliente ponderado + Frío ciclo + Top 1ra posición.`,
             },
           ],
         };
@@ -3137,7 +2898,7 @@
         a.freq[a.ordPond[0]] || 0
       }x</div><div class="lot-item-l">Máx. apariciones</div></div>
     </div>
-    <div class="lot-nota">💡 Sistema de pesos: 1ra posición ×60 · 2da ×8 · 3ra ×4 (igual que el pago real de la quiniela). Los % son históricos reales sobre ${dias} sorteos.</div>
+    <div class="lot-nota">💡 Sistema de pesos: 1ra posición ×60 · 2da ×8 · 3ra ×4.</div>
   </div>`;
 
         for (const [tkey, tinfo] of Object.entries(TIPOS)) {
@@ -3167,6 +2928,9 @@
         <div class="jinfo">
           <div class="jmet">${j.label}</div>
           <div class="jraz">${j.met}</div>
+          <button onclick="copiarPredJugada('${j.tipo}','${j.nums.join(
+              ","
+            )}')" style="margin-top:8px;padding:7px 12px;border-radius:7px;background:#1a2029;color:#2fe6c8;border:1px solid #2fe6c8;font-size:12px;font-weight:600;cursor:pointer">📋 Copiar a Mis Jugadas</button>
         </div>
       </div>`;
           }
@@ -3175,17 +2939,6 @@
         document.getElementById("pred-body").innerHTML = html;
       }
 
-      // ═══════════════════════════════════════════════════════
-      // PREDICCIÓN LA CUARTETA — 4 números sin orden
-      // A diferencia de la quiniela (3 números posicionales 60-8-4), aquí el
-      // premio es por combinación SIN importar el orden, así que no aplican
-      // los pesos por posición. El % de confianza que se muestra aquí es
-      // WALK-FORWARD desde el primer día: en cada sorteo de prueba se genera
-      // la jugada usando SOLO el historial anterior a ese sorteo (nunca datos
-      // del mismo día que se evalúa), para que el % sea una estimación
-      // honesta de rendimiento futuro y no una medida inflada contra los
-      // mismos datos que generaron la jugada.
-      // ═══════════════════════════════════════════════════════
       let lotActCuarteta = "cuarteta_n";
 
       function renderCuartetaPills() {
@@ -3214,20 +2967,20 @@
         btn.textContent = "Analizando...";
         document.getElementById("spin-pred-cuarteta").style.display = "flex";
         document.getElementById("pred-cuarteta-body").innerHTML = "";
-        const hist = getHist().filter((d) => d.f !== fechaHoyAPI); // descendente: más reciente primero
+        const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
         const datosDesc = hist
           .filter((d) => (d[lotActCuarteta] || []).length >= 4)
           .map((d) => d[lotActCuarteta]);
         if (datosDesc.length < 8) {
           document.getElementById(
             "pred-cuarteta-body"
-          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de La Cuarteta para este horario. Actualmente hay ${datosDesc.length}.</div>`;
+          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de La Cuarteta.</div>`;
           document.getElementById("spin-pred-cuarteta").style.display = "none";
           btn.disabled = false;
           btn.textContent = "Analizar";
           return;
         }
-        const datosAsc = [...datosDesc].reverse(); // cronológico: más viejo primero
+        const datosAsc = [...datosDesc].reverse();
         const r = analizarCuarteta(datosAsc);
         renderPredCuarteta(r, INFO_LOOKUP[lotActCuarteta], datosDesc.length);
         document.getElementById("spin-pred-cuarteta").style.display = "none";
@@ -3261,7 +3014,6 @@
         for (let i = MIN_TRAIN; i < datosAsc.length; i++) {
           const train = datosAsc.slice(0, i);
           const actual = datosAsc[i];
-
           const pickTop = topNFrecuentesCuarteta(train, 4);
           const mTop = pickTop.filter((x) => actual.includes(x)).length;
           resTop.total++;
@@ -3302,67 +3054,33 @@
           return "var(--red)";
         };
         const html = `<div class="lot-box">
-    <div class="lot-box-tit">${info.n} — Análisis Walk-Forward (honesto)</div>
-    <div class="lot-nota">💡 Estos % se calcularon simulando el sistema hacia atrás en ${
-      r.probados
-    } sorteos de prueba: en cada uno se generó la jugada usando solo los datos ANTERIORES a ese sorteo, nunca los del mismo día evaluado. Así reflejan qué tan bien habría funcionado en la práctica, no solo qué tan bien explican el pasado.</div>
+    <div class="lot-box-tit">${info.n} — Análisis Walk-Forward</div>
+    <div class="lot-nota">💡 Simulando en ${r.probados} sorteos de prueba.</div>
   </div>
-  <div class="jsec"><div class="jsec-tit">🔥 Top 4 por frecuencia <span>Jugada recomendada con todo el historial</span></div>
+  <div class="jsec"><div class="jsec-tit">🔥 Top 4 por frecuencia</div>
     <div class="jcard tsp">
       <div class="jleft">
         <div class="jtype">CUARTETA</div>
         <div class="jconf" style="color:${cc(r.statsTop.p2)}">${
           r.statsTop.p2
         }%</div>
-        <div class="jconf-l">2+ de 4 (walk-fwd)</div>
+        <div class="jconf-l">2+ de 4</div>
       </div>
       <div class="jdiv"></div>
       <div class="jnums">${r.top4Hoy
         .map((x) => `<div class="jnum">${p2(x)}</div>`)
         .join("")}</div>
       <div class="jinfo">
-        <div class="jmet">Los 4 números más frecuentes del historial</div>
-        <div class="jraz">Tasa real fuera de muestra: pegar los 4 (premio mayor US$500k) ${
-          r.statsTop.p4
-        }% de las veces · pegar 3 (US$5,000) ${
+        <div class="jmet">Los 4 números más frecuentes</div>
+        <div class="jraz">Pegar 4: ${r.statsTop.p4}% · Pegar 3: ${
           r.statsTop.p3
-        }% · pegar 2 (US$100) ${r.statsTop.p2}%.</div>
-      </div>
-    </div>
-  </div>
-  <div class="jsec"><div class="jsec-tit">❄️ Fríos por ciclo <span>Más sorteos sin salir</span></div>
-    <div class="jcard tpa">
-      <div class="jleft">
-        <div class="jtype">CUARTETA</div>
-        <div class="jconf" style="color:${cc(r.statsFrio.p2)}">${
-          r.statsFrio.p2
-        }%</div>
-        <div class="jconf-l">2+ de 4 (walk-fwd)</div>
-      </div>
-      <div class="jdiv"></div>
-      <div class="jnums">${r.friosHoy
-        .map((x) => `<div class="jnum">${p2(x)}</div>`)
-        .join("")}</div>
-      <div class="jinfo">
-        <div class="jmet">Los 4 con más sorteos de ausencia</div>
-        <div class="jraz">Tasa real fuera de muestra: pegar los 4 ${
-          r.statsFrio.p4
-        }% · pegar 3 ${r.statsFrio.p3}% · pegar 2 ${r.statsFrio.p2}%.</div>
+        }% · Pegar 2: ${r.statsTop.p2}%.</div>
       </div>
     </div>
   </div>`;
         document.getElementById("pred-cuarteta-body").innerHTML = html;
       }
 
-      // ═══════════════════════════════════════════════════════
-      // PREDICCIÓN JUEGOS ESPECIALES (Pega 3 Más, Super Kino, Loto, etc.)
-      // pega3/pega4: cada posición es un dígito independiente 0-9, se predice
-      //   el dígito más frecuente EN ESA POSICIÓN.
-      // kino/loto/lotomas: no hay posición, solo frecuencia general (como
-      //   La Cuarteta), porque el premio no depende de orden.
-      // (ESPECIALES_PRED_LIST y TIPO_PRED_CANT_FE ya están definidos arriba,
-      // junto a INFO_LOOKUP, para que ambos puedan compartirlos)
-      // ═══════════════════════════════════════════════════════
       let lotActEspecial = "pega3mas";
 
       function renderEspecialPills() {
@@ -3423,7 +3141,7 @@
         if (datosDesc.length < 8) {
           document.getElementById(
             "pred-especial-body"
-          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de ${info.n} para analizar. Actualmente hay ${datosDesc.length}.</div>`;
+          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de ${info.n}.</div>`;
           document.getElementById("spin-pred-especial").style.display = "none";
           btn.disabled = false;
           btn.textContent = "Analizar";
@@ -3436,8 +3154,6 @@
           ? info.cant
           : TIPO_PRED_CANT_FE[info.tipo] || info.cant;
 
-        // Walk-forward: para cada sorteo de prueba, genera la jugada SOLO
-        // con datos anteriores a ese sorteo y mide si acertó.
         const MIN_TRAIN = 6;
         let h2 = 0,
           hTotal = 0,
@@ -3495,36 +3211,27 @@
         const numsHTML = pick
           .map((x) => `<div class="jnum">${esDigitos ? x : p2(x)}</div>`)
           .join("");
-        const tipoLabel = esDigitos
-          ? `${pick.length} dígitos posicionales`
-          : `Top ${pick.length} por frecuencia (sin orden)`;
         const html = `<div class="lot-box">
-    <div class="lot-box-tit">${info.n} [${
-          info.empresa
-        }] — Análisis Walk-Forward (honesto)</div>
-    <div class="lot-nota">💡 Calculado simulando hacia atrás en ${probados} sorteos: cada jugada se generó usando solo los datos ANTERIORES a ese sorteo. Método: ${tipoLabel}.</div>
+    <div class="lot-box-tit">${info.n} [${info.empresa}] — Análisis Walk-Forward</div>
   </div>
-  <div class="jsec"><div class="jsec-tit">🎯 Jugada recomendada <span>Con todo el historial disponible</span></div>
+  <div class="jsec"><div class="jsec-tit">🎯 Jugada recomendada</div>
     <div class="jcard tsp">
       <div class="jleft">
         <div class="jtype">${info.tipo.toUpperCase()}</div>
         <div class="jconf" style="color:${cc(pctMedio)}">${pctMedio}%</div>
-        <div class="jconf-l">acierto parcial (walk-fwd)</div>
+        <div class="jconf-l">acierto parcial</div>
       </div>
       <div class="jdiv"></div>
       <div class="jnums">${numsHTML}</div>
       <div class="jinfo">
         <div class="jmet">${info.n} — ${info.hora}</div>
-        <div class="jraz">Tasa real fuera de muestra: acierto alto (mayoría/todos) ${pctAlto}% de las veces · acierto parcial ${pctMedio}%.</div>
+        <div class="jraz">Tasa real: acierto alto ${pctAlto}% · parcial ${pctMedio}%.</div>
       </div>
     </div>
   </div>`;
         document.getElementById("pred-especial-body").innerHTML = html;
       }
 
-      // ═══════════════════════════════════════════════════════
-      // BACKTESTING
-      // ═══════════════════════════════════════════════════════
       function cargarBack() {
         const lot = document.getElementById("sel-back").value;
         const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
@@ -3560,959 +3267,4 @@
           document.getElementById("back-ins").innerHTML =
             '<p style="font-size:12px;color:var(--muted)">Sin datos.</p>';
           return;
-        }
-
-        const maxF = Math.max(...Object.values(freq), 1);
-
-        // ── WALK-FORWARD honesto ──────────────────────────────────────────
-        // Para cada lotería se construye su serie cronológica y, sorteo por
-        // sorteo, se calcula el top-5 usando SOLO los días anteriores a ese
-        // sorteo. Nunca se usa el resultado del mismo día que se evalúa, así
-        // el % no se infla con datos que el sistema "ya conocía".
-        const lkWF = lot === "todas" ? todasClaves : [lot];
-        let aP = 0,
-          aPa = 0,
-          aSp = 0,
-          aT = 0,
-          totalWF = 0;
-        const MIN_TRAIN = 5;
-        for (const k of lkWF) {
-          const minNum = k.startsWith("cuarteta_") ? 4 : 3;
-          const serieDesc = hist
-            .filter((d) => (d[k] || []).length >= minNum)
-            .map((d) => d[k]);
-          const serieAsc = [...serieDesc].reverse();
-          for (let i = MIN_TRAIN; i < serieAsc.length; i++) {
-            const train = serieAsc.slice(0, i);
-            const actual = serieAsc[i];
-            // Mismo algoritmo que historial: peso posicional + recencia
-            const score = {};
-            train.forEach((nums, idx) => {
-              const w = Math.max(1, train.length - idx);
-              if (nums[0] !== undefined)
-                score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
-              if (nums[1] !== undefined)
-                score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
-              if (nums[2] !== undefined)
-                score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
-            });
-            const top3 = Object.entries(score)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 3)
-              .map(([n]) => +n);
-            const h = actual.filter((n) => top3.includes(n)).length;
-            totalWF++;
-            if (h >= 1) aP++;
-            if (h >= 2) aPa++;
-            if (h >= 3) {
-              aSp++;
-              aT++;
-            }
-          }
-        }
-        const pp = (n) => (totalWF > 0 ? Math.round((n / totalWF) * 100) : 0);
-        document.getElementById("bh-p").textContent = pp(aP) + "%";
-        document.getElementById("bh-pa").textContent = pp(aPa) + "%";
-        document.getElementById("bh-sp").textContent = pp(aSp) + "%";
-        document.getElementById("bh-tr").textContent = pp(aT) + "%";
-        document.getElementById(
-          "bh-ps"
-        ).textContent = `${aP}/${totalWF} sorteos (walk-fwd)`;
-        document.getElementById(
-          "bh-pas"
-        ).textContent = `${aPa}/${totalWF} sorteos (walk-fwd)`;
-        document.getElementById(
-          "bh-sps"
-        ).textContent = `${aSp}/${totalWF} sorteos (walk-fwd)`;
-        document.getElementById(
-          "bh-trs"
-        ).textContent = `${aT}/${totalWF} sorteos (walk-fwd)`;
-        ["bh-pb", "bh-pab", "bh-spb", "bh-trb"].forEach((id, i) => {
-          const vals = [pp(aP), pp(aPa), pp(aSp), pp(aT)];
-          const cols = ["#00ff66", "#ffb703", "#00f2fe", "#ff0055"];
-          document.getElementById(
-            id
-          ).style.cssText = `background:linear-gradient(90deg,${cols[i]} ${vals[i]}%,rgba(255,255,255,.08) ${vals[i]}%);height:4px;border-radius:2px`;
-        });
-
-        // ── RANKING POR LOTERÍA ──────────────────────────────────────────────
-        // Solo aplica cuando el selector está en "Todas" — si hay una lotería
-        // específica seleccionada, el ranking no tiene sentido y se oculta.
-        const rankBox = document.getElementById("back-ranking-box");
-        const rankCont = document.getElementById("back-ranking");
-        if (lot !== "todas") {
-          rankBox.style.display = "none";
-        } else {
-          rankBox.style.display = "block";
-          const resultsPorLot = [];
-          for (const k of lkWF) {
-            const minNum = k.startsWith("cuarteta_") ? 4 : 3;
-            const serieDesc = hist
-              .filter((d) => (d[k] || []).length >= minNum)
-              .map((d) => d[k]);
-            const serieAsc = [...serieDesc].reverse();
-            if (serieAsc.length < MIN_TRAIN + 1) {
-              resultsPorLot.push({
-                k,
-                n: INFO_LOOKUP[k]?.n || k,
-                totalL: 0,
-                aP: 0,
-                aPa: 0,
-                aSp: 0,
-              });
-              continue;
-            }
-            let aLP = 0,
-              aLPa = 0,
-              aLSp = 0,
-              totalL = 0;
-            for (let i = MIN_TRAIN; i < serieAsc.length; i++) {
-              const train = serieAsc.slice(0, i);
-              const actual = serieAsc[i];
-              const f = {};
-              for (const dd of train)
-                for (const n of dd) f[n] = (f[n] || 0) + 1;
-              const top5 = Object.entries(f)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3)
-                .map(([n]) => +n);
-              const h = actual.filter((n) => top5.includes(n)).length;
-              totalL++;
-              if (h >= 1) aLP++;
-              if (h >= 2) aLPa++;
-              if (h >= 3) aLSp++;
-            }
-            const pL = (n) => (totalL > 0 ? Math.round((n / totalL) * 100) : 0);
-            resultsPorLot.push({
-              k,
-              n: INFO_LOOKUP[k]?.n || k,
-              totalL,
-              pP: pL(aLP),
-              pPa: pL(aLPa),
-              pSp: pL(aLSp),
-            });
-          }
-          // Ordenar: las que tienen datos van primero (por % Punto desc), luego sin datos
-          resultsPorLot.sort((a, b) => {
-            if (!a.totalL && !b.totalL) return 0;
-            if (!a.totalL) return 1;
-            if (!b.totalL) return -1;
-            return b.pP - a.pP;
-          });
-
-          const colorPct = (v) =>
-            v >= 50 ? "var(--green)" : v >= 25 ? "var(--gold)" : "var(--red)";
-          let rh = `<div class="rank-hdr"><span>#</span><span>Lotería</span><span style="text-align:center">Punto</span><span style="text-align:center">Pale</span><span style="text-align:center">S.Pale</span></div>`;
-          resultsPorLot.forEach((r, i) => {
-            const pos = i + 1;
-            const posCls =
-              pos === 1 ? "top1" : pos === 2 ? "top2" : pos === 3 ? "top3" : "";
-            const esC = r.k.startsWith("cuarteta_");
-            const ico = esC ? "🎲 " : "";
-            if (!r.totalL) {
-              rh += `<div class="rank-row"><span class="rank-pos">${pos}</span><span class="rank-lot">${ico}${r.n}</span><span class="rank-na" style="grid-column:3/6">Sin datos aún</span></div>`;
-            } else {
-              rh += `<div class="rank-row">
-                <span class="rank-pos ${posCls}">${
-                pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : pos
-              }</span>
-                <span class="rank-lot">${ico}${r.n}</span>
-                <span class="rank-pct punto" style="color:${colorPct(r.pP)}">${
-                r.pP
-              }%</span>
-                <span class="rank-pct pale"  style="color:${colorPct(r.pPa)}">${
-                r.pPa
-              }%</span>
-                <span class="rank-pct sp"    style="color:${colorPct(r.pSp)}">${
-                r.pSp
-              }%</span>
-              </div>`;
-            }
-          });
-          rankCont.innerHTML = rh;
-        }
-
-        const topE = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
-        const frioE = Object.entries(freq)
-          .sort((a, b) => a[1] - b[1])
-          .filter(([, v]) => v > 0)[0];
-        const topP = Object.entries(pares).sort((a, b) => b[1] - a[1])[0];
-        const topT = Object.entries(trips).sort((a, b) => b[1] - a[1])[0];
-        document.getElementById("back-ins").innerHTML = `
-    <div class="ins"><span style="font-size:18px">🔥</span><div><strong>Más caliente: ${p2(
-      +topE[0]
-    )}</strong><p>Salió ${topE[1]}x en ${total} sorteos (${Math.round(
-          (topE[1] / total) * 100
-        )}%). Con peso ponderado: ${(
-          topE[1] * 60
-        ).toLocaleString()} pts posicionales.</p></div></div>
-    <div class="ins"><span style="font-size:18px">❄️</span><div><strong>Más frío: ${
-      frioE ? p2(+frioE[0]) : "--"
-    }</strong><p>${
-          frioE
-            ? `Solo salió ${frioE[1]}x. Candidato fuerte por equilibrio. En 100 sorteos, estadísticamente debería salir ~3x.`
-            : "Sin datos."
-        }</p></div></div>
-    <div class="ins"><span style="font-size:18px">⚡</span><div><strong>Mejor pale: ${
-      topP ? topP[0] : "--"
-    }</strong><p>${
-          topP
-            ? `Co-ocurrencia: ${
-                topP[1]
-              }x juntos en el mismo sorteo (${Math.round(
-                (topP[1] / total) * 100
-              )}% de los días).`
-            : "Sin pares aún."
-        }</p></div></div>
-    <div class="ins"><span style="font-size:18px">👑</span><div><strong>Tripleta: ${
-      topT ? topT[0] : "--"
-    }</strong><p>${
-          topT && topT[1] > 1
-            ? `Salió exacta ${topT[1]} veces — es la única combinación repetida del historial.`
-            : "Ninguna tripleta se repitió aún — historial en construcción."
-        }</p></div></div>`;
-
-        const cg = document.getElementById("cg");
-        cg.innerHTML = "";
-        for (let i = 0; i <= 99; i++) {
-          const f = freq[i] || 0;
-          const r = f / maxF;
-          let bg, tc;
-          if (r > 0.7) {
-            bg = "#14532D";
-            tc = "#fff";
-          } else if (r > 0.5) {
-            bg = "#16A34A";
-            tc = "#fff";
-          } else if (r > 0.3) {
-            bg = "#BBF7D0";
-            tc = "#14532D";
-          } else if (r > 0) {
-            bg = "#D1FAE5";
-            tc = "#065F46";
-          } else {
-            bg = "#1f2937";
-            tc = "#6e7681";
-          }
-          const el = document.createElement("div");
-          el.className = "cc";
-          el.style.cssText = `background:${bg};color:${tc}`;
-          el.textContent = p2(i);
-          el.title = `${p2(i)}: ${f}x`;
-          cg.appendChild(el);
-        }
-
-        const topF = Object.entries(freq)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 12);
-        document.getElementById("b-freq").innerHTML =
-          topF
-            .map(
-              ([n, f]) => `
-    <div class="fi"><div class="fb" style="background:rgba(0,255,102,.15);color:var(--green)">${p2(
-      +n
-    )}</div>
-    <div class="fbg"><div class="fbf" style="width:${Math.round(
-      (f / maxF) * 100
-    )}%;background:linear-gradient(90deg,#16A34A,#00ff66)"></div></div>
-    <span class="fv">${f}x</span>${
-                f === maxF ? '<span class="hb">🔥</span>' : ""
-              }</div>`
-            )
-            .join("") ||
-          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
-
-        const frios8 = Object.entries(freq)
-          .sort((a, b) => a[1] - b[1])
-          .slice(0, 8);
-        document.getElementById("b-frios").innerHTML =
-          frios8
-            .map(
-              ([n, f]) => `
-    <div class="fi"><div class="fb" style="background:rgba(0,242,254,.15);color:var(--neon)">${p2(
-      +n
-    )}</div>
-    <div class="fbg"><div class="fbf" style="width:${Math.round(
-      (f / maxF) * 100
-    )}%;background:linear-gradient(90deg,#0099cc,#00f2fe)"></div></div>
-    <span class="fv">${f}x</span><span class="cb">❄️</span></div>`
-            )
-            .join("") ||
-          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
-
-        const topPs = Object.entries(pares)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 7);
-        document.getElementById("b-pares").innerHTML =
-          topPs
-            .map(([par, f]) => {
-              const [a2, b2] = par.split("-");
-              return `<div class="pr"><span class="mini-esf mini-e1" style="width:28px;height:28px;line-height:28px;font-size:.78rem">${p2(
-                +a2
-              )}</span>
-    <span class="mini-esf mini-e2" style="width:28px;height:28px;line-height:28px;font-size:.78rem">${p2(
-      +b2
-    )}</span>
-    <span style="font-size:11px;color:var(--muted);font-weight:700">${f}x juntos</span>
-    ${f >= 3 ? '<span class="hb">top</span>' : ""}</div>`;
-            })
-            .join("") ||
-          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
-
-        const topTs = Object.entries(trips)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5);
-        document.getElementById("b-trips").innerHTML =
-          topTs
-            .map(([trip, f]) => {
-              const [a2, b2, c2] = trip.split("-");
-              return `<div class="tr2"><span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
-                +a2
-              )}</span>
-    <span class="mini-esf mini-e2" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
-      +b2
-    )}</span>
-    <span class="mini-esf mini-e3" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
-      +c2
-    )}</span>
-    <span style="font-size:11px;color:var(--muted);font-weight:700">${f}x</span>
-    ${f > 1 ? '<span class="hb">exacta</span>' : ""}</div>`;
-            })
-            .join("") ||
-          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // HISTORIAL PREDICCIONES vs RESULTADOS
-      // Para cada día del historial, calcula qué habría predicho
-      // el sistema (usando solo datos ANTERIORES a ese día) y
-      // lo compara contra el resultado real.
-      // ═══════════════════════════════════════════════════════
-      let hpLotFiltro = "todas";
-
-      function renderHistorialPredicciones() {
-        const cont = document.getElementById("back-histpred");
-        if (!cont) return;
-        const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
-        const ascDate = [...hist].reverse(); // más antiguo primero
-
-        // Botones de filtro por lotería
-        const optsHp = [
-          { k: "todas", n: "Todas" },
-          ...LOTS18.map((l) => ({ k: l.k, n: l.n })),
-          ...CUARTETAS.map((l) => ({ k: l.k, n: l.n })),
-        ];
-        const pillsHtml = `<div class="hp-sel">${optsHp
-          .map(
-            (o) =>
-              `<button class="hp-btn ${
-                o.k === hpLotFiltro ? "act" : ""
-              }" onclick="hpFiltrar('${o.k}')">${o.n}</button>`
-          )
-          .join("")}</div>`;
-
-        const claves =
-          hpLotFiltro === "todas" ? LOTS18.map((l) => l.k) : [hpLotFiltro];
-
-        const MIN_TRAIN_HP = 4;
-        const filas = [];
-
-        for (let i = MIN_TRAIN_HP; i < ascDate.length; i++) {
-          const train = ascDate.slice(0, i);
-          const diaReal = ascDate[i];
-
-          for (const clave of claves) {
-            const real = diaReal[clave];
-            if (!real || real.length < 3) continue;
-
-            // Calcular predicción walk-forward para este día
-            const serie = train
-              .filter((d) => (d[clave] || []).length >= 3)
-              .map((d) => d[clave]);
-            if (serie.length < 3) continue;
-
-            const score = {};
-            serie.forEach((nums, idx) => {
-              const w = Math.max(1, serie.length - idx);
-              if (nums[0] !== undefined)
-                score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
-              if (nums[1] !== undefined)
-                score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
-              if (nums[2] !== undefined)
-                score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
-            });
-            const top3 = Object.entries(score)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 3)
-              .map(([n]) => +n);
-
-            const hits = real.filter((n) => top3.includes(n)).length;
-            const tipo =
-              hits >= 3
-                ? "spale"
-                : hits === 2
-                ? "pale"
-                : hits === 1
-                ? "punto"
-                : "fallo";
-            const info = INFO_LOOKUP[clave] || { n: clave };
-
-            filas.push({
-              fecha: diaReal.f,
-              clave,
-              nombre: info.n,
-              pred: top3,
-              real,
-              hits,
-              tipo,
-            });
-          }
-        }
-
-        if (filas.length === 0) {
-          cont.innerHTML =
-            pillsHtml +
-            `<div class="empty"><div class="eico">📋</div><p>Necesitas al menos ${
-              MIN_TRAIN_HP + 1
-            } días de historial para ver el historial de predicciones.</p></div>`;
-          return;
-        }
-
-        // Ordenar por fecha descendente (más reciente primero)
-        filas.sort((a, b) => b.fecha.localeCompare(a.fecha));
-
-        const resumen = filas.reduce((acc, f) => {
-          acc[f.tipo] = (acc[f.tipo] || 0) + 1;
-          return acc;
-        }, {});
-        const total = filas.length;
-        const pctPunto =
-          total > 0
-            ? Math.round(
-                (((resumen.punto || 0) +
-                  (resumen.pale || 0) +
-                  (resumen.spale || 0)) /
-                  total) *
-                  100
-              )
-            : 0;
-
-        let html = pillsHtml;
-        html += `<div class="stats3" style="margin-bottom:14px">
-          <div class="schip"><div class="schip-n" style="color:var(--green)">${
-            resumen.punto || 0
-          }</div><div class="schip-l">Punto ✅</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--neon)">${
-            resumen.pale || 0
-          }</div><div class="schip-l">Pale 💙</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--gold)">${
-            resumen.spale || 0
-          }</div><div class="schip-l">S.Pale ⭐</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--muted)">${
-            resumen.fallo || 0
-          }</div><div class="schip-l">Fallo ❌</div></div>
-          <div class="schip"><div class="schip-n" style="color:${
-            pctPunto >= 30
-              ? "var(--green)"
-              : pctPunto >= 15
-              ? "var(--gold)"
-              : "var(--red)"
-          }">${pctPunto}%</div><div class="schip-l">Acierto global</div></div>
-        </div>`;
-
-        html += `<div class="cardX" style="overflow-x:auto;padding:0">
-          <table class="hp-table">
-            <thead><tr>
-              <th>Fecha</th><th>Lotería</th>
-              <th>Predicción (top-5)</th><th>Resultado real</th><th>Resultado</th>
-            </tr></thead><tbody>`;
-
-        for (const f of filas.slice(0, 120)) {
-          const predHtml = f.pred
-            .map((n) => {
-              const esHit = f.real.includes(n);
-              return `<div class="hp-n ${esHit ? "hit" : ""}">${p2(n)}</div>`;
-            })
-            .join("");
-          const realHtml = f.real
-            .map((n) => {
-              const esHit = f.pred.includes(n);
-              return `<div class="hp-n ${esHit ? "hit" : ""}">${p2(n)}</div>`;
-            })
-            .join("");
-          const badges = {
-            punto: "✅ Punto",
-            pale: "💙 Pale",
-            spale: "⭐ S.Pale",
-            fallo: "❌ Fallo",
-          };
-          html += `<tr class="hp-row ${f.tipo}">
-            <td class="hp-fecha">${fmtF(f.fecha)}</td>
-            <td class="hp-lot">${f.nombre}</td>
-            <td><div class="hp-nums">${predHtml}</div></td>
-            <td><div class="hp-nums">${realHtml}</div></td>
-            <td><span class="hp-badge ${f.tipo}">${badges[f.tipo]}</span></td>
-          </tr>`;
-        }
-        if (filas.length > 120) {
-          html += `<tr><td colspan="5" style="text-align:center;color:var(--muted);font-size:11px;padding:10px">Mostrando 120 de ${filas.length} registros</td></tr>`;
-        }
-        html += "</tbody></table></div>";
-        cont.innerHTML = html;
-      }
-
-      function hpFiltrar(clave) {
-        hpLotFiltro = clave;
-        renderHistorialPredicciones();
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // CONSULTAR
-      // ═══════════════════════════════════════════════════════
-      function buscar() {
-        const lot = document.getElementById("lot-cons").value;
-        const desde = document.getElementById("f-desde").value;
-        const hasta = document.getElementById("f-hasta").value;
-        const hist = getHist();
-        const todasClaves = [
-          ...LOTS18.map((l) => l.k),
-          ...CUARTETAS.map((l) => l.k),
-          ...ESPECIALES_PRED_LIST.map((l) => l.k),
-        ];
-        const clavesEspeciales = new Set(ESPECIALES_PRED_LIST.map((l) => l.k));
-        const res = [];
-        for (const d of hist) {
-          if (desde && d.f < desde) continue;
-          if (hasta && d.f > hasta) continue;
-          const lk = lot === "todas" ? todasClaves : [lot];
-          for (const l of lk) {
-            const nums = d[l] || [];
-            const minNum = l.startsWith("cuarteta_")
-              ? 4
-              : clavesEspeciales.has(l)
-              ? 1
-              : 3;
-            if (nums.length >= minNum) res.push({ f: d.f, lot: l, nums });
-          }
-        }
-        const w = document.getElementById("tabla-cons");
-        if (!res.length) {
-          w.innerHTML = `<div class="empty"><div class="eico">🔍</div><p>Sin resultados para ese filtro.</p></div>`;
-          return;
-        }
-        let h = `<div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">${res.length} resultado(s)</div>
-    <div class="cardX"><table class="rtable">
-    <thead><tr><th>Fecha</th><th>Lotería</th><th>Números</th></tr></thead><tbody>`;
-        for (const r of res.slice(0, 100)) {
-          const info = INFO_LOOKUP[r.lot] || { n: r.lot };
-          const esCuarteta = r.lot.startsWith("cuarteta_");
-          const esEspecial = clavesEspeciales.has(r.lot);
-          const colorTag = esEspecial
-            ? "var(--gold)"
-            : esCuarteta
-            ? "var(--gold)"
-            : "var(--neon)";
-          const bolas = r.nums
-            .map(
-              (n, i) =>
-                `<span class="mini-esf mini-e${
-                  (i % 3) + 1
-                }" style="width:26px;height:26px;line-height:26px;font-size:.72rem;margin:1px">${p2(
-                  n
-                )}</span>`
-            )
-            .join("");
-          h += `<tr>
-      <td>${fmtF(r.f)}</td>
-      <td style="font-weight:800;color:${colorTag}">${
-            esEspecial ? "🎰 " : esCuarteta ? "🎲 " : ""
-          }${info.n}${
-            esEspecial && info.empresa
-              ? ` <span style="font-size:.65rem;color:var(--muted)">[${info.empresa}]</span>`
-              : ""
-          }</td>
-      <td><div style="display:flex;flex-wrap:wrap;gap:2px">${bolas}</div></td>
-    </tr>`;
-        }
-        h += "</tbody></table></div>";
-        w.innerHTML = h;
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // MIS JUGADAS — registro personal de apuestas
-      // Se guarda 100% en este navegador (localStorage), nunca sale de
-      // aquí ni se manda al servidor. El sistema solo COMPARA contra el
-      // resultado real cuando ya está disponible; no afecta ni se mezcla
-      // con las estadísticas generales del sistema.
-      // ═══════════════════════════════════════════════════════
-      function clasificarLoteria(clave) {
-        if (CUARTETAS.some((c) => c.k === clave)) return "cuarteta";
-        const esp = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
-        if (esp)
-          return esp.tipo === "pega3" || esp.tipo === "pega4"
-            ? "especial-digitos"
-            : "especial-numeros";
-        return "quiniela";
-      }
-
-      function poblarSelectorJugadas() {
-        const sel = document.getElementById("jg-lot");
-        if (!sel) return;
-        const optsQ = LOTS18.map(
-          (l) => `<option value="${l.k}">${l.n}</option>`
-        ).join("");
-        const optsC = CUARTETAS.map(
-          (l) => `<option value="${l.k}">🎲 ${l.n}</option>`
-        ).join("");
-        const optsE = ESPECIALES_PRED_LIST.map(
-          (l) => `<option value="${l.k}">🎰 ${l.n} [${l.empresa}]</option>`
-        ).join("");
-        sel.innerHTML = `<option value="">Selecciona...</option>
-          <optgroup label="Quinielas (3 números)">${optsQ}</optgroup>
-          <optgroup label="La Cuarteta (4 números)">${optsC}</optgroup>
-          <optgroup label="Juegos Especiales">${optsE}</optgroup>`;
-      }
-
-      function actualizarFormJugada() {
-        const clave = document.getElementById("jg-lot").value;
-        const tipoWrap = document.getElementById("jg-tipo-wrap");
-        const tipoSel = document.getElementById("jg-tipo");
-        const numsLabel = document.getElementById("jg-nums-label");
-        const numsInput = document.getElementById("jg-nums");
-        if (!clave) {
-          tipoWrap.style.display = "none";
-          numsLabel.textContent = "Números jugados (separados por coma)";
-          numsInput.placeholder = "Ej: 12, 34, 56";
-          return;
-        }
-        const grupo = clasificarLoteria(clave);
-        if (grupo === "quiniela") {
-          tipoWrap.style.display = "block";
-          tipoSel.innerHTML = `
-            <option value="punto">Punto (1 número)</option>
-            <option value="pale">Pale (2 números)</option>
-            <option value="superpale">Súper Pale (3 números, sin orden)</option>
-            <option value="tripleta">Tripleta (3 números, orden exacto)</option>`;
-          numsLabel.textContent = "Números jugados";
-          numsInput.placeholder = "Según el tipo: Ej. 12 ó 12,34 ó 12,34,56";
-        } else if (grupo === "cuarteta") {
-          tipoWrap.style.display = "none";
-          numsLabel.textContent = "Los 4 números de La Cuarteta jugados";
-          numsInput.placeholder = "Ej: 12, 34, 56, 78";
-        } else if (grupo === "especial-digitos") {
-          const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
-          tipoWrap.style.display = "none";
-          numsLabel.textContent = `Los ${info.cant} dígitos jugados, en orden`;
-          numsInput.placeholder =
-            info.cant === 3 ? "Ej: 3, 7, 1" : "Ej: 3, 7, 1, 9";
-        } else {
-          const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
-          tipoWrap.style.display = "none";
-          numsLabel.textContent = `Números jugados (hasta ${info.cant})`;
-          numsInput.placeholder = "Ej: 5, 12, 23, 41, 56";
-        }
-      }
-
-      function getJugadas() {
-        try {
-          const r = localStorage.getItem("rd_jugadas");
-          return r ? JSON.parse(r) : [];
-        } catch (e) {
-          return [];
-        }
-      }
-      function setJugadas(arr) {
-        try {
-          localStorage.setItem("rd_jugadas", JSON.stringify(arr));
-        } catch (e) {}
-      }
-
-      function agregarJugada() {
-        const clave = document.getElementById("jg-lot").value;
-        const fecha = document.getElementById("jg-fecha").value;
-        const numsRaw = document.getElementById("jg-nums").value;
-        const monto = document.getElementById("jg-monto").value;
-        const tipoSel = document.getElementById("jg-tipo");
-
-        if (!clave) return alert("Elige una lotería primero.");
-        if (!fecha) return alert("Elige la fecha en que jugaste.");
-        const numeros = numsRaw
-          .split(",")
-          .map((s) => parseInt(s.trim(), 10))
-          .filter((n) => !isNaN(n));
-        if (numeros.length === 0) return alert("Escribe al menos un número.");
-
-        const grupo = clasificarLoteria(clave);
-        const tipo = grupo === "quiniela" ? tipoSel.value : grupo;
-
-        // Validación de cantidad según el tipo
-        const cantEsperada = { punto: 1, pale: 2, superpale: 3, tripleta: 3 };
-        if (grupo === "quiniela" && numeros.length !== cantEsperada[tipo]) {
-          return alert(
-            `Para "${
-              tipoSel.options[tipoSel.selectedIndex].text
-            }" debes escribir exactamente ${cantEsperada[tipo]} número(s).`
-          );
-        }
-        if (grupo === "cuarteta" && numeros.length !== 4) {
-          return alert("La Cuarteta necesita exactamente 4 números.");
-        }
-        if (grupo === "especial-digitos") {
-          const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
-          if (numeros.length !== info.cant)
-            return alert(
-              `${info.n} necesita exactamente ${info.cant} dígitos.`
-            );
-        }
-
-        const jugadas = getJugadas();
-        jugadas.unshift({
-          id: Date.now() + Math.random().toString(36).slice(2, 6),
-          clave,
-          fecha,
-          tipo,
-          numeros,
-          monto: monto ? parseFloat(monto) : null,
-          creado: new Date().toISOString(),
-        });
-        setJugadas(jugadas);
-
-        document.getElementById("jg-nums").value = "";
-        document.getElementById("jg-monto").value = "";
-        renderJugadas();
-      }
-
-      function eliminarJugada(id) {
-        if (!confirm("¿Eliminar esta jugada de tu registro?")) return;
-        setJugadas(getJugadas().filter((j) => j.id !== id));
-        renderJugadas();
-      }
-
-      // Busca el resultado real (números ganadores) de una clave+fecha,
-      // combinando el día de hoy (en memoria) con el historial guardado.
-      function buscarResultadoReal(clave, fecha) {
-        const hist = getHist();
-        const dia = hist.find((d) => d.f === fecha);
-        if (dia && dia[clave] && dia[clave].length > 0) return dia[clave];
-        return null;
-      }
-
-      function evaluarJugada(j) {
-        const real = buscarResultadoReal(j.clave, j.fecha);
-        if (!real) return { estado: "pendiente" };
-
-        const grupo = clasificarLoteria(j.clave);
-        let aciertos = 0,
-          gano = false,
-          detalle = "";
-
-        if (grupo === "quiniela") {
-          if (j.tipo === "tripleta") {
-            gano =
-              j.numeros.length === 3 &&
-              j.numeros.every((n, i) => real[i] === n);
-            aciertos = j.numeros.filter((n, i) => real[i] === n).length;
-            detalle = gano
-              ? "¡Los 3 en el orden exacto!"
-              : `${aciertos} de 3 en la posición correcta`;
-          } else {
-            aciertos = j.numeros.filter((n) => real.includes(n)).length;
-            const minimo = { punto: 1, pale: 2, superpale: 3 }[j.tipo] || 1;
-            gano = aciertos >= minimo;
-            detalle = `${aciertos} de ${j.numeros.length} número(s) aparecieron en el resultado`;
-          }
-        } else if (grupo === "cuarteta") {
-          aciertos = j.numeros.filter((n) => real.includes(n)).length;
-          gano = aciertos >= 2;
-          detalle =
-            aciertos === 4
-              ? "¡Los 4 exactos!"
-              : aciertos >= 2
-              ? `Pegaste ${aciertos} de 4`
-              : `Solo ${aciertos} de 4`;
-        } else if (grupo === "especial-digitos") {
-          aciertos = j.numeros.filter((n, i) => real[i] === n).length;
-          gano = aciertos === j.numeros.length;
-          detalle = gano
-            ? "¡Todos los dígitos en orden!"
-            : `${aciertos} de ${j.numeros.length} dígitos en su posición exacta`;
-        } else {
-          aciertos = j.numeros.filter((n) => real.includes(n)).length;
-          gano = aciertos >= Math.min(3, j.numeros.length);
-          detalle = `${aciertos} de ${j.numeros.length} número(s) coincidieron`;
-        }
-
-        return { estado: gano ? "ganada" : "perdida", aciertos, real, detalle };
-      }
-
-      const TIPO_LABEL_JG = {
-        punto: "Punto",
-        pale: "Pale",
-        superpale: "Súper Pale",
-        tripleta: "Tripleta",
-        cuarteta: "Cuarteta",
-        "especial-digitos": "Posicional",
-        "especial-numeros": "Por cantidad",
-      };
-
-      function renderJugadas() {
-        const jugadas = getJugadas();
-        const cont = document.getElementById("jg-lista");
-        const statsBox = document.getElementById("jg-stats3");
-
-        let pend = 0,
-          gan = 0,
-          perd = 0,
-          totalApostado = 0;
-
-        if (jugadas.length === 0) {
-          cont.innerHTML = `<div class="empty"><div class="eico">🎟️</div><p>Todavía no ha registrado ninguna jugada.</p></div>`;
-          statsBox.innerHTML = "";
-          return;
-        }
-
-        let html = "";
-        for (const j of jugadas) {
-          const info = INFO_LOOKUP[j.clave] || { n: j.clave };
-          const r = evaluarJugada(j);
-          if (r.estado === "pendiente") pend++;
-          else if (r.estado === "ganada") gan++;
-          else perd++;
-          if (j.monto) totalApostado += j.monto;
-
-          const numsChips = j.numeros
-            .map((n) => {
-              const acerto = r.real && r.real.includes(n);
-              return `<div class="jg-chip ${acerto ? "acerto" : ""}">${p2(
-                n
-              )}</div>`;
-            })
-            .join("");
-
-          const badgeTxt =
-            r.estado === "pendiente"
-              ? "⏳ Pendiente"
-              : r.estado === "ganada"
-              ? "✅ Ganaste"
-              : "❌ No acertaste";
-
-          html += `<div class="jg-card ${r.estado}">
-            <div class="jg-hdr">
-              <div>
-                <div class="jg-tit">${info.n}</div>
-                <div class="jg-fecha">${fmtF(j.fecha)} · ${
-            TIPO_LABEL_JG[j.tipo] || j.tipo
-          }${j.monto ? ` · RD$${j.monto}` : ""}</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:8px">
-                <span class="jg-badge ${r.estado}">${badgeTxt}</span>
-                <button class="jg-del" onclick="eliminarJugada('${
-                  j.id
-                }')" title="Eliminar">🗑️</button>
-              </div>
-            </div>
-            <div class="jg-nums-row">${numsChips}</div>
-            ${
-              r.estado !== "pendiente"
-                ? `<div class="jg-detail">Resultado real: ${r.real
-                    .map((n) => p2(n))
-                    .join(" - ")} · ${r.detalle}</div>`
-                : `<div class="jg-detail">Aún no hay resultado registrado para esta fecha.</div>`
-            }
-          </div>`;
-        }
-        cont.innerHTML = html;
-
-        const totalEval = gan + perd;
-        const pct = totalEval > 0 ? Math.round((gan / totalEval) * 100) : 0;
-        statsBox.innerHTML = `
-          <div class="schip"><div class="schip-n" style="color:var(--gold)">${pend}</div><div class="schip-l">Pendientes</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--green)">${gan}</div><div class="schip-l">Ganadas</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--red)">${perd}</div><div class="schip-l">Perdidas${
-          totalEval > 0 ? ` (${pct}% acierto)` : ""
-        }</div></div>`;
-      }
-
-      function p2(n) {
-        return n !== undefined && n !== null
-          ? String(n).padStart(2, "0")
-          : "--";
-      }
-      function fmtF(f) {
-        if (!f) return "---";
-        try {
-          const [y, m, d] = f.split("-");
-          const M = [
-            "",
-            "Ene",
-            "Feb",
-            "Mar",
-            "Abr",
-            "May",
-            "Jun",
-            "Jul",
-            "Ago",
-            "Sep",
-            "Oct",
-            "Nov",
-            "Dic",
-          ];
-          return `${d} ${M[+m]} ${y}`;
-        } catch {
-          return f;
-        }
-      }
-      function fmtFShort(f) {
-        if (!f) return "--/--";
-        try {
-          const [, m, d] = f.split("-");
-          return `${d}/${m}`;
-        } catch {
-          return f;
-        }
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // INIT
-      // ═══════════════════════════════════════════════════════
-      window.addEventListener("DOMContentLoaded", async () => {
-        const hoy = new Date().toISOString().split("T")[0];
-        document.getElementById("f-hasta").value = hoy;
-        const h30 = new Date();
-        h30.setDate(h30.getDate() - 30);
-        document.getElementById("f-desde").value = h30
-          .toISOString()
-          .split("T")[0];
-        document.getElementById("jg-fecha").value = hoy;
-        renderStats(0);
-        renderLotPills();
-        renderCuartetaPills();
-        renderEspecialPills();
-        renderSelectores();
-        poblarSelectorJugadas();
-        renderJugadas();
-        // Traer el historial completo del servidor ANTES de calcular
-        // backtesting/predicciones, para no depender solo de localStorage.
-        await sincronizarHistorialServidor();
-        cargarBack();
-        fetch(`${API}/`)
-          .then((r) => r.json())
-          .then((d) => {
-            const v = d.version || "desconocida";
-            const badge = document.getElementById("status-txt");
-            if (v.includes("v5.2") || v.includes("v6") || v.includes("v7")) {
-              // versión correcta - no hacemos nada especial, cargarHoy lo sobreescribirá
-            } else {
-              badge.innerHTML = `⚠️ Servidor en versión <b>${v}</b> — no es la v7.0 más reciente. Sube el server.js nuevo a GitHub.`;
-            }
-          })
-          .catch(() => {});
-        setTimeout(cargarHoy, 1500);
-        setInterval(cargarHoy, 20 * 60 * 1000);
-        // Resincronizar historial del servidor cada 30 min (por si hay
-        // otra computadora o el navegador estuvo cerrado varios días)
-        setInterval(sincronizarHistorialServidor, 30 * 60 * 1000);
-      });
-    </script>
-  </body>
-</html>
+    
