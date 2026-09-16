@@ -17,6 +17,7 @@ const TG_ACTIVO = !!(TG_TOKEN && TG_CHAT_IDS.length);
 
 const yaNotificado = {};
 const yaChequeado = {};
+const yaPredicho = {};
 let primeraSyncTrasArranque = true;
 let primerSyncTrasArranque = true;
 
@@ -697,7 +698,99 @@ async function cazarAciertos({ enviar = true } = {}) {
   return avisos;
 }
 
-// ── Sincronización principal ───────────────────────────────────────────────────
+// ── PREDICCIÓN ANTICIPADA (antes de que cierre cada sorteo) ────────────────
+// Convierte "10:00 AM" / "12:30 PM" a minutos desde medianoche (hora RD).
+function horaTextoAMinutos(horaTexto) {
+  const m = horaTexto.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ampm = m[3].toUpperCase();
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+function minutosActualesRD() {
+  const [h, m] = horaRD().split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Combina el score histórico ponderado (igual que el Radar punto) con un
+// "empujón" por cada vez que ese número ya salió HOY en otra lotería —
+// la idea que pidió el usuario: ver si los números que ya aparecieron en
+// sorteos anteriores del mismo día ayudan a predecir los que faltan.
+function calcularPrediccionConContextoDelDia(clave) {
+  const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const serie = [];
+  for (const d of dias) {
+    const ds = d.sorteos && d.sorteos[clave];
+    if (ds && ds.numeros && ds.numeros.length >= 3) serie.push(ds.numeros.map(Number));
+  }
+  const score = {};
+  serie.forEach((nums, j) => {
+    const w = Math.max(1, serie.length - j);
+    if (nums[0] !== undefined) score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
+    if (nums[1] !== undefined) score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
+    if (nums[2] !== undefined) score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
+  });
+
+  const numerosDeHoy = {};
+  for (const [k, s] of Object.entries(estado.sorteos)) {
+    if (k === clave) continue;
+    if (s.numeros && s.numeros.length >= 3) {
+      for (const n of s.numeros) numerosDeHoy[n] = (numerosDeHoy[n] || 0) + 1;
+    }
+  }
+  const PESO_CONTEXTO_DIA = 25;
+  for (const [n, veces] of Object.entries(numerosDeHoy)) {
+    score[n] = (score[n] || 0) + veces * PESO_CONTEXTO_DIA;
+  }
+
+  const ranking = Object.entries(score).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+  return {
+    top1: ranking[0],
+    top3: ranking.slice(0, 3),
+    diasHistoricos: serie.length,
+    numerosContextoHoy: Object.keys(numerosDeHoy).map(Number),
+  };
+}
+
+async function revisarYEnviarPredicciones() {
+  if (!TG_ACTIVO) return;
+  const ahora = minutosActualesRD();
+  const VENTANA_MIN = 45; // manda la predicción entre 0 y 45 min antes del cierre
+  const avisos = [];
+
+  for (const [clave, s] of Object.entries(estado.sorteos)) {
+    if (yaPredicho[clave]) continue;
+    if (s.numeros && s.numeros.length >= 3) { yaPredicho[clave] = true; continue; } // ya salió, no aplica
+    const minutosSorteo = horaTextoAMinutos(s.hora);
+    if (minutosSorteo === null) continue;
+    const faltan = minutosSorteo - ahora;
+    if (faltan < 0 || faltan > VENTANA_MIN) continue;
+
+    const pred = calcularPrediccionConContextoDelDia(clave);
+    if (pred.diasHistoricos < 5) { yaPredicho[clave] = true; continue; } // muy poco historial, se salta
+
+    yaPredicho[clave] = true;
+    s.prediccion = { top1: pred.top1, top3: pred.top3, hora_calculo: horaRD(), contexto_dia: pred.numerosContextoHoy };
+
+    const f2 = n => String(n).padStart(2, '0');
+    const ctxTxt = pred.numerosContextoHoy.length
+      ? `\n     Contexto de hoy: ${pred.numerosContextoHoy.map(f2).join('-')}`
+      : '';
+    avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
+  }
+
+  if (avisos.length) {
+    await enviarTelegram(`🔮 <b>PREDICCIONES DEL MOMENTO</b> — ${fechaRD()}\n\n` + avisos.join('\n\n') +
+      `\n\n<i>Se compara contra el resultado real cuando salga.</i>`);
+    guardarEnDisco();
+    await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
+  }
+}
+
+
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
@@ -712,7 +805,7 @@ async function sincronizar() {
       estado.historico.unshift(snapshot);
       if (estado.historico.length > 90) estado.historico.pop();
       estado.sorteos = crearSorteos(); estado.cuartetas = crearCuartetas(); estado.especiales = crearJuegosEspeciales(); estado.fecha = hoy;
-      Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]); Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]);
+      Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]); Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]); Object.keys(yaPredicho).forEach(k => delete yaPredicho[k]);
       guardarEnDisco(); await guardarEnSupabase(snapshot);
     }
 
@@ -728,6 +821,7 @@ async function sincronizar() {
     await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
     await notificarNuevosSorteos();
     await cazarAciertos({ enviar: true });
+    await revisarYEnviarPredicciones();
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
