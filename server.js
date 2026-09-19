@@ -317,6 +317,40 @@ async function scrapeEnloteria() {
   return conteo;
 }
 
+// Mismo arreglo que scrapeEnloteria() pero para los juegos especiales
+// (Super Kino TV, Loto, Loto Más, Mega Chance, Pega 3 Más, El Quemaito
+// Mayor, Pega 4 Real) — antes solo se había aplicado a las 20 quinielas
+// normales, dejando los especiales dependiendo de fuentes ya rotas.
+const ENLOTERIA_ESPECIAL_SLUGS = {
+  'super-kino-tv': 'superkino',
+  'loto': 'loto',
+  'loto-pool': 'lotomas',
+  'megachance': 'megachance',
+  'pega-3-mas': 'pega3mas',
+  'el-quemaito-mayor': 'quemaito',
+  'pega-4': 'pega4king',
+};
+
+async function scrapeEspecialesEnloteria() {
+  const pendientes = Object.entries(ENLOTERIA_ESPECIAL_SLUGS).filter(([, clave]) => {
+    const j = estado.especiales[clave];
+    return j && j.numeros.length < j.cant;
+  });
+  if (!pendientes.length) return 0;
+  let conteo = 0;
+  for (const [slug, clave] of pendientes) {
+    const juego = estado.especiales[clave];
+    try {
+      const res = await axios.get(`https://enloteria.com/resultados-${slug}-hoy`, { headers: HEADERS, timeout: 15000 });
+      const nums = extraerResultadoHoyEnloteria(res.data, juego.cant);
+      if (nums.length === juego.cant) {
+        juego.numeros = nums; juego.estado = 'disponible'; conteo++;
+      }
+    } catch (e) {}
+  }
+  return conteo;
+}
+
 const YELU_FUENTES = { gana_mas: 'lottery/results/gana-mas', nacional: 'lottery/results/loteria-nacional', leidsa: 'leidsa/results/quiniela-pale', loteka: 'loteria-loteka/results/quiniela-loteka' };
 const MESES_ABREV = { ene:'01', feb:'02', mar:'03', abr:'04', may:'05', jun:'06', jul:'07', ago:'08', sep:'09', oct:'10', nov:'11', dic:'12' };
 function fechaGanamas(texto) {
@@ -734,16 +768,24 @@ function calcularPrediccionConContextoDelDia(clave) {
     if (nums[2] !== undefined) score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
   });
 
-  const numerosDeHoy = {};
+  // Solo cuenta números que ya se repitieron en 2 o más loterías distintas
+  // hoy — un solo número suelto en una sola lotería no es señal de nada,
+  // pero si el mismo número salió en 2-3 sorteos del día, vale la pena
+  // mirarlo. Guardamos también EN CUÁLES loterías salió cada uno.
+  const numerosDeHoy = {}; // { numero: [nombreLoteria, ...] }
   for (const [k, s] of Object.entries(estado.sorteos)) {
     if (k === clave) continue;
     if (s.numeros && s.numeros.length >= 3) {
-      for (const n of s.numeros) numerosDeHoy[n] = (numerosDeHoy[n] || 0) + 1;
+      for (const n of s.numeros) {
+        if (!numerosDeHoy[n]) numerosDeHoy[n] = [];
+        numerosDeHoy[n].push(s.nombre);
+      }
     }
   }
-  const PESO_CONTEXTO_DIA = 25;
-  for (const [n, veces] of Object.entries(numerosDeHoy)) {
-    score[n] = (score[n] || 0) + veces * PESO_CONTEXTO_DIA;
+  const repetidosHoy = Object.entries(numerosDeHoy).filter(([, lots]) => lots.length >= 2);
+  const PESO_CONTEXTO_DIA = 35;
+  for (const [n, lots] of repetidosHoy) {
+    score[n] = (score[n] || 0) + lots.length * PESO_CONTEXTO_DIA;
   }
 
   const ranking = Object.entries(score).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
@@ -751,7 +793,9 @@ function calcularPrediccionConContextoDelDia(clave) {
     top1: ranking[0],
     top3: ranking.slice(0, 3),
     diasHistoricos: serie.length,
-    numerosContextoHoy: Object.keys(numerosDeHoy).map(Number),
+    contextoHoy: repetidosHoy
+      .map(([n, lots]) => ({ numero: +n, loterias: lots }))
+      .sort((a, b) => b.loterias.length - a.loterias.length),
   };
 }
 
@@ -773,11 +817,11 @@ async function revisarYEnviarPredicciones() {
     if (pred.diasHistoricos < 5) { yaPredicho[clave] = true; continue; } // muy poco historial, se salta
 
     yaPredicho[clave] = true;
-    s.prediccion = { top1: pred.top1, top3: pred.top3, hora_calculo: horaRD(), contexto_dia: pred.numerosContextoHoy };
+    s.prediccion = { top1: pred.top1, top3: pred.top3, hora_calculo: horaRD(), contexto_dia: pred.contextoHoy };
 
     const f2 = n => String(n).padStart(2, '0');
-    const ctxTxt = pred.numerosContextoHoy.length
-      ? `\n     Contexto de hoy: ${pred.numerosContextoHoy.map(f2).join('-')}`
+    const ctxTxt = pred.contextoHoy.length
+      ? `\n     Repetidos hoy: ` + pred.contextoHoy.map(c => `${f2(c.numero)} (${c.loterias.join(', ')})`).join(' · ')
       : '';
     avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
   }
@@ -815,6 +859,7 @@ async function sincronizar() {
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeYelu();
 
     if (Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length > 0) await scrapeCuartetaLotDominicanas();
+    if (Object.values(estado.especiales).filter(e => e.numeros.length < e.cant).length > 0) await scrapeEspecialesEnloteria();
     
     estado.hora_actualizacion = horaRD();
     guardarEnDisco();
