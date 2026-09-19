@@ -732,27 +732,13 @@ async function cazarAciertos({ enviar = true } = {}) {
   return avisos;
 }
 
-// ── PREDICCIÓN ANTICIPADA (antes de que cierre cada sorteo) ────────────────
-// Convierte "10:00 AM" / "12:30 PM" a minutos desde medianoche (hora RD).
-function horaTextoAMinutos(horaTexto) {
-  const m = horaTexto.trim().match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!m) return null;
-  let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  const ampm = m[3].toUpperCase();
-  if (ampm === 'PM' && h !== 12) h += 12;
-  if (ampm === 'AM' && h === 12) h = 0;
-  return h * 60 + min;
-}
-function minutosActualesRD() {
-  const [h, m] = horaRD().split(':').map(Number);
-  return h * 60 + m;
-}
-
-// Combina el score histórico ponderado (igual que el Radar punto) con un
-// "empujón" por cada vez que ese número ya salió HOY en otra lotería —
-// la idea que pidió el usuario: ver si los números que ya aparecieron en
-// sorteos anteriores del mismo día ayudan a predecir los que faltan.
+// ── PREDICCIÓN ANTICIPADA — SCORE COMBINADO DE 3 SEÑALES ──────────────────
+// Señal 1 — Frecuencia ponderada por posición y recencia (igual que Radar punto)
+// Señal 2 — Bonus de adyacencia: si el número tiene un adyacente frecuente que
+//           ya salió HOY en esta misma lotería u otras, sube su score
+// Señal 3 — Bonus de vencimiento: si el número lleva más sorteos que su ciclo
+//           promedio sin aparecer, está "vencido" y sube proporcionalmente
+// Señal 4 — Contexto del día: números repetidos en 2+ loterías distintas hoy
 function calcularPrediccionConContextoDelDia(clave) {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const serie = [];
@@ -760,6 +746,9 @@ function calcularPrediccionConContextoDelDia(clave) {
     const ds = d.sorteos && d.sorteos[clave];
     if (ds && ds.numeros && ds.numeros.length >= 3) serie.push(ds.numeros.map(Number));
   }
+  if (!serie.length) return { top1: null, top3: [], scoreDetalle: {}, diasHistoricos: 0, contextoHoy: [] };
+
+  // — SEÑAL 1: frecuencia ponderada por posición y recencia —
   const score = {};
   serie.forEach((nums, j) => {
     const w = Math.max(1, serie.length - j);
@@ -768,11 +757,62 @@ function calcularPrediccionConContextoDelDia(clave) {
     if (nums[2] !== undefined) score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
   });
 
-  // Solo cuenta números que ya se repitieron en 2 o más loterías distintas
-  // hoy — un solo número suelto en una sola lotería no es señal de nada,
-  // pero si el mismo número salió en 2-3 sorteos del día, vale la pena
-  // mirarlo. Guardamos también EN CUÁLES loterías salió cada uno.
-  const numerosDeHoy = {}; // { numero: [nombreLoteria, ...] }
+  // — SEÑAL 2: bonus de adyacencia —
+  // Calcula qué pares consecutivos aparecen juntos más veces en el historial,
+  // luego refuerza los números cuyo adyacente más frecuente YA salió hoy en
+  // cualquier lotería (señal fuerte) o en el historial (señal moderada).
+  const adjFreq = {};
+  for (const nums of serie) {
+    const s = new Set(nums);
+    for (const n of nums) if (s.has(n + 1)) { const k = `${n}-${n+1}`; adjFreq[k] = (adjFreq[k] || 0) + 1; }
+  }
+  const salidasHoyTodas = new Set();
+  for (const [, s] of Object.entries(estado.sorteos)) {
+    if (s.numeros) for (const n of s.numeros) salidasHoyTodas.add(n);
+  }
+  const PESO_ADJ_HOY = 55;
+  const PESO_ADJ_HIST = 15;
+  for (const [par, veces] of Object.entries(adjFreq)) {
+    const [a, b] = par.split('-').map(Number);
+    if (salidasHoyTodas.has(b)) score[a] = (score[a] || 0) + veces * PESO_ADJ_HOY;
+    if (salidasHoyTodas.has(a)) score[b] = (score[b] || 0) + veces * PESO_ADJ_HOY;
+    score[a] = (score[a] || 0) + veces * PESO_ADJ_HIST;
+    score[b] = (score[b] || 0) + veces * PESO_ADJ_HIST;
+  }
+
+  // — SEÑAL 3: bonus de vencimiento (ciclo) —
+  // Para cada número, calcula cuántos sorteos pasan en promedio entre una
+  // aparición y la siguiente (su "ciclo"). Si lleva más sorteos que ese
+  // ciclo sin aparecer, está "vencido" — le suma puntos proporcionales.
+  const ultimaAparicion = {}; // número → índice del último sorteo donde salió
+  const intervalos = {};       // número → lista de gaps entre apariciones
+  serie.forEach((nums, idx) => {
+    for (const n of nums) {
+      if (ultimaAparicion[n] !== undefined) {
+        const gap = idx - ultimaAparicion[n];
+        if (!intervalos[n]) intervalos[n] = [];
+        intervalos[n].push(gap);
+      }
+      ultimaAparicion[n] = idx;
+    }
+  });
+  const totalSorteos = serie.length;
+  const PESO_VENCIMIENTO = 40;
+  for (let n = 0; n <= 99; n++) {
+    const cicloPromedio = intervalos[n] && intervalos[n].length
+      ? intervalos[n].reduce((a, b) => a + b, 0) / intervalos[n].length
+      : null;
+    const sorteosSinSalir = ultimaAparicion[n] !== undefined
+      ? totalSorteos - 1 - ultimaAparicion[n]
+      : totalSorteos; // nunca salió → totalmente vencido
+    if (cicloPromedio && sorteosSinSalir > cicloPromedio) {
+      const vencimiento = (sorteosSinSalir - cicloPromedio) / cicloPromedio; // 0..N
+      score[n] = (score[n] || 0) + Math.min(vencimiento, 3) * PESO_VENCIMIENTO;
+    }
+  }
+
+  // — SEÑAL 4: contexto del día (números repetidos en 2+ loterías distintas) —
+  const numerosDeHoy = {};
   for (const [k, s] of Object.entries(estado.sorteos)) {
     if (k === clave) continue;
     if (s.numeros && s.numeros.length >= 3) {
@@ -783,15 +823,21 @@ function calcularPrediccionConContextoDelDia(clave) {
     }
   }
   const repetidosHoy = Object.entries(numerosDeHoy).filter(([, lots]) => lots.length >= 2);
-  const PESO_CONTEXTO_DIA = 35;
+  const PESO_CONTEXTO = 35;
   for (const [n, lots] of repetidosHoy) {
-    score[n] = (score[n] || 0) + lots.length * PESO_CONTEXTO_DIA;
+    score[n] = (score[n] || 0) + lots.length * PESO_CONTEXTO;
   }
 
   const ranking = Object.entries(score).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+
+  // Guardar detalle de scores para el dashboard de precisión
+  const scoreDetalle = {};
+  for (const [n, v] of Object.entries(score)) scoreDetalle[+n] = Math.round(v);
+
   return {
     top1: ranking[0],
     top3: ranking.slice(0, 3),
+    scoreDetalle,
     diasHistoricos: serie.length,
     contextoHoy: repetidosHoy
       .map(([n, lots]) => ({ numero: +n, loterias: lots }))
@@ -802,33 +848,42 @@ function calcularPrediccionConContextoDelDia(clave) {
 async function revisarYEnviarPredicciones() {
   if (!TG_ACTIVO) return;
   const ahora = minutosActualesRD();
-  const VENTANA_MIN = 45; // manda la predicción entre 0 y 45 min antes del cierre
+  const VENTANA_MIN = 45;
   const avisos = [];
 
   for (const [clave, s] of Object.entries(estado.sorteos)) {
     if (yaPredicho[clave]) continue;
-    if (s.numeros && s.numeros.length >= 3) { yaPredicho[clave] = true; continue; } // ya salió, no aplica
+    if (s.numeros && s.numeros.length >= 3) { yaPredicho[clave] = true; continue; }
     const minutosSorteo = horaTextoAMinutos(s.hora);
     if (minutosSorteo === null) continue;
     const faltan = minutosSorteo - ahora;
     if (faltan < 0 || faltan > VENTANA_MIN) continue;
 
     const pred = calcularPrediccionConContextoDelDia(clave);
-    if (pred.diasHistoricos < 5) { yaPredicho[clave] = true; continue; } // muy poco historial, se salta
+    if (pred.diasHistoricos < 5) { yaPredicho[clave] = true; continue; }
 
     yaPredicho[clave] = true;
-    s.prediccion = { top1: pred.top1, top3: pred.top3, hora_calculo: horaRD(), contexto_dia: pred.contextoHoy };
+    // Guarda también el scoreDetalle y la fecha para el dashboard de precisión
+    s.prediccion = {
+      top1: pred.top1,
+      top3: pred.top3,
+      scoreDetalle: pred.scoreDetalle,
+      hora_calculo: horaRD(),
+      contexto_dia: pred.contextoHoy,
+      fecha: fechaRD(),
+    };
 
     const f2 = n => String(n).padStart(2, '0');
     const ctxTxt = pred.contextoHoy.length
-      ? `\n     Repetidos hoy: ` + pred.contextoHoy.map(c => `${f2(c.numero)} (${c.loterias.join(', ')})`).join(' · ')
+      ? `\n     🔁 Repetidos hoy: ` + pred.contextoHoy.slice(0, 4).map(c => `${f2(c.numero)} (${c.loterias.slice(0,2).join(', ')})`).join(' · ')
       : '';
+    const adjTop = Object.entries({})
     avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
   }
 
   if (avisos.length) {
     await enviarTelegram(`🔮 <b>PREDICCIONES DEL MOMENTO</b> — ${fechaRD()}\n\n` + avisos.join('\n\n') +
-      `\n\n<i>Se compara contra el resultado real cuando salga.</i>`);
+      `\n\n<i>Combina: frecuencia+posición · adyacentes · ciclo de vencimiento · repetidos del día.</i>`);
     guardarEnDisco();
     await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
   }
