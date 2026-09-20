@@ -877,7 +877,7 @@ async function revisarYEnviarPredicciones() {
     const ctxTxt = pred.contextoHoy.length
       ? `\n     🔁 Repetidos hoy: ` + pred.contextoHoy.slice(0, 4).map(c => `${f2(c.numero)} (${c.loterias.slice(0,2).join(', ')})`).join(' · ')
       : '';
-    const adjTop = Object.entries({})
+    
     avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
   }
 
