@@ -47,7 +47,7 @@ async function notificarNuevosSorteos() {
   if (nuevos.length === 0) return;
 
   for (const n of nuevos) yaNotificado[n.clave] = true;
-  if (primerSyncTrasArranque || esArranque) return; 
+  if (esArranque) return; 
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje...`);
   const lineas = nuevos.map(n => {
