@@ -35,28 +35,65 @@ async function notificarNuevosSorteos() {
 
   const nuevos = [];
   for (const [k, s] of Object.entries(estado.sorteos)) {
-    if (s.numeros.length >= 3 && !yaNotificado[k]) nuevos.push({ tipo: 'sorteo', clave: k, nombre: s.nombre, hora: s.hora, numeros: s.numeros });
+    if (s.numeros.length >= 3 && !yaNotificado[k]) nuevos.push({ tipo: 'sorteo', clave: k, nombre: s.nombre, hora: s.hora, numeros: s.numeros, prediccion: s.prediccion || null });
   }
   for (const [k, c] of Object.entries(estado.cuartetas)) {
-    if (c.numeros.length >= 4 && !yaNotificado[k]) nuevos.push({ tipo: 'cuarteta', clave: k, nombre: c.nombre, hora: c.hora, numeros: c.numeros });
+    if (c.numeros.length >= 4 && !yaNotificado[k]) nuevos.push({ tipo: 'cuarteta', clave: k, nombre: c.nombre, hora: c.hora, numeros: c.numeros, prediccion: null });
   }
   for (const [k, e] of Object.entries(estado.especiales)) {
-    if (e.numeros.length > 0 && !yaNotificado[k]) nuevos.push({ tipo: 'especial', clave: k, nombre: e.nombre, hora: e.hora, numeros: e.numeros, empresa: e.empresa });
+    if (e.numeros.length > 0 && !yaNotificado[k]) nuevos.push({ tipo: 'especial', clave: k, nombre: e.nombre, hora: e.hora, numeros: e.numeros, empresa: e.empresa, prediccion: null });
   }
 
   if (nuevos.length === 0) return;
-
   for (const n of nuevos) yaNotificado[n.clave] = true;
-  if (esArranque) return; 
+  if (esArranque) return;
 
-  console.log(`📱 Notificando ${nuevos.length} resultado(s) en UN solo mensaje...`);
+  const f2 = x => String(x).padStart(2, '0');
+
+  // Resumen acumulativo de todos los números que ya salieron hoy
+  const todosHoy = [];
+  for (const [, s] of Object.entries(estado.sorteos)) {
+    if (s.numeros && s.numeros.length >= 3) {
+      for (const n of s.numeros) if (!todosHoy.includes(n)) todosHoy.push(n);
+    }
+  }
+  todosHoy.sort((a, b) => a - b);
+  const resumenDia = todosHoy.length
+    ? `\n\n📊 <b>Números del día hasta ahora:</b>\n${todosHoy.map(f2).join(' · ')}`
+    : '';
+
+  console.log(`📱 Notificando ${nuevos.length} resultado(s)...`);
+
   const lineas = nuevos.map(n => {
-    const nums = n.numeros.map(x => String(x).padStart(2, '0')).join('-');
+    const nums = n.numeros.map(x => f2(x)).join('-');
     const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
     const extra = n.empresa ? ` [${n.empresa}]` : '';
-    return `${etiqueta} <b>${n.nombre}</b>${extra} — <b>${nums}</b> <i>(${n.hora})</i>`;
+    let lineaPred = '';
+    if (n.prediccion && n.prediccion.top3 && n.tipo === 'sorteo') {
+      const pred = n.prediccion;
+      const top1 = pred.top1;
+      const top3 = pred.top3;
+      const acertoPunto = top1 !== null && n.numeros.includes(top1);
+      const acertosTop3 = n.numeros.filter(x => top3.includes(x)).length;
+      const predStr = top3.map(f2).join('-');
+      if (acertoPunto) {
+        lineaPred = `\n     🎯 <b>¡PUNTO!</b> Predije ${f2(top1)} · salió ${nums}`;
+      } else if (acertosTop3 >= 2) {
+        lineaPred = `\n     💙 <b>PALE</b> en top-3 (${predStr}) · salió ${nums}`;
+      } else if (acertosTop3 === 1) {
+        lineaPred = `\n     ✔️ 1 de 3 · predije ${predStr} · salió ${nums}`;
+      } else {
+        lineaPred = `\n     ❌ Sin acierto · predije ${predStr} · salió ${nums}`;
+      }
+    }
+    return `${etiqueta} <b>${n.nombre}</b>${extra} — <b>${nums}</b> <i>(${n.hora})</i>${lineaPred}`;
   });
-  await enviarTelegram(`🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n📥 <b>${nuevos.length} resultado(s) nuevo(s):</b>\n\n` + lineas.join('\n'));
+
+  await enviarTelegram(
+    `🇩🇴 <b>REYDIS RADAR PRO</b> — ${fechaRD()}\n📥 <b>${nuevos.length} resultado(s) nuevo(s):</b>\n\n` +
+    lineas.join('\n') +
+    resumenDia
+  );
 }
 
 // ── PERSISTENCIA: SUPABASE & DISCO ──────────────────────────────────────────
