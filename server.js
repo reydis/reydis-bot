@@ -51,15 +51,17 @@ async function notificarNuevosSorteos() {
   const f2 = x => String(x).padStart(2, '0');
 
   // Resumen acumulativo de todos los números que ya salieron hoy
-  const todosHoy = [];
+  // Los que salieron en 2 o más loterías distintas se marcan con ⚡
+  const conteoHoy = {};
   for (const [, s] of Object.entries(estado.sorteos)) {
     if (s.numeros && s.numeros.length >= 3) {
-      for (const n of s.numeros) if (!todosHoy.includes(n)) todosHoy.push(n);
+      for (const n of s.numeros) conteoHoy[n] = (conteoHoy[n] || 0) + 1;
     }
   }
-  todosHoy.sort((a, b) => a - b);
+  const todosHoy = Object.keys(conteoHoy).map(Number).sort((a, b) => a - b);
   const resumenDia = todosHoy.length
-    ? `\n\n📊 <b>Números del día hasta ahora:</b>\n${todosHoy.map(f2).join(' · ')}`
+    ? `\n\n📊 <b>Números del día:</b> (⚡ = salió en 2+ loterías)\n` +
+      todosHoy.map(n => conteoHoy[n] >= 2 ? `⚡<b>${f2(n)}</b>` : f2(n)).join(' · ')
     : '';
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s)...`);
@@ -163,7 +165,7 @@ let estado = {
 };
 
 function crearCuartetas() { return { cuarteta_m: { nombre:'La Cuarteta Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM', numeros:[], estado:'pendiente' }, cuarteta_t: { nombre:'La Cuarteta Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, cuarteta_n: { nombre:'La Cuarteta Noche', hora:'9:00 PM', numeros:[], estado:'pendiente' } }; }
-function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,80], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40], cant:7 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
+function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40], cant:7 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'1:55 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
 function crearSorteos() { return { anguila_m: { nombre:'Anguila Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, laprimera: { nombre:'La Primera Día', hora:'12:00 PM', numeros:[], estado:'pendiente' }, lotedom: { nombre:'LoteDom', hora:'12:00 PM', numeros:[], estado:'pendiente' }, suerte: { nombre:'La Suerte 12:30', hora:'12:30 PM', numeros:[], estado:'pendiente' }, king_t: { nombre:'King Tarde', hora:'12:30 PM', numeros:[], estado:'pendiente' }, real_t: { nombre:'Lotería Real', hora:'1:00 PM', numeros:[], estado:'pendiente' }, anguila_t: { nombre:'Anguila 1:00 PM', hora:'1:00 PM', numeros:[], estado:'pendiente' }, gana_mas: { nombre:'Gana Más', hora:'2:30 PM', numeros:[], estado:'pendiente' }, new_york_t: { nombre:'New York Tarde', hora:'2:30 PM', numeros:[], estado:'pendiente' }, florida_d: { nombre:'Florida Día', hora:'2:00 PM', numeros:[], estado:'pendiente' }, suerte_t2: { nombre:'La Suerte Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, anguila_n: { nombre:'Anguila 6:00 PM', hora:'6:00 PM', numeros:[], estado:'pendiente' }, king_n: { nombre:'King Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, loteka: { nombre:'Loteka', hora:'6:55 PM', numeros:[], estado:'pendiente' }, laprimera_n: { nombre:'La Primera Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, leidsa: { nombre:'Leidsa', hora:'8:55 PM', numeros:[], estado:'pendiente' }, nacional: { nombre:'Lotería Nacional', hora:'9:00 PM', numeros:[], estado:'pendiente' }, anguila_nn: { nombre:'Anguila 9:00 PM', hora:'9:00 PM', numeros:[], estado:'pendiente' }, new_york_n: { nombre:'New York Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' }, florida_n: { nombre:'Florida Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' } }; }
 
 const MAPA = { 'anguila mañana': 'anguila_m', 'anguila medio día': 'anguila_t', 'anguila tarde': 'anguila_n', 'anguila noche': 'anguila_nn', 'la primera día': 'laprimera', 'primera noche': 'laprimera_n', 'quiniela lotedom': 'lotedom', 'lotedom': 'lotedom', 'la suerte 12:30': 'suerte', 'la suerte 18:00': 'suerte_t2', 'quiniela real': 'real_t', 'lotería real': 'real_t', 'gana más': 'gana_mas', 'new york tarde': 'new_york_t', 'new york noche': 'new_york_n', 'quiniela leidsa': 'leidsa', 'lotería nacional': 'nacional', 'quiniela loteka': 'loteka', 'king lottery 12:30': 'king_t', 'king lottery 7:30': 'king_n', 'florida día': 'florida_d', 'florida noche': 'florida_n', 'la suerte tarde': 'suerte_t2', 'king tarde': 'king_t', 'king noche': 'king_n' };
