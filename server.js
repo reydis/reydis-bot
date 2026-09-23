@@ -51,17 +51,30 @@ async function notificarNuevosSorteos() {
   const f2 = x => String(x).padStart(2, '0');
 
   // Resumen acumulativo de todos los números que ya salieron hoy
-  // Los que salieron en 2 o más loterías distintas se marcan con ⚡
-  const conteoHoy = {};
+  // Los que salieron en 2 o más loterías distintas se marcan con ⚡ y dicen en cuáles
+  const conteoHoy = {}; // { numero: [nombreLoteria, ...] }
   for (const [, s] of Object.entries(estado.sorteos)) {
     if (s.numeros && s.numeros.length >= 3) {
-      for (const n of s.numeros) conteoHoy[n] = (conteoHoy[n] || 0) + 1;
+      for (const n of s.numeros) {
+        if (!conteoHoy[n]) conteoHoy[n] = [];
+        if (!conteoHoy[n].includes(s.nombre)) conteoHoy[n].push(s.nombre);
+      }
     }
   }
   const todosHoy = Object.keys(conteoHoy).map(Number).sort((a, b) => a - b);
+  const repetidosHoy = todosHoy.filter(n => conteoHoy[n].length >= 2);
+
+  const listaRepetidos = repetidosHoy.length
+    ? `\n🔁 <b>Repetidos en varias loterías:</b>\n` +
+      repetidosHoy.map(n =>
+        `⚡ <b>${f2(n)}</b> → ${conteoHoy[n].join(', ')}`
+      ).join('\n')
+    : '';
+
   const resumenDia = todosHoy.length
-    ? `\n\n📊 <b>Números del día:</b> (⚡ = salió en 2+ loterías)\n` +
-      todosHoy.map(n => conteoHoy[n] >= 2 ? `⚡<b>${f2(n)}</b>` : f2(n)).join(' · ')
+    ? `\n\n📊 <b>Números del día:</b>\n` +
+      todosHoy.map(n => conteoHoy[n].length >= 2 ? `⚡<b>${f2(n)}</b>` : f2(n)).join(' · ') +
+      listaRepetidos
     : '';
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s)...`);
@@ -913,10 +926,26 @@ async function revisarYEnviarPredicciones() {
     };
 
     const f2 = n => String(n).padStart(2, '0');
-    const ctxTxt = pred.contextoHoy.length
-      ? `\n     🔁 Repetidos hoy: ` + pred.contextoHoy.slice(0, 4).map(c => `${f2(c.numero)} (${c.loterias.slice(0,2).join(', ')})`).join(' · ')
-      : '';
-    
+
+    // Construir resumen de repetidos del día en este momento
+    const conteoActual = {};
+    for (const [, sv] of Object.entries(estado.sorteos)) {
+      if (sv.numeros && sv.numeros.length >= 3) {
+        for (const n of sv.numeros) {
+          if (!conteoActual[n]) conteoActual[n] = [];
+          if (!conteoActual[n].includes(sv.nombre)) conteoActual[n].push(sv.nombre);
+        }
+      }
+    }
+    const repsActuales = Object.entries(conteoActual)
+      .filter(([, lots]) => lots.length >= 2)
+      .sort((a, b) => b[1].length - a[1].length);
+
+    const ctxTxt = repsActuales.length
+      ? `\n     🔁 <b>Repetidos hoy:</b>\n` +
+        repsActuales.map(([n, lots]) => `     ⚡ <b>${f2(+n)}</b> → ${lots.join(', ')}`).join('\n')
+      : '\n     🔁 Repetidos hoy: ninguno aún';
+
     avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
   }
 
