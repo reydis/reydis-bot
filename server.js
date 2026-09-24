@@ -79,11 +79,27 @@ async function notificarNuevosSorteos() {
 
   console.log(`📱 Notificando ${nuevos.length} resultado(s)...`);
 
+  // Repetidos del día ANTES de este resultado (para cruzar con cada lotería)
+  const repetidosAntes = {};
+  for (const [, sv] of Object.entries(estado.sorteos)) {
+    if (sv.numeros && sv.numeros.length >= 3) {
+      for (const n of sv.numeros) {
+        if (!repetidosAntes[n]) repetidosAntes[n] = [];
+        if (!repetidosAntes[n].includes(sv.nombre)) repetidosAntes[n].push(sv.nombre);
+      }
+    }
+  }
+  const numsRepetidosHoy = Object.entries(repetidosAntes)
+    .filter(([, lots]) => lots.length >= 2)
+    .map(([n]) => +n);
+
   const lineas = nuevos.map(n => {
     const nums = n.numeros.map(x => f2(x)).join('-');
     const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
     const extra = n.empresa ? ` [${n.empresa}]` : '';
     let lineaPred = '';
+
+    // — Comparación vs predicción —
     if (n.prediccion && n.prediccion.top3 && n.tipo === 'sorteo') {
       const pred = n.prediccion;
       const top1 = pred.top1;
@@ -101,7 +117,31 @@ async function notificarNuevosSorteos() {
         lineaPred = `\n     ❌ Sin acierto · predije ${predStr} · salió ${nums}`;
       }
     }
-    return `${etiqueta} <b>${n.nombre}</b>${extra} — <b>${nums}</b> <i>(${n.hora})</i>${lineaPred}`;
+
+    // — Para el Kino: los aciertos van de 0 a 20, gana con 0,5,6,7,8,9,10+ —
+    if (n.tipo === 'especial' && n.clave === 'superkino' && n.prediccion && n.prediccion.top3) {
+      const pred = n.prediccion;
+      const top10 = Object.entries(pred.scoreDetalle || {})
+        .sort((a, b) => b[1] - a[1]).slice(0, 10).map(([num]) => +num);
+      const aciertos = n.numeros.filter(x => top10.includes(x)).length;
+      const premio = aciertos === 0 ? '🏆 Premio 0 aciertos' :
+                     aciertos >= 10 ? '🏆 JACKPOT 10 aciertos' :
+                     aciertos >= 5 ? `🎯 Premio ${aciertos} aciertos` : `(${aciertos} aciertos, sin premio)`;
+      lineaPred = `\n     ${premio} · ticket de 10 jugado vs ${aciertos} que coincidieron`;
+    }
+
+    // — ¿Algún número ⚡ repetido del día salió en ESTA lotería? —
+    const repsEnEsta = n.numeros.filter(x => numsRepetidosHoy.includes(x));
+    let lineaReps = '';
+    if (repsEnEsta.length > 0) {
+      lineaReps = `\n     ⚡ <b>Repetidos del día que salieron aquí:</b> ` +
+        repsEnEsta.map(x => {
+          const lots = (repetidosAntes[x] || []).filter(ln => ln !== n.nombre);
+          return `<b>${f2(x)}</b> (venía de: ${lots.join(', ')})`;
+        }).join(' · ');
+    }
+
+    return `${etiqueta} <b>${n.nombre}</b>${extra} — <b>${nums}</b> <i>(${n.hora})</i>${lineaPred}${lineaReps}`;
   });
 
   await enviarTelegram(
@@ -1025,6 +1065,67 @@ app.get('/api/backfill-enloteria', (req, res) => {
   const guardar = req.query.guardar === '1';
   ejecutarBackfill(desde, hasta, guardar);
   res.json({ iniciado: true, desde, hasta, modo: guardar ? 'GUARDAR EN SUPABASE' : 'SIMULACION' });
+});
+
+// Backfill específico para juegos especiales (Kino, Pega 3 Más, Loto, etc.)
+// que la función general no cubre bien porque busca por quiniela.
+// Uso: /api/backfill-especiales?desde=2026-08-01&hasta=2026-09-22&guardar=1
+app.get('/api/backfill-especiales', async (req, res) => {
+  const { desde, hasta } = req.query;
+  if (!desde || !hasta) return res.status(400).json({ error: 'Faltan desde/hasta' });
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const guardar = req.query.guardar === '1';
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, desde, hasta, modo: guardar ? 'GUARDAR' : 'SIMULACION' });
+
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  const logBF = msg => { console.log(`[BF-ESP] ${msg}`); estadoBackfill.log.push(msg); };
+
+  try {
+    const fechas = [];
+    let d = new Date(desde + 'T12:00:00Z');
+    const fin = new Date(hasta + 'T12:00:00Z');
+    while (d <= fin && fechas.length < 60) { fechas.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); }
+
+    // Cargar historial existente de Supabase
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length-1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 });
+        for (const row of r.data) existentes[row.fecha] = row;
+        logBF(`Supabase: ${r.data.length} días ya existen en rango`);
+      } catch(e) { logBF(`AVISO Supabase: ${e.message}`); }
+    }
+
+    const resumen = [];
+    for (const [slug, clave] of Object.entries(ENLOTERIA_ESPECIAL_SLUGS)) {
+      const plantilla = crearJuegosEspeciales()[clave];
+      if (!plantilla) continue;
+      logBF(`Procesando ${clave} (${slug}) — ${fechas.length} fechas`);
+      for (const f of fechas) {
+        try {
+          const res2 = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+          const nums = extraerResultadoHoyEnloteria(res2.data, plantilla.cant);
+          if (nums.length === plantilla.cant) {
+            const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+            base.especiales = base.especiales || crearJuegosEspeciales();
+            if (!base.especiales[clave] || base.especiales[clave].numeros.length < plantilla.cant) {
+              base.especiales[clave] = { ...plantilla, numeros: nums, estado: 'disponible' };
+              existentes[f] = base;
+              if (guardar) await guardarEnSupabase(base);
+              logBF(`${f} ${clave}: ${nums.join('-')} ${guardar ? '→ GUARDADO' : '(simulación)'}`);
+              resumen.push({ fecha: f, clave, nums });
+            }
+          }
+        } catch(e) {}
+        await pausa(1200);
+      }
+    }
+    logBF(`✅ Backfill especiales terminado. ${resumen.length} registros recuperados.`);
+    estadoBackfill.resumen = resumen;
+  } catch(e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
 });
 app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
 
