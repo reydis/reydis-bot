@@ -1618,6 +1618,94 @@
             </div>
           </div>
         </div>
+
+        <div
+          style="
+            margin-top: 26px;
+            border-top: 1px solid var(--border2);
+            padding-top: 18px;
+          "
+        >
+          <div class="row">
+            <div>
+              <div class="ptit" style="font-size: 15px">
+                🔗 Adyacentes y Repetitivos
+              </div>
+              <div class="psub">
+                Números consecutivos juntos y números que se repiten de un sorteo al siguiente
+              </div>
+            </div>
+            <button
+              class="btn btn-neon"
+              id="btn-pred-adyacente"
+              onclick="generarPredAdyacente()"
+            >
+              Analizar
+            </button>
+          </div>
+          <div style="margin-bottom: 14px">
+            <div class="lot-sel" id="adyacente-sel-container"></div>
+          </div>
+          <div class="spin-row" id="spin-pred-adyacente" style="display: none">
+            <div class="spin"></div>
+            Analizando historial...
+          </div>
+          <div id="pred-adyacente-body">
+            <div class="empty">
+              <div class="eico">🔗</div>
+              <p>Elige una lotería y presiona Analizar</p>
+            </div>
+          </div>
+          <div
+            style="
+              margin-top: 16px;
+              padding-top: 16px;
+              border-top: 1px dashed var(--border2);
+            "
+          >
+            <div
+              style="
+                font-size: 10px;
+                font-weight: 800;
+                color: var(--muted);
+                text-transform: uppercase;
+                letter-spacing: 0.6px;
+                margin-bottom: 9px;
+              "
+            >
+              🎫 Generar tickets combinando adyacentes + repetitivos (con el tamaño real del ticket de cada juego)
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap">
+              <input
+                id="adyacente-cant-ticket"
+                type="number"
+                min="1"
+                max="12"
+                value="3"
+                class="cons-input"
+                style="flex: 1; min-width: 80px"
+                title="Cantidad de tickets a generar"
+                placeholder="Tickets"
+              />
+              <button
+                onclick="generarTicketsAdyacenteUI()"
+                class="btn btn-neon"
+                style="flex: 2; min-width: 160px"
+              >
+                🎫 Generar Tickets
+              </button>
+            </div>
+            <div
+              id="adyacente-tickets-out"
+              style="
+                margin-top: 14px;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 12px;
+              "
+            ></div>
+          </div>
+        </div>
       </div>
 
       <!-- ══ BACKTESTING ══ -->
@@ -1718,6 +1806,20 @@
             menos 1 número (Punto). Azul = acertó 2 (Pale).
           </div>
           <div id="back-histpred"></div>
+        </div>
+
+        <!-- ══ DASHBOARD DE PRECISIÓN DEL SCORE COMBINADO ══ -->
+        <div class="cardX" style="margin-bottom: 12px">
+          <div class="ctit">
+            🧪 Precisión del Score Combinado
+            <span style="font-size:10px;font-weight:400;color:var(--muted)">(4 señales: frecuencia · adyacentes · ciclo · repetidos del día)</span>
+          </div>
+          <div class="psub" style="margin-bottom:12px">
+            Cruza las predicciones guardadas en el historial contra el resultado real. Solo aparecen sorteos donde el sistema llegó a calcular y guardar una predicción antes de que cerrara el sorteo.
+          </div>
+          <div class="hp-sel" id="prec-filtros"></div>
+          <div class="stats3" id="prec-stats" style="margin-bottom:14px"></div>
+          <div id="prec-tabla"></div>
         </div>
 
         <div class="cardX" style="margin-bottom: 12px">
@@ -2070,7 +2172,7 @@
       };
 
       const LOTS18 = [
-        { k: "anguila_m", n: "Anguila Mañana", h: "10:00 AM" },
+        { k: "anguila_m", n: "Anguila Mañana", h: "9:00 AM" },
         { k: "laprimera", n: "La Primera Día", h: "10:30 AM" },
         { k: "lotedom", n: "LoteDom", h: "11:30 AM" },
         { k: "suerte", n: "La Suerte 12:30", h: "12:30 PM" },
@@ -2083,7 +2185,7 @@
         { k: "suerte_t2", n: "La Suerte Tarde", h: "6:00 PM" },
         { k: "anguila_n", n: "Anguila 6:00 PM", h: "6:00 PM" },
         { k: "king_n", n: "King Noche", h: "7:00 PM" },
-        { k: "loteka", n: "Loteka", h: "7:30 PM" },
+        { k: "loteka", n: "Loteka", h: "6:55 PM" },
         { k: "laprimera_n", n: "La Primera Noche", h: "8:00 PM" },
         { k: "leidsa", n: "Leidsa", h: "8:55 PM" },
         { k: "nacional", n: "Lotería Nacional", h: "9:00 PM" },
@@ -2203,6 +2305,8 @@
             for (const [k, s] of Object.entries(dia.sorteos || {})) {
               const n = s?.numeros || s;
               if (Array.isArray(n) && n.length >= 3 && !m[f][k]) m[f][k] = n;
+              // Guardar predicción del servidor si existe
+              if (s?.prediccion && !m[f][`pred_${k}`]) m[f][`pred_${k}`] = s.prediccion;
             }
             for (const [k, c] of Object.entries(dia.cuartetas || {})) {
               const n = c?.numeros || c;
@@ -2284,6 +2388,7 @@
           sincronizarHistorialServidor().then(() => {
             cargarBack();
             renderHistorialPredicciones();
+            renderDashboardPrecision();
           });
         }
         if (id === "jugadas") renderJugadas();
@@ -3232,6 +3337,347 @@
         document.getElementById("pred-especial-body").innerHTML = html;
       }
 
+      // ═══════════════════════════════════════════════════════
+      // ADYACENTES Y REPETITIVOS
+      // "Adyacentes" = dos números consecutivos (ej. 23-24) en el mismo
+      // sorteo. "Repetitivos" = números del sorteo anterior que vuelven a
+      // salir en el siguiente. Se analiza por lotería individual usando
+      // todo el historial disponible en localStorage.
+      // ═══════════════════════════════════════════════════════
+      let lotActAdyacente = "superkino";
+
+      function minLenParaClaveAdyacente(clave) {
+        const esp = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
+        if (esp) return esp.cant;
+        return 3;
+      }
+
+      function renderAdyacentePills() {
+        const cont = document.getElementById("adyacente-sel-container");
+        if (!cont) return;
+        const optsQ = LOTS18.map(
+          (l) => `<button
+            class="lpill ${l.k === lotActAdyacente ? "act" : ""}"
+            data-lot="${l.k}"
+            onclick="selLotAdyacente(this)"
+          >${PILL_EMOJI[l.k] || "⚪"} ${l.n}</button>`
+        ).join("");
+        const optsE = ESPECIALES_PRED_LIST.map(
+          (l) => `<button
+            class="lpill ${l.k === lotActAdyacente ? "act" : ""}"
+            data-lot="${l.k}"
+            onclick="selLotAdyacente(this)"
+          >🎰 ${l.n}</button>`
+        ).join("");
+        cont.innerHTML = optsE + optsQ;
+      }
+
+      function selLotAdyacente(btn) {
+        document
+          .querySelectorAll("#adyacente-sel-container .lpill")
+          .forEach((b) => b.classList.remove("act"));
+        btn.classList.add("act");
+        lotActAdyacente = btn.dataset.lot;
+      }
+
+      function analizarAdyacentesRepetitivos(datosDesc) {
+        const datosAsc = [...datosDesc].reverse();
+        const totalDraws = datosAsc.length;
+
+        const adjPairFreq = {};
+        let totalAdjInstances = 0;
+        for (const d of datosAsc) {
+          const s = new Set(d);
+          for (const n of d) {
+            if (s.has(n + 1)) {
+              const key = `${n}-${n + 1}`;
+              adjPairFreq[key] = (adjPairFreq[key] || 0) + 1;
+              totalAdjInstances++;
+            }
+          }
+        }
+        const topAdjPairs = Object.entries(adjPairFreq).sort(
+          (a, b) => b[1] - a[1]
+        );
+        const avgAdjPerDraw = totalDraws ? totalAdjInstances / totalDraws : 0;
+
+        let totalRepInstances = 0;
+        let transiciones = 0;
+        const repNumFreq = {};
+        for (let i = 1; i < datosAsc.length; i++) {
+          const prev = new Set(datosAsc[i - 1]);
+          const actual = datosAsc[i];
+          let repCount = 0;
+          for (const n of actual) {
+            if (prev.has(n)) {
+              repCount++;
+              repNumFreq[n] = (repNumFreq[n] || 0) + 1;
+            }
+          }
+          totalRepInstances += repCount;
+          transiciones++;
+        }
+        const avgRepPerTransicion = transiciones
+          ? totalRepInstances / transiciones
+          : 0;
+        const topRepNumeros = Object.entries(repNumFreq).sort(
+          (a, b) => b[1] - a[1]
+        );
+
+        return {
+          totalDraws,
+          transiciones,
+          topAdjPairs: topAdjPairs.slice(0, 5),
+          topRepNumeros: topRepNumeros.slice(0, 8),
+          avgAdjPerDraw,
+          avgRepPerTransicion,
+        };
+      }
+
+      async function generarPredAdyacente() {
+        const btn = document.getElementById("btn-pred-adyacente");
+        btn.disabled = true;
+        btn.textContent = "Analizando...";
+        document.getElementById("spin-pred-adyacente").style.display = "flex";
+        document.getElementById("pred-adyacente-body").innerHTML = "";
+        const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
+        const minLen = minLenParaClaveAdyacente(lotActAdyacente);
+        const datosDesc = hist
+          .filter((d) => (d[lotActAdyacente] || []).length >= minLen)
+          .map((d) => d[lotActAdyacente]);
+        if (datosDesc.length < 8) {
+          document.getElementById(
+            "pred-adyacente-body"
+          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos para esta lotería. Actualmente hay ${datosDesc.length}.</div>`;
+          document.getElementById("spin-pred-adyacente").style.display = "none";
+          btn.disabled = false;
+          btn.textContent = "Analizar";
+          return;
+        }
+        const r = analizarAdyacentesRepetitivos(datosDesc);
+        renderPredAdyacente(r, INFO_LOOKUP[lotActAdyacente]);
+        document.getElementById("spin-pred-adyacente").style.display = "none";
+        btn.disabled = false;
+        btn.textContent = "Analizar";
+      }
+
+      function renderPredAdyacente(r, info) {
+        let html = `<div class="lot-box">
+    <div class="lot-box-tit">${info.n} — Adyacentes y Repetitivos</div>
+    <div class="lot-grid">
+      <div class="lot-item"><div class="lot-item-n">${r.avgAdjPerDraw.toFixed(
+        2
+      )}</div><div class="lot-item-l">Adyacentes / sorteo</div></div>
+      <div class="lot-item"><div class="lot-item-n">${r.avgRepPerTransicion.toFixed(
+        2
+      )}</div><div class="lot-item-l">Repiten / sorteo sig.</div></div>
+      <div class="lot-item"><div class="lot-item-n">${
+        r.topAdjPairs[0] ? r.topAdjPairs[0][0] : "--"
+      }</div><div class="lot-item-l">Par adyacente top</div></div>
+      <div class="lot-item"><div class="lot-item-n">${
+        r.totalDraws
+      }</div><div class="lot-item-l">Sorteos analizados</div></div>
+    </div>
+    <div class="lot-nota">💡 "Adyacentes" = dos números consecutivos (ej. 23-24) en el mismo sorteo. "Repetitivos" = números del sorteo anterior que vuelven a salir en el siguiente. Estos promedios casi siempre coinciden con lo esperado por puro azar — no es una señal de sesgo, es matemática de combinaciones, pero aquí lo tienes calculado con tus datos reales.</div>
+  </div>`;
+
+        if (r.topAdjPairs.length) {
+          html += `<div class="jsec"><div class="jsec-tit">🔗 Pares adyacentes más frecuentes</div>`;
+          for (const [par, veces] of r.topAdjPairs) {
+            const [a, b] = par.split("-").map(Number);
+            html += `<div class="jcard tpa">
+        <div class="jleft"><div class="jtype">PALE</div><div class="jconf" style="color:var(--gold)">${veces}x</div><div class="jconf-l">juntos</div></div>
+        <div class="jdiv"></div>
+        <div class="jnums"><div class="jnum">${p2(a)}</div><div class="jnum">${p2(
+              b
+            )}</div></div>
+        <div class="jinfo">
+          <div class="jmet">Par consecutivo ${p2(a)}-${p2(b)}</div>
+          <div class="jraz">Salieron juntos ${veces} veces en ${
+              r.totalDraws
+            } sorteos analizados.</div>
+          <button onclick="agregarAdyacenteMisJugadas('${lotActAdyacente}','${a},${b}','adyacente')" style="margin-top:8px;padding:7px 12px;border-radius:7px;background:#1a2029;color:#2fe6c8;border:1px solid #2fe6c8;font-size:12px;font-weight:600;cursor:pointer">📋 Agregar a Mis Jugadas</button>
+        </div>
+      </div>`;
+          }
+          html += `</div>`;
+        }
+
+        if (r.topRepNumeros.length) {
+          html += `<div class="jsec"><div class="jsec-tit">🔁 Números que más se repiten de un sorteo al siguiente</div>`;
+          for (const [numStr, veces] of r.topRepNumeros) {
+            const n = parseInt(numStr, 10);
+            const pct = r.transiciones
+              ? Math.round((veces / r.transiciones) * 100)
+              : 0;
+            html += `<div class="jcard tsp">
+        <div class="jleft"><div class="jtype">REPITE</div><div class="jconf" style="color:var(--neon)">${pct}%</div><div class="jconf-l">de veces</div></div>
+        <div class="jdiv"></div>
+        <div class="jnums"><div class="jnum">${p2(n)}</div></div>
+        <div class="jinfo">
+          <div class="jmet">Número ${p2(n)}</div>
+          <div class="jraz">Cuando salió, volvió a salir al sorteo siguiente ${veces} de ${
+              r.transiciones
+            } transiciones posibles (${pct}%).</div>
+          <button onclick="agregarAdyacenteMisJugadas('${lotActAdyacente}','${n}','repetitivo')" style="margin-top:8px;padding:7px 12px;border-radius:7px;background:#1a2029;color:#2fe6c8;border:1px solid #2fe6c8;font-size:12px;font-weight:600;cursor:pointer">📋 Agregar a Mis Jugadas</button>
+        </div>
+      </div>`;
+          }
+          html += `</div>`;
+        } else {
+          html += `<div class="jsec"><div class="jsec-tit">🔁 Números que más se repiten</div>
+            <p style="font-size:12px;color:var(--muted)">Todavía no hay suficiente historial de transiciones para calcular esto con confianza.</p>
+          </div>`;
+        }
+
+        document.getElementById("pred-adyacente-body").innerHTML = html;
+      }
+
+      function agregarAdyacenteMisJugadas(clave, numsCSV, tipo) {
+        const numeros = numsCSV
+          .split(",")
+          .map((s) => parseInt(s, 10))
+          .filter((n) => !isNaN(n));
+        const fecha =
+          typeof fechaHoyAPI !== "undefined" && fechaHoyAPI
+            ? fechaHoyAPI
+            : new Date().toISOString().slice(0, 10);
+        const jugadas = getJugadas();
+        jugadas.unshift({
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave: clave,
+          fecha: fecha,
+          tipo: tipo,
+          numeros: numeros,
+          monto: null,
+          creado: new Date().toISOString(),
+        });
+        setJugadas(jugadas);
+        renderJugadas();
+        toastRD("Agregado a Mis Jugadas: " + numeros.map(p2).join("-"));
+      }
+
+      // El tamaño del TICKET que se juega no siempre es igual a la cantidad
+      // de números que salen sorteados. El Super Kino TV, por ejemplo,
+      // sortea 20 números de 80, pero el ticket que se compra es de 10
+      // números — por eso este mapa es independiente del "cant" usado para
+      // verificar resultados.
+      const TICKET_INFO_ADYACENTE = {
+        superkino: { min: 1, max: 80, ticket: 10 },
+        loto: { min: 1, max: 40, ticket: 6 },
+        lotomas: { min: 1, max: 40, ticket: 7 },
+        megachance: { min: 0, max: 99, ticket: 5 },
+        pega3mas: { min: 0, max: 50, ticket: 3 },
+        quemaito: { min: 0, max: 99, ticket: 1 },
+        pega4king: { min: 0, max: 9, ticket: 4 },
+      };
+      function ticketInfoParaClaveAdyacente(clave) {
+        if (TICKET_INFO_ADYACENTE[clave]) return TICKET_INFO_ADYACENTE[clave];
+        return { min: 0, max: 99, ticket: 3 };
+      }
+
+      function generarTicketsAdyacentesRepetitivos(
+        datosDesc,
+        clave,
+        cantidadTickets
+      ) {
+        const info = ticketInfoParaClaveAdyacente(clave);
+        const datosAsc = [...datosDesc].reverse();
+
+        const adjScore = {};
+        const repScore = {};
+        for (const d of datosAsc) {
+          const s = new Set(d);
+          for (const n of d) {
+            if (s.has(n + 1)) {
+              adjScore[n] = (adjScore[n] || 0) + 1;
+              adjScore[n + 1] = (adjScore[n + 1] || 0) + 1;
+            }
+          }
+        }
+        for (let i = 1; i < datosAsc.length; i++) {
+          const prev = new Set(datosAsc[i - 1]);
+          for (const n of datosAsc[i])
+            if (prev.has(n)) repScore[n] = (repScore[n] || 0) + 1;
+        }
+
+        const combined = {};
+        for (let n = info.min; n <= info.max; n++) {
+          combined[n] = (adjScore[n] || 0) + (repScore[n] || 0);
+        }
+        const ranking = Object.entries(combined)
+          .sort((a, b) => b[1] - a[1])
+          .map(([n]) => parseInt(n, 10));
+
+        const tickets = [];
+        for (let t = 0; t < cantidadTickets; t++) {
+          let ticket;
+          if (t === 0) {
+            ticket = ranking.slice(0, info.ticket);
+          } else {
+            const pool = [...ranking];
+            ticket = [];
+            const ventana = Math.max(info.ticket * 3, 15);
+            while (ticket.length < info.ticket && pool.length) {
+              const idx = Math.floor(
+                Math.random() * Math.min(pool.length, ventana)
+              );
+              ticket.push(pool[idx]);
+              pool.splice(idx, 1);
+            }
+          }
+          ticket.sort((a, b) => a - b);
+          tickets.push(ticket);
+        }
+        return tickets;
+      }
+
+      function generarTicketsAdyacenteUI() {
+        const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
+        const minLen = minLenParaClaveAdyacente(lotActAdyacente);
+        const datosDesc = hist
+          .filter((d) => (d[lotActAdyacente] || []).length >= minLen)
+          .map((d) => d[lotActAdyacente]);
+        const out = document.getElementById("adyacente-tickets-out");
+        if (datosDesc.length < 8) {
+          out.innerHTML = `<div class="err">Necesito al menos 8 sorteos de esta lotería para generar tickets. Actualmente hay ${datosDesc.length}.</div>`;
+          return;
+        }
+        let cant = parseInt(
+          document.getElementById("adyacente-cant-ticket").value,
+          10
+        ) || 1;
+        cant = Math.max(1, Math.min(12, cant));
+        const info = ticketInfoParaClaveAdyacente(lotActAdyacente);
+        const tickets = generarTicketsAdyacentesRepetitivos(
+          datosDesc,
+          lotActAdyacente,
+          cant
+        );
+        const nombreLot = INFO_LOOKUP[lotActAdyacente]?.n || lotActAdyacente;
+        let html = "";
+        tickets.forEach((ticket, i) => {
+          const chips = ticket
+            .map(
+              (n) =>
+                `<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--bg);border:1px solid var(--neon);color:var(--neon);font-weight:800;font-size:12px;margin:3px">${p2(
+                  n
+                )}</span>`
+            )
+            .join("");
+          html += `<div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:var(--gold);margin-bottom:8px;font-weight:800;text-transform:uppercase">TICKET ${
+              i + 1
+            } · ${nombreLot} (${ticket.length} de ${info.ticket})</div>
+            <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;justify-content:center">${chips}</div>
+            <button onclick="agregarAdyacenteMisJugadas('${lotActAdyacente}','${ticket.join(
+            ","
+          )}','adyacente')" class="btn btn-neon" style="width:100%;font-size:11px;padding:8px">➕ Agregar a Mis Jugadas</button>
+          </div>`;
+        });
+        out.innerHTML = html;
+      }
+
       function cargarBack() {
         const lot = document.getElementById("sel-back").value;
         const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
@@ -3267,4 +3713,1108 @@
           document.getElementById("back-ins").innerHTML =
             '<p style="font-size:12px;color:var(--muted)">Sin datos.</p>';
           return;
-    
+        }
+
+        const maxF = Math.max(...Object.values(freq), 1);
+        const lkWF = lot === "todas" ? todasClaves : [lot];
+        let aP = 0,
+          aPa = 0,
+          aSp = 0,
+          aT = 0,
+          totalWF = 0;
+        const MIN_TRAIN = 5;
+        for (const k of lkWF) {
+          const minNum = k.startsWith("cuarteta_") ? 4 : 3;
+          const serieDesc = hist
+            .filter((d) => (d[k] || []).length >= minNum)
+            .map((d) => d[k]);
+          const serieAsc = [...serieDesc].reverse();
+          for (let i = MIN_TRAIN; i < serieAsc.length; i++) {
+            const train = serieAsc.slice(0, i);
+            const actual = serieAsc[i];
+            const score = {};
+            train.forEach((nums, idx) => {
+              const w = Math.max(1, train.length - idx);
+              if (nums[0] !== undefined)
+                score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
+              if (nums[1] !== undefined)
+                score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
+              if (nums[2] !== undefined)
+                score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
+            });
+            const top3 = Object.entries(score)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([n]) => +n);
+            const h = actual.filter((n) => top3.includes(n)).length;
+            totalWF++;
+            if (h >= 1) aP++;
+            if (h >= 2) aPa++;
+            if (h >= 3) {
+              aSp++;
+              aT++;
+            }
+          }
+        }
+        const pp = (n) => (totalWF > 0 ? Math.round((n / totalWF) * 100) : 0);
+        document.getElementById("bh-p").textContent = pp(aP) + "%";
+        document.getElementById("bh-pa").textContent = pp(aPa) + "%";
+        document.getElementById("bh-sp").textContent = pp(aSp) + "%";
+        document.getElementById("bh-tr").textContent = pp(aT) + "%";
+        document.getElementById("bh-ps").textContent = `${aP}/${totalWF} sorteos`;
+        document.getElementById("bh-pas").textContent = `${aPa}/${totalWF} sorteos`;
+        document.getElementById("bh-sps").textContent = `${aSp}/${totalWF} sorteos`;
+        document.getElementById("bh-trs").textContent = `${aT}/${totalWF} sorteos`;
+        ["bh-pb", "bh-pab", "bh-spb", "bh-trb"].forEach((id, i) => {
+          const vals = [pp(aP), pp(aPa), pp(aSp), pp(aT)];
+          const cols = ["#00ff66", "#ffb703", "#00f2fe", "#ff0055"];
+          document.getElementById(
+            id
+          ).style.cssText = `background:linear-gradient(90deg,${cols[i]} ${vals[i]}%,rgba(255,255,255,.08) ${vals[i]}%);height:4px;border-radius:2px`;
+        });
+
+        const rankBox = document.getElementById("back-ranking-box");
+        const rankCont = document.getElementById("back-ranking");
+        if (lot !== "todas") {
+          rankBox.style.display = "none";
+        } else {
+          rankBox.style.display = "block";
+          const resultsPorLot = [];
+          for (const k of lkWF) {
+            const minNum = k.startsWith("cuarteta_") ? 4 : 3;
+            const serieDesc = hist
+              .filter((d) => (d[k] || []).length >= minNum)
+              .map((d) => d[k]);
+            const serieAsc = [...serieDesc].reverse();
+            if (serieAsc.length < MIN_TRAIN + 1) {
+              resultsPorLot.push({
+                k,
+                n: INFO_LOOKUP[k]?.n || k,
+                totalL: 0,
+                aP: 0,
+                aPa: 0,
+                aSp: 0,
+              });
+              continue;
+            }
+            let aLP = 0,
+              aLPa = 0,
+              aLSp = 0,
+              totalL = 0;
+            for (let i = MIN_TRAIN; i < serieAsc.length; i++) {
+              const train = serieAsc.slice(0, i);
+              const actual = serieAsc[i];
+              const f = {};
+              for (const dd of train)
+                for (const n of dd) f[n] = (f[n] || 0) + 1;
+              const top5 = Object.entries(f)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([n]) => +n);
+              const h = actual.filter((n) => top5.includes(n)).length;
+              totalL++;
+              if (h >= 1) aLP++;
+              if (h >= 2) aLPa++;
+              if (h >= 3) aLSp++;
+            }
+            const pL = (n) => (totalL > 0 ? Math.round((n / totalL) * 100) : 0);
+            resultsPorLot.push({
+              k,
+              n: INFO_LOOKUP[k]?.n || k,
+              totalL,
+              pP: pL(aLP),
+              pPa: pL(aLPa),
+              pSp: pL(aLSp),
+            });
+          }
+          resultsPorLot.sort((a, b) => {
+            if (!a.totalL && !b.totalL) return 0;
+            if (!a.totalL) return 1;
+            if (!b.totalL) return -1;
+            return b.pP - a.pP;
+          });
+
+          const colorPct = (v) =>
+            v >= 50 ? "var(--green)" : v >= 25 ? "var(--gold)" : "var(--red)";
+          let rh = `<div class="rank-hdr"><span>#</span><span>Lotería</span><span style="text-align:center">Punto</span><span style="text-align:center">Pale</span><span style="text-align:center">S.Pale</span></div>`;
+          resultsPorLot.forEach((r, i) => {
+            const pos = i + 1;
+            const posCls =
+              pos === 1 ? "top1" : pos === 2 ? "top2" : pos === 3 ? "top3" : "";
+            const esC = r.k.startsWith("cuarteta_");
+            const ico = esC ? "🎲 " : "";
+            if (!r.totalL) {
+              rh += `<div class="rank-row"><span class="rank-pos">${pos}</span><span class="rank-lot">${ico}${r.n}</span><span class="rank-na" style="grid-column:3/6">Sin datos aún</span></div>`;
+            } else {
+              rh += `<div class="rank-row">
+                <span class="rank-pos ${posCls}">${
+                pos === 1 ? "🥇" : pos === 2 ? "🥈" : pos === 3 ? "🥉" : pos
+              }</span>
+                <span class="rank-lot">${ico}${r.n}</span>
+                <span class="rank-pct punto" style="color:${colorPct(r.pP)}">${
+                r.pP
+              }%</span>
+                <span class="rank-pct pale" style="color:${colorPct(r.pPa)}">${
+                r.pPa
+              }%</span>
+                <span class="rank-pct sp" style="color:${colorPct(r.pSp)}">${
+                r.pSp
+              }%</span>
+              </div>`;
+            }
+          });
+          rankCont.innerHTML = rh;
+        }
+
+        const topE = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+        const frioE = Object.entries(freq)
+          .sort((a, b) => a[1] - b[1])
+          .filter(([, v]) => v > 0)[0];
+        const topP = Object.entries(pares).sort((a, b) => b[1] - a[1])[0];
+        const topT = Object.entries(trips).sort((a, b) => b[1] - a[1])[0];
+        document.getElementById("back-ins").innerHTML = `
+    <div class="ins"><span style="font-size:18px">🔥</span><div><strong>Más caliente: ${p2(
+      +topE[0]
+    )}</strong><p>Salió ${topE[1]}x en ${total} sorteos.</p></div></div>
+    <div class="ins"><span style="font-size:18px">❄️</span><div><strong>Más frío: ${
+      frioE ? p2(+frioE[0]) : "--"
+    }</strong><p>Candidato por equilibrio.</p></div></div>
+    <div class="ins"><span style="font-size:18px">⚡</span><div><strong>Mejor pale: ${
+      topP ? topP[0] : "--"
+    }</strong><p>Co-ocurrencia frecuente.</p></div></div>
+    <div class="ins"><span style="font-size:18px">👑</span><div><strong>Tripleta: ${
+      topT ? topT[0] : "--"
+    }</strong><p>Combinación destacada.</p></div></div>`;
+
+        const cg = document.getElementById("cg");
+        cg.innerHTML = "";
+        for (let i = 0; i <= 99; i++) {
+          const f = freq[i] || 0;
+          const r = f / maxF;
+          let bg, tc;
+          if (r > 0.7) {
+            bg = "#14532D";
+            tc = "#fff";
+          } else if (r > 0.5) {
+            bg = "#16A34A";
+            tc = "#fff";
+          } else if (r > 0.3) {
+            bg = "#BBF7D0";
+            tc = "#14532D";
+          } else if (r > 0) {
+            bg = "#D1FAE5";
+            tc = "#065F46";
+          } else {
+            bg = "#1f2937";
+            tc = "#6e7681";
+          }
+          const el = document.createElement("div");
+          el.className = "cc";
+          el.style.cssText = `background:${bg};color:${tc}`;
+          el.textContent = p2(i);
+          el.title = `${p2(i)}: ${f}x`;
+          cg.appendChild(el);
+        }
+
+        const topF = Object.entries(freq)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 12);
+        document.getElementById("b-freq").innerHTML =
+          topF
+            .map(
+              ([n, f]) => `
+    <div class="fi"><div class="fb" style="background:rgba(0,255,102,.15);color:var(--green)">${p2(
+      +n
+    )}</div>
+    <div class="fbg"><div class="fbf" style="width:${Math.round(
+      (f / maxF) * 100
+    )}%;background:linear-gradient(90deg,#16A34A,#00ff66)"></div></div>
+    <span class="fv">${f}x</span></div>`
+            )
+            .join("") ||
+          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
+
+        const frios8 = Object.entries(freq)
+          .sort((a, b) => a[1] - b[1])
+          .slice(0, 8);
+        document.getElementById("b-frios").innerHTML =
+          frios8
+            .map(
+              ([n, f]) => `
+    <div class="fi"><div class="fb" style="background:rgba(0,242,254,.15);color:var(--neon)">${p2(
+      +n
+    )}</div>
+    <div class="fbg"><div class="fbf" style="width:${Math.round(
+      (f / maxF) * 100
+    )}%;background:linear-gradient(90deg,#0099cc,#00f2fe)"></div></div>
+    <span class="fv">${f}x</span><span class="cb">❄️</span></div>`
+            )
+            .join("") ||
+          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
+
+        const topPs = Object.entries(pares)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 7);
+        document.getElementById("b-pares").innerHTML =
+          topPs
+            .map(([par, f]) => {
+              const [a2, b2] = par.split("-");
+              return `<div class="pr"><span class="mini-esf mini-e1" style="width:28px;height:28px;line-height:28px;font-size:.78rem">${p2(
+                +a2
+              )}</span>
+    <span class="mini-esf mini-e2" style="width:28px;height:28px;line-height:28px;font-size:.78rem">${p2(
+      +b2
+    )}</span>
+    <span style="font-size:11px;color:var(--muted);font-weight:700">${f}x juntos</span></div>`;
+            })
+            .join("") ||
+          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
+
+        const topTs = Object.entries(trips)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+        document.getElementById("b-trips").innerHTML =
+          topTs
+            .map(([trip, f]) => {
+              const [a2, b2, c2] = trip.split("-");
+              return `<div class="tr2"><span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
+                +a2
+              )}</span>
+    <span class="mini-esf mini-e2" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
+      +b2
+    )}</span>
+    <span class="mini-esf mini-e3" style="width:26px;height:26px;line-height:26px;font-size:.7rem">${p2(
+      +c2
+    )}</span>
+    <span style="font-size:11px;color:var(--muted);font-weight:700">${f}x</span></div>`;
+            })
+            .join("") ||
+          '<p style="font-size:12px;color:var(--muted)">Sin datos</p>';
+      }
+
+      let hpLotFiltro = "todas";
+
+      // ═══════════════════════════════════════════════════════
+      // DASHBOARD DE PRECISIÓN DEL SCORE COMBINADO
+      // Lee las predicciones guardadas en el historial de Supabase
+      // (campo s.prediccion por lotería) y las cruza contra el resultado
+      // real del mismo día. Calcula acierto por señal y por lotería.
+      // ═══════════════════════════════════════════════════════
+      let precLotFiltro = 'todas';
+
+      function renderDashboardPrecision() {
+        const cont = document.getElementById('prec-tabla');
+        const statsBox = document.getElementById('prec-stats');
+        const filtrosBox = document.getElementById('prec-filtros');
+        if (!cont) return;
+
+        const hist = getHist();
+        const filas = [];
+
+        for (const dia of hist) {
+          if (!dia.f) continue;
+          const sorteosDia = dia;
+          for (const l of LOTS18) {
+            const pred = sorteosDia[`pred_${l.k}`];
+            const real = sorteosDia[l.k];
+            if (!pred || !real || !Array.isArray(real) || real.length < 3) continue;
+            if (precLotFiltro !== 'todas' && l.k !== precLotFiltro) continue;
+            const hits = real.filter(n => pred.top3 && pred.top3.includes(n)).length;
+            const tipo = hits >= 3 ? 'spale' : hits === 2 ? 'pale' : hits === 1 ? 'punto' : 'fallo';
+            const hitPunto = pred.top1 !== null && real.includes(pred.top1);
+            filas.push({ fecha: dia.f, clave: l.k, nombre: l.n, pred, real, hits, tipo, hitPunto });
+          }
+        }
+
+        // También lee las predicciones desde el historial del servidor
+        // (guardadas como s.prediccion en Supabase — necesitan sincronizarse primero)
+        const sincHist = getHist();
+        for (const dia of sincHist) {
+          for (const l of LOTS18) {
+            // Las predicciones del servidor se guardan en campo pred_{clave}
+            // que llena sincronizarHistorialServidor cuando lee de Supabase
+            const predKey = `pred_${l.k}`;
+            if (!dia[predKey] && dia[l.k]) {
+              // fallback: genera predicción a posteriori para mostrar algo
+            }
+          }
+        }
+
+        if (filas.length === 0) {
+          const loterias = [{ k: 'todas', n: 'Todas' }, ...LOTS18.map(l => ({ k: l.k, n: l.n }))];
+          filtrosBox.innerHTML = loterias.map(o =>
+            `<button class="hp-btn ${o.k === precLotFiltro ? 'act' : ''}" onclick="precFiltrar('${o.k}')">${o.n}</button>`
+          ).join('');
+          statsBox.innerHTML = '';
+          cont.innerHTML = `<div class="empty"><div class="eico">🧪</div><p>Todavía no hay predicciones guardadas del score combinado.<br>Empezarán a acumularse a partir de hoy — revisa mañana.</p></div>`;
+          return;
+        }
+
+        const total = filas.length;
+        const nPunto = filas.filter(f => f.tipo !== 'fallo').length;
+        const nPale = filas.filter(f => f.tipo === 'pale' || f.tipo === 'spale').length;
+        const nSpale = filas.filter(f => f.tipo === 'spale').length;
+        const nPuntoExacto = filas.filter(f => f.hitPunto).length;
+        const pct = n => total > 0 ? Math.round(n / total * 100) : 0;
+        const cc = v => v >= 30 ? 'var(--green)' : v >= 15 ? 'var(--gold)' : 'var(--red)';
+
+        const loterias = [{ k: 'todas', n: 'Todas' }, ...LOTS18.map(l => ({ k: l.k, n: l.n }))];
+        filtrosBox.innerHTML = loterias.map(o =>
+          `<button class="hp-btn ${o.k === precLotFiltro ? 'act' : ''}" onclick="precFiltrar('${o.k}')">${o.n}</button>`
+        ).join('');
+
+        statsBox.innerHTML = `
+          <div class="schip"><div class="schip-n" style="color:${cc(pct(nPuntoExacto))}">${pct(nPuntoExacto)}%</div><div class="schip-l">Punto exacto (top-1)</div></div>
+          <div class="schip"><div class="schip-n" style="color:${cc(pct(nPunto))}">${pct(nPunto)}%</div><div class="schip-l">1+ en top-3</div></div>
+          <div class="schip"><div class="schip-n" style="color:${cc(pct(nPale))}">${pct(nPale)}%</div><div class="schip-l">2+ en top-3</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--muted)">${total}</div><div class="schip-l">Sorteos evaluados</div></div>`;
+
+        let html = `<div style="overflow-x:auto"><table class="hp-table"><thead><tr>
+          <th>Fecha</th><th>Lotería</th><th>Predicción</th><th>Real</th><th>Resultado</th>
+        </tr></thead><tbody>`;
+        const badges = { punto: '✅ Punto', pale: '💙 Pale', spale: '⭐ S.Pale', fallo: '❌ Fallo' };
+        for (const f of filas.slice(0, 80)) {
+          const predHtml = (f.pred.top3 || []).map(n => {
+            const hit = f.real.includes(n);
+            return `<div class="hp-n ${hit ? 'hit' : ''}">${p2(n)}</div>`;
+          }).join('');
+          const realHtml = f.real.map(n => {
+            const hit = f.pred.top3 && f.pred.top3.includes(n);
+            return `<div class="hp-n ${hit ? 'hit' : ''}">${p2(n)}</div>`;
+          }).join('');
+          html += `<tr class="hp-row ${f.tipo}">
+            <td class="hp-fecha">${fmtFShort(f.fecha)}</td>
+            <td class="hp-lot">${f.nombre}</td>
+            <td><div class="hp-nums">${predHtml}</div></td>
+            <td><div class="hp-nums">${realHtml}</div></td>
+            <td><span class="hp-badge ${f.tipo}">${badges[f.tipo]}</span></td>
+          </tr>`;
+        }
+        html += '</tbody></table></div>';
+        cont.innerHTML = html;
+      }
+
+      function precFiltrar(clave) {
+        precLotFiltro = clave;
+        renderDashboardPrecision();
+      }
+
+      function renderHistorialPredicciones() {
+        const cont = document.getElementById("back-histpred");
+        if (!cont) return;
+        const hist = getHist().filter((d) => d.f !== fechaHoyAPI);
+        const ascDate = [...hist].reverse();
+
+        const optsHp = [
+          { k: "todas", n: "Todas" },
+          ...LOTS18.map((l) => ({ k: l.k, n: l.n })),
+          ...CUARTETAS.map((l) => ({ k: l.k, n: l.n })),
+        ];
+        const pillsHtml = `<div class="hp-sel">${optsHp
+          .map(
+            (o) =>
+              `<button class="hp-btn ${
+                o.k === hpLotFiltro ? "act" : ""
+              }" onclick="hpFiltrar('${o.k}')">${o.n}</button>`
+          )
+          .join("")}</div>`;
+
+        const claves =
+          hpLotFiltro === "todas" ? LOTS18.map((l) => l.k) : [hpLotFiltro];
+        const MIN_TRAIN_HP = 4;
+        const filas = [];
+
+        for (let i = MIN_TRAIN_HP; i < ascDate.length; i++) {
+          const train = ascDate.slice(0, i);
+          const diaReal = ascDate[i];
+
+          for (const clave of claves) {
+            const real = diaReal[clave];
+            if (!real || real.length < 3) continue;
+
+            const serie = train
+              .filter((d) => (d[clave] || []).length >= 3)
+              .map((d) => d[clave]);
+            if (serie.length < 3) continue;
+
+            const score = {};
+            serie.forEach((nums, idx) => {
+              const w = Math.max(1, serie.length - idx);
+              if (nums[0] !== undefined)
+                score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
+              if (nums[1] !== undefined)
+                score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
+              if (nums[2] !== undefined)
+                score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
+            });
+            const top3 = Object.entries(score)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([n]) => +n);
+
+            const hits = real.filter((n) => top3.includes(n)).length;
+            const tipo =
+              hits >= 3
+                ? "spale"
+                : hits === 2
+                ? "pale"
+                : hits === 1
+                ? "punto"
+                : "fallo";
+            const info = INFO_LOOKUP[clave] || { n: clave };
+
+            filas.push({
+              fecha: diaReal.f,
+              clave,
+              nombre: info.n,
+              pred: top3,
+              real,
+              hits,
+              tipo,
+            });
+          }
+        }
+
+        if (filas.length === 0) {
+          cont.innerHTML =
+            pillsHtml +
+            `<div class="empty"><div class="eico">📋</div><p>Historial insuficiente.</p></div>`;
+          return;
+        }
+
+        filas.sort((a, b) => b.fecha.localeCompare(a.fecha));
+        const resumen = filas.reduce((acc, f) => {
+          acc[f.tipo] = (acc[f.tipo] || 0) + 1;
+          return acc;
+        }, {});
+        const total = filas.length;
+        const pctPunto =
+          total > 0
+            ? Math.round(
+                (((resumen.punto || 0) +
+                  (resumen.pale || 0) +
+                  (resumen.spale || 0)) /
+                  total) *
+                  100
+              )
+            : 0;
+
+        let html = pillsHtml;
+        html += `<div class="stats3" style="margin-bottom:14px">
+          <div class="schip"><div class="schip-n" style="color:var(--green)">${
+            resumen.punto || 0
+          }</div><div class="schip-l">Punto ✅</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--neon)">${
+            resumen.pale || 0
+          }</div><div class="schip-l">Pale 💙</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--gold)">${
+            resumen.spale || 0
+          }</div><div class="schip-l">S.Pale ⭐</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--muted)">${
+            resumen.fallo || 0
+          }</div><div class="schip-l">Fallo ❌</div></div>
+          <div class="schip"><div class="schip-n" style="color:${
+            pctPunto >= 30
+              ? "var(--green)"
+              : pctPunto >= 15
+              ? "var(--gold)"
+              : "var(--red)"
+          }">${pctPunto}%</div><div class="schip-l">Acierto global</div></div>
+        </div>`;
+
+        html += `<div class="cardX" style="overflow-x:auto;padding:0">
+          <table class="hp-table">
+            <thead><tr>
+              <th>Fecha</th><th>Lotería</th>
+              <th>Predicción</th><th>Resultado real</th><th>Resultado</th>
+            </tr></thead><tbody>`;
+
+        for (const f of filas.slice(0, 120)) {
+          const predHtml = f.pred
+            .map((n) => {
+              const esHit = f.real.includes(n);
+              return `<div class="hp-n ${esHit ? "hit" : ""}">${p2(n)}</div>`;
+            })
+            .join("");
+          const realHtml = f.real
+            .map((n) => {
+              const esHit = f.pred.includes(n);
+              return `<div class="hp-n ${esHit ? "hit" : ""}">${p2(n)}</div>`;
+            })
+            .join("");
+          const badges = {
+            punto: "✅ Punto",
+            pale: "💙 Pale",
+            spale: "⭐ S.Pale",
+            fallo: "❌ Fallo",
+          };
+          html += `<tr class="hp-row ${f.tipo}">
+            <td class="hp-fecha">${fmtF(f.fecha)}</td>
+            <td class="hp-lot">${f.nombre}</td>
+            <td><div class="hp-nums">${predHtml}</div></td>
+            <td><div class="hp-nums">${realHtml}</div></td>
+            <td><span class="hp-badge ${f.tipo}">${badges[f.tipo]}</span></td>
+          </tr>`;
+        }
+        html += "</tbody></table></div>";
+        cont.innerHTML = html;
+      }
+
+      function hpFiltrar(clave) {
+        hpLotFiltro = clave;
+        renderHistorialPredicciones();
+      }
+
+      function buscar() {
+        const lot = document.getElementById("lot-cons").value;
+        const desde = document.getElementById("f-desde").value;
+        const hasta = document.getElementById("f-hasta").value;
+        const hist = getHist();
+        const todasClaves = [
+          ...LOTS18.map((l) => l.k),
+          ...CUARTETAS.map((l) => l.k),
+          ...ESPECIALES_PRED_LIST.map((l) => l.k),
+        ];
+        const clavesEspeciales = new Set(ESPECIALES_PRED_LIST.map((l) => l.k));
+        const res = [];
+        for (const d of hist) {
+          if (desde && d.f < desde) continue;
+          if (hasta && d.f > hasta) continue;
+          const lk = lot === "todas" ? todasClaves : [lot];
+          for (const l of lk) {
+            const nums = d[l] || [];
+            const minNum = l.startsWith("cuarteta_")
+              ? 4
+              : clavesEspeciales.has(l)
+              ? 1
+              : 3;
+            if (nums.length >= minNum) res.push({ f: d.f, lot: l, nums });
+          }
+        }
+        const w = document.getElementById("tabla-cons");
+        if (!res.length) {
+          w.innerHTML = `<div class="empty"><div class="eico">🔍</div><p>Sin resultados.</p></div>`;
+          return;
+        }
+        let h = `<div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">${res.length} resultado(s)</div>
+    <div class="cardX"><table class="rtable">
+    <thead><tr><th>Fecha</th><th>Lotería</th><th>Números</th></tr></thead><tbody>`;
+        for (const r of res.slice(0, 100)) {
+          const info = INFO_LOOKUP[r.lot] || { n: r.lot };
+          const esCuarteta = r.lot.startsWith("cuarteta_");
+          const esEspecial = clavesEspeciales.has(r.lot);
+          const colorTag = esEspecial
+            ? "var(--gold)"
+            : esCuarteta
+            ? "var(--gold)"
+            : "var(--neon)";
+          const bolas = r.nums
+            .map(
+              (n, i) =>
+                `<span class="mini-esf mini-e${
+                  (i % 3) + 1
+                }" style="width:26px;height:26px;line-height:26px;font-size:.72rem;margin:1px">${p2(
+                  n
+                )}</span>`
+            )
+            .join("");
+          h += `<tr>
+      <td>${fmtF(r.f)}</td>
+      <td style="font-weight:800;color:${colorTag}">${
+            esEspecial ? "🎰 " : esCuarteta ? "🎲 " : ""
+          }${info.n}</td>
+      <td><div style="display:flex;flex-wrap:wrap;gap:2px">${bolas}</div></td>
+    </tr>`;
+        }
+        h += "</tbody></table></div>";
+        w.innerHTML = h;
+      }
+
+      function clasificarLoteria(clave) {
+        if (CUARTETAS.some((c) => c.k === clave)) return "cuarteta";
+        const esp = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
+        if (esp)
+          return esp.tipo === "pega3" || esp.tipo === "pega4"
+            ? "especial-digitos"
+            : "especial-numeros";
+        return "quiniela";
+      }
+
+      function poblarSelectorJugadas() {
+        const sel = document.getElementById("jg-lot");
+        if (!sel) return;
+        const optsQ = LOTS18.map(
+          (l) => `<option value="${l.k}">${l.n}</option>`
+        ).join("");
+        const optsC = CUARTETAS.map(
+          (l) => `<option value="${l.k}">🎲 ${l.n}</option>`
+        ).join("");
+        const optsE = ESPECIALES_PRED_LIST.map(
+          (l) => `<option value="${l.k}">🎰 ${l.n} [${l.empresa}]</option>`
+        ).join("");
+        sel.innerHTML = `<option value="">Selecciona...</option>
+          <optgroup label="Quinielas (3 números)">${optsQ}</optgroup>
+          <optgroup label="La Cuarteta (4 números)">${optsC}</optgroup>
+          <optgroup label="Juegos Especiales">${optsE}</optgroup>`;
+      }
+
+      function actualizarFormJugada() {
+        const clave = document.getElementById("jg-lot").value;
+        const tipoWrap = document.getElementById("jg-tipo-wrap");
+        const tipoSel = document.getElementById("jg-tipo");
+        const numsLabel = document.getElementById("jg-nums-label");
+        const numsInput = document.getElementById("jg-nums");
+        if (!clave) {
+          tipoWrap.style.display = "none";
+          numsLabel.textContent = "Números jugados";
+          return;
+        }
+        const grupo = clasificarLoteria(clave);
+        if (grupo === "quiniela") {
+          tipoWrap.style.display = "block";
+          tipoSel.innerHTML = `
+            <option value="punto">Punto (1 número)</option>
+            <option value="pale">Pale (2 números)</option>
+            <option value="superpale">Súper Pale (3 números)</option>
+            <option value="tripleta">Tripleta (3 números)</option>`;
+          numsLabel.textContent = "Números jugados";
+        } else {
+          tipoWrap.style.display = "none";
+          numsLabel.textContent = "Números jugados";
+        }
+      }
+
+      function getJugadas() {
+        try {
+          const r = localStorage.getItem("rd_jugadas");
+          return r ? JSON.parse(r) : [];
+        } catch (e) {
+          return [];
+        }
+      }
+      function setJugadas(arr) {
+        try {
+          localStorage.setItem("rd_jugadas", JSON.stringify(arr));
+        } catch (e) {}
+      }
+
+      function toastRD(msg) {
+        var t = document.createElement("div");
+        t.textContent = msg;
+        t.style.cssText =
+          "position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#12161f;color:#e6ebf2;border:1px solid #2fe6c8;padding:12px 18px;border-radius:10px;font-size:14px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:90%;text-align:center";
+        document.body.appendChild(t);
+        setTimeout(function () {
+          t.style.transition = "opacity .4s";
+          t.style.opacity = "0";
+        }, 1800);
+        setTimeout(function () {
+          t.remove();
+        }, 2300);
+      }
+
+      var JG_TIPO_PRED = {
+        tp: "punto",
+        tpa: "pale",
+        tsp: "superpale",
+        ttr: "tripleta",
+      };
+      function copiarPredJugada(tipoPred, numsCSV) {
+        var tipo = JG_TIPO_PRED[tipoPred] || "punto";
+        var numeros = numsCSV
+          .split(",")
+          .map(function (s) {
+            return parseInt(s, 10);
+          })
+          .filter(function (n) {
+            return !isNaN(n);
+          });
+        var fecha =
+          typeof fechaHoyAPI !== "undefined" && fechaHoyAPI
+            ? fechaHoyAPI
+            : new Date().toISOString().slice(0, 10);
+        var jugadas = getJugadas();
+        jugadas.unshift({
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave: lotAct,
+          fecha: fecha,
+          tipo: tipo,
+          numeros: numeros,
+          monto: null,
+          creado: new Date().toISOString(),
+        });
+        setJugadas(jugadas);
+        renderJugadas();
+        toastRD("Copiada a Mis Jugadas: " + numeros.map(p2).join("-"));
+      }
+
+      function generarBoletosEspeciales() {
+        const clave = document.getElementById("gen-juego").value;
+        let cant = parseInt(document.getElementById("gen-cant").value, 10) || 1;
+        cant = Math.max(1, Math.min(12, cant));
+        const out = document.getElementById("gen-out");
+        const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
+        if (!info) return;
+
+        // Usamos el mismo mapa central que la sección de Adyacentes, así
+        // no hay dos fuentes de verdad distintas. La cadena de if/else que
+        // había antes solo cubría 4 juegos — Mega Chance, Pega 4 Real y
+        // El Quemaito caían al valor por defecto de 1 número por boleto.
+        const tInfo = ticketInfoParaClaveAdyacente(clave);
+        const rangoMin = tInfo.min;
+        const rangoMax = tInfo.max;
+        const numBolas = tInfo.ticket;
+        const permiteRepetidos = clave === "pega3mas" || clave === "pega4king";
+
+        const hist = getHist().filter(
+          (d) => d.f !== fechaHoyAPI && d[clave] && d[clave].length > 0
+        );
+        const freq = {};
+        hist.forEach((d, idx) => {
+          const w = Math.max(1, hist.length - idx);
+          d[clave].forEach((n) => (freq[n] = (freq[n] || 0) + w));
+        });
+
+        const ranking = Object.keys(freq)
+          .map(Number)
+          .sort((a, b) => freq[b] - freq[a]);
+
+        for (let i = rangoMin; i <= rangoMax; i++) {
+          if (!ranking.includes(i)) ranking.push(i);
+        }
+
+        let html = "";
+        for (let t = 0; t < cant; t++) {
+          let ticket = [];
+          if (t === 0 && ranking.length >= numBolas) {
+            ticket = ranking.slice(0, numBolas);
+          } else {
+            let pool = [...ranking];
+            while (ticket.length < numBolas) {
+              let index = Math.floor(Math.random() * pool.length);
+              const num = pool[index];
+              ticket.push(num);
+              if (!permiteRepetidos) pool.splice(index, 1);
+            }
+          }
+          if (!permiteRepetidos) ticket.sort((a, b) => a - b);
+          const chips = ticket
+            .map(
+              (n) =>
+                `<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--bg);border:1px solid var(--neon);color:var(--neon);font-weight:800;font-size:12px;margin:3px">${p2(
+                  n
+                )}</span>`
+            )
+            .join("");
+
+          html += `<div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+            <div style="font-size:11px;color:var(--gold);margin-bottom:8px;font-weight:800;text-transform:uppercase">BOLETO ${
+              t + 1
+            } · ${info.n}</div>
+            <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;justify-content:center">${chips}</div>
+            <button onclick="registrarBoletoEspecial('${clave}', '${ticket.join(
+            ","
+          )}')" class="btn btn-neon" style="width:100%;font-size:11px;padding:8px">➕ Registrar en Mis Jugadas</button>
+            </div>`;
+        }
+        out.innerHTML = html;
+      }
+
+      function registrarBoletoEspecial(clave, numsCSV) {
+        const numeros = numsCSV.split(",").map((s) => parseInt(s, 10));
+        const fecha =
+          typeof fechaHoyAPI !== "undefined" && fechaHoyAPI
+            ? fechaHoyAPI
+            : new Date().toISOString().slice(0, 10);
+        const jugadas = getJugadas();
+        const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
+        const tipo =
+          info && (info.tipo === "pega3" || info.tipo === "pega4")
+            ? "especial-digitos"
+            : "especial-numeros";
+
+        jugadas.unshift({
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave: clave,
+          fecha: fecha,
+          tipo: tipo,
+          numeros: numeros,
+          monto: null,
+          creado: new Date().toISOString(),
+        });
+        setJugadas(jugadas);
+        renderJugadas();
+        toastRD("✅ Registrado en tu lista de jugadas");
+      }
+
+      function rastrearNumero() {
+        const cont = document.getElementById("rastreo-res");
+        const val = parseInt(document.getElementById("rastreo-num").value, 10);
+        if (isNaN(val) || val < 0 || val > 99) {
+          cont.innerHTML = '<div style="color:var(--red);font-size:13px">Escribe un número entre 00 y 99.</div>';
+          return;
+        }
+        const hist = getHist();
+        const hallazgos = [];
+        const nombreDe = (k) =>
+          (INFO_LOOKUP[k] && INFO_LOOKUP[k].n) ||
+          (ESPECIALES_PRED_LIST.find((x) => x.k === k) || {}).n ||
+          k;
+        for (const d of hist) {
+          for (const k of Object.keys(d)) {
+            if (k === "f") continue;
+            const nums = d[k];
+            if (!Array.isArray(nums)) continue;
+            const posiciones = [];
+            nums.forEach((n, i) => {
+              if (parseInt(n, 10) === val) posiciones.push(i + 1);
+            });
+            if (posiciones.length) {
+              hallazgos.push({
+                f: d.f,
+                k,
+                nombre: nombreDe(k),
+                pos: posiciones,
+                total: nums.length,
+              });
+            }
+          }
+        }
+        hallazgos.sort((a, b) => (a.f < b.f ? 1 : -1));
+        if (!hallazgos.length) {
+          cont.innerHTML = `<div style="color:var(--muted2);font-size:13px">El ${p2(val)} no aparece en el historial.</div>`;
+          return;
+        }
+        let html = `<div style="font-size:13px;margin-bottom:8px">El <b style="color:var(--neon)">${p2(val)}</b> ha salido <b>${hallazgos.length} veces</b>.</div>`;
+        html += `<div style="max-height:300px;overflow-y:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">`;
+        for (const h of hallazgos.slice(0, 60)) {
+          html += `<tr style="border-bottom:1px solid #1f2a3d">
+            <td style="padding:4px 8px;color:var(--muted2)">${fmtFShort(h.f)}</td>
+            <td style="padding:4px 8px">${h.nombre}</td>
+            <td style="padding:4px 8px;color:var(--gold)">pos ${h.pos.join(", ")}</td></tr>`;
+        }
+        html += `</table></div>`;
+        cont.innerHTML = html;
+      }
+
+      function agregarJugada() {
+        const clave = document.getElementById("jg-lot").value;
+        const fecha = document.getElementById("jg-fecha").value;
+        const numsRaw = document.getElementById("jg-nums").value;
+        const monto = document.getElementById("jg-monto").value;
+        const tipoSel = document.getElementById("jg-tipo");
+
+        if (!clave) return alert("Elige una lotería primero.");
+        if (!fecha) return alert("Elige la fecha.");
+        const numeros = numsRaw
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n));
+        if (numeros.length === 0) return alert("Escribe al menos un número.");
+
+        const grupo = clasificarLoteria(clave);
+        const tipo = grupo === "quiniela" ? tipoSel.value : grupo;
+
+        const jugadas = getJugadas();
+        jugadas.unshift({
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave,
+          fecha,
+          tipo,
+          numeros,
+          monto: monto ? parseFloat(monto) : null,
+          creado: new Date().toISOString(),
+        });
+        setJugadas(jugadas);
+        document.getElementById("jg-nums").value = "";
+        document.getElementById("jg-monto").value = "";
+        renderJugadas();
+      }
+
+      function eliminarJugada(id) {
+        if (!confirm("¿Eliminar esta jugada?")) return;
+        setJugadas(getJugadas().filter((j) => j.id !== id));
+        renderJugadas();
+      }
+
+      function buscarResultadoReal(clave, fecha) {
+        const hist = getHist();
+        const dia = hist.find((d) => d.f === fecha);
+        if (dia && dia[clave] && dia[clave].length > 0) return dia[clave];
+        return null;
+      }
+
+      function evaluarJugada(j) {
+        const real = buscarResultadoReal(j.clave, j.fecha);
+        if (!real) return { estado: "pendiente" };
+
+        const grupo = clasificarLoteria(j.clave);
+        let aciertos = 0,
+          gano = false,
+          detalle = "";
+
+        if (grupo === "quiniela") {
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          const minimo = { punto: 1, pale: 2, superpale: 3, tripleta: 3 }[j.tipo] || 1;
+          gano = aciertos >= minimo;
+          detalle = `${aciertos} de ${j.numeros.length} número(s) aparecieron`;
+        } else {
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos >= Math.min(2, j.numeros.length);
+          detalle = `${aciertos} coincidencia(s)`;
+        }
+        return { estado: gano ? "ganada" : "perdida", aciertos, real, detalle };
+      }
+
+      const TIPO_LABEL_JG = {
+        punto: "Punto",
+        pale: "Pale",
+        superpale: "Súper Pale",
+        tripleta: "Tripleta",
+        adyacente: "Adyacente",
+        repetitivo: "Repetitivo",
+        cuarteta: "Cuarteta",
+      };
+
+      function renderJugadas() {
+        const jugadas = getJugadas();
+        const cont = document.getElementById("jg-lista");
+        const statsBox = document.getElementById("jg-stats3");
+
+        let pend = 0,
+          gan = 0,
+          perd = 0;
+
+        if (jugadas.length === 0) {
+          cont.innerHTML = `<div class="empty"><div class="eico">🎟️</div><p>Sin jugadas registradas.</p></div>`;
+          statsBox.innerHTML = "";
+          return;
+        }
+
+        let html = "";
+        for (const j of jugadas) {
+          const info = INFO_LOOKUP[j.clave] || { n: j.clave };
+          const r = evaluarJugada(j);
+          if (r.estado === "pendiente") pend++;
+          else if (r.estado === "ganada") gan++;
+          else perd++;
+
+          const numsChips = j.numeros
+            .map((n) => {
+              const acerto = r.real && r.real.includes(n);
+              return `<div class="jg-chip ${acerto ? "acerto" : ""}">${p2(
+                n
+              )}</div>`;
+            })
+            .join("");
+
+          const badgeTxt =
+            r.estado === "pendiente"
+              ? "⏳ Pendiente"
+              : r.estado === "ganada"
+              ? "✅ Ganaste"
+              : "❌ No acertaste";
+
+          html += `<div class="jg-card ${r.estado}">
+            <div class="jg-hdr">
+              <div>
+                <div class="jg-tit">${info.n}</div>
+                <div class="jg-fecha">${fmtF(j.fecha)} · ${
+            TIPO_LABEL_JG[j.tipo] || j.tipo
+          }</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="jg-badge ${r.estado}">${badgeTxt}</span>
+                <button class="jg-del" onclick="eliminarJugada('${
+                  j.id
+                }')">🗑️</button>
+              </div>
+            </div>
+            <div class="jg-nums-row">${numsChips}</div>
+            ${
+              r.estado !== "pendiente"
+                ? `<div class="jg-detail">Resultado: ${r.real
+                    .map((n) => p2(n))
+                    .join(" - ")} · ${r.detalle}</div>`
+                : `<div class="jg-detail">Aún sin resultado para esta fecha.</div>`
+            }
+          </div>`;
+        }
+        cont.innerHTML = html;
+
+        const totalEval = gan + perd;
+        const pct = totalEval > 0 ? Math.round((gan / totalEval) * 100) : 0;
+        statsBox.innerHTML = `
+          <div class="schip"><div class="schip-n" style="color:var(--gold)">${pend}</div><div class="schip-l">Pendientes</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--green)">${gan}</div><div class="schip-l">Ganadas</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--red)">${perd}</div><div class="schip-l">Perdidas (${pct}%)</div></div>`;
+      }
+
+      function p2(n) {
+        return n !== undefined && n !== null
+          ? String(n).padStart(2, "0")
+          : "--";
+      }
+      function fmtF(f) {
+        if (!f) return "---";
+        try {
+          const [y, m, d] = f.split("-");
+          const M = [
+            "",
+            "Ene",
+            "Feb",
+            "Mar",
+            "Abr",
+            "May",
+            "Jun",
+            "Jul",
+            "Ago",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dic",
+          ];
+          return `${d} ${M[+m]} ${y}`;
+        } catch {
+          return f;
+        }
+      }
+      function fmtFShort(f) {
+        if (!f) return "--/--";
+        try {
+          const [, m, d] = f.split("-");
+          return `${d}/${m}`;
+        } catch {
+          return f;
+        }
+      }
+
+      window.addEventListener("DOMContentLoaded", async () => {
+        const hoy = new Date().toISOString().split("T")[0];
+        document.getElementById("f-hasta").value = hoy;
+        const h30 = new Date();
+        h30.setDate(h30.getDate() - 30);
+        document.getElementById("f-desde").value = h30
+          .toISOString()
+          .split("T")[0];
+        document.getElementById("jg-fecha").value = hoy;
+        renderStats(0);
+        renderLotPills();
+        renderCuartetaPills();
+        renderEspecialPills();
+        renderAdyacentePills();
+        renderSelectores();
+        poblarSelectorJugadas();
+        renderJugadas();
+        sincronizarHistorialServidor().then(() => {
+          cargarBack();
+          cargarHoy();
+        });
+        cargarBack();
+        setTimeout(cargarHoy, 300);
+        setInterval(cargarHoy, 20 * 60 * 1000);
+        setInterval(sincronizarHistorialServidor, 30 * 60 * 1000);
+      });
+    </script>
+  </body>
+</html>
