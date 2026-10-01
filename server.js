@@ -775,6 +775,7 @@ async function cazarAciertos({ enviar = true } = {}) {
   const dias = [...estado.historico].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
   const f2 = n => String(n).padStart(2, '0');
   const avisos = [];
+  let totalSorteos = 0, totalAciertos = 0;
 
   for (const [clave, s] of Object.entries(estado.sorteos)) {
     if (!s.numeros || s.numeros.length < 3) continue;
@@ -785,7 +786,7 @@ async function cazarAciertos({ enviar = true } = {}) {
       const ds = d.sorteos && d.sorteos[clave];
       if (ds && ds.numeros && ds.numeros.length >= 3) serie.push(ds.numeros.map(Number));
     }
-    
+
     if (serie.length >= 2 && !yaChequeado[`${clave}|radar`]) {
       const pesos = {};
       serie.forEach((nums, j) => {
@@ -794,12 +795,14 @@ async function cazarAciertos({ enviar = true } = {}) {
       });
       const top = Object.entries(pesos).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => +x[0]);
       if ([...new Set(top)].filter(n => hoy.has(n)).length >= 2) {
-        avisos.push(`🎯 <b>Radar top-2</b> ¡PALÉ! — ${s.nombre}\n     jugó <b>${top.map(f2).join('-')}</b> · salió ${salio}`);
+        avisos.push(`🎯 <b>Radar top-2 ¡PALÉ!</b> — ${s.nombre}\n     jugó <b>${top.map(f2).join('-')}</b> · salió ${salio}`);
+        totalAciertos++;
       }
       yaChequeado[`${clave}|radar`] = true;
     }
 
     if (!yaChequeado[`${clave}|punto`]) {
+      totalSorteos++;
       if (serie.length >= 2) {
         const pesosP = {};
         serie.forEach((nums, j) => {
@@ -809,17 +812,24 @@ async function cazarAciertos({ enviar = true } = {}) {
           if (nums[2] !== undefined) pesosP[nums[2]] = (pesosP[nums[2]] || 0) + 4 * w;
         });
         const top1 = Object.entries(pesosP).sort((a, b) => b[1] - a[1])[0];
+        const wf = radarPuntoWF(clave);
         if (top1 && hoy.has(+top1[0])) {
-          const wf = radarPuntoWF(clave);
-          avisos.push(`🎯 <b>Radar punto</b> — ${s.nombre}\n     jugó <b>${f2(+top1[0])}</b> · salió ${salio} · lleva ${wf.ac}/${wf.ev} (${wf.tasa.toFixed(1)}% vs azar 3%)`);
+          totalAciertos++;
+          avisos.push(`✅ <b>${s.nombre}</b> — salió ${salio}\n     🎯 Punto: predijo <b>${f2(+top1[0])}</b> ¡ACERTÓ! · lleva ${wf.ac}/${wf.ev} (${wf.tasa.toFixed(1)}% vs azar 3%)`);
+        } else if (top1) {
+          avisos.push(`❌ <b>${s.nombre}</b> — salió ${salio}\n     predijo <b>${f2(+top1[0])}</b> · no acertó · lleva ${wf.ac}/${wf.ev} (${wf.tasa.toFixed(1)}%)`);
         }
+      } else {
+        avisos.push(`⚪ <b>${s.nombre}</b> — salió ${salio}\n     (sin historial suficiente aún)`);
       }
       yaChequeado[`${clave}|punto`] = true;
     }
   }
 
   if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
-    `🎯 <b>ACIERTOS DE HOY</b> — ${fechaRD()}\n\n` + avisos.join('\n\n')
+    `🎯 <b>ACIERTOS DE HOY</b> — ${fechaRD()}\n` +
+    `📊 ${totalAciertos} aciertos en ${totalSorteos} sorteos evaluados\n\n` +
+    avisos.join('\n\n')
   );
   return avisos;
 }
@@ -1044,6 +1054,7 @@ async function sincronizar() {
     await notificarNuevosSorteos();
     await cazarAciertos({ enviar: true });
     await revisarYEnviarPredicciones();
+    await notificarJugadasPersonales();
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1142,6 +1153,122 @@ app.get('/api/backfill-especiales', async (req, res) => {
   finally { estadoBackfill.activo = false; }
 });
 app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
+
+// ── JUGADAS PERSONALES → SUPABASE + NOTIFICACIÓN TELEGRAM ─────────────────
+// Guarda tickets del usuario en Supabase para poder notificarle si gana/pierde.
+// El frontend llama POST /api/jugada cuando agrega una jugada.
+async function guardarJugadaSupabase(jugada) {
+  if (!SUPABASE_ACTIVO) return false;
+  try {
+    await axios.post(`${SUPABASE_URL}/rest/v1/jugadas`,
+      jugada,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, timeout: 8000 }
+    );
+    return true;
+  } catch(e) { return false; }
+}
+
+async function cargarJugadasPendientes() {
+  if (!SUPABASE_ACTIVO) return [];
+  try {
+    const hoy = fechaRD();
+    const ayer = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+    const res = await axios.get(
+      `${SUPABASE_URL}/rest/v1/jugadas?notificado=eq.false&fecha=gte.${ayer}&select=*`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 8000 }
+    );
+    return res.data || [];
+  } catch(e) { return []; }
+}
+
+async function marcarJugadaNotificada(id) {
+  if (!SUPABASE_ACTIVO) return;
+  try {
+    await axios.patch(`${SUPABASE_URL}/rest/v1/jugadas?id=eq.${id}`,
+      { notificado: true },
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' }, timeout: 8000 }
+    );
+  } catch(e) {}
+}
+
+function evaluarJugadaServidor(jugada, sorteoActual) {
+  const real = sorteoActual.numeros || [];
+  if (!real.length) return null;
+  const tipo = jugada.tipo;
+  const nums = jugada.numeros;
+  let aciertos = 0, gano = false, detalle = '';
+
+  if (['punto','pale','superpale','tripleta','adyacente','repetitivo'].includes(tipo)) {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    const minimo = { punto: 1, pale: 2, superpale: 3, tripleta: 3, adyacente: 2, repetitivo: 1 }[tipo] || 1;
+    gano = aciertos >= minimo;
+    detalle = `${aciertos} de ${nums.length} aparecieron`;
+  } else if (jugada.clave === 'superkino') {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos === 0 || aciertos >= 5;
+    detalle = aciertos === 0 ? 'Premio 0 aciertos 🎯' : aciertos >= 10 ? 'JACKPOT 🏆' : aciertos >= 5 ? `Premio ${aciertos} aciertos 🎯` : `${aciertos} aciertos (sin premio)`;
+  } else if (jugada.clave === 'loto' || jugada.clave === 'lotomas') {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos >= 3;
+    detalle = `${aciertos} de ${nums.length} coincidieron`;
+  } else if (jugada.clave === 'pega3mas') {
+    aciertos = nums.filter((n, i) => real[i] === n).length;
+    gano = aciertos === 3;
+    detalle = `${aciertos} en posición exacta`;
+  } else if (jugada.clave === 'megachance') {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos >= 2;
+    detalle = `${aciertos} de 5`;
+  } else if (jugada.clave === 'pega4king') {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos >= 3;
+    detalle = `${aciertos} de 4`;
+  } else if (jugada.clave === 'quemaito') {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos >= 1;
+    detalle = gano ? '¡Acertó!' : 'No acertó';
+  } else {
+    aciertos = nums.filter(n => real.includes(n)).length;
+    gano = aciertos >= 1;
+    detalle = `${aciertos} coincidencia(s)`;
+  }
+  return { gano, aciertos, detalle, real };
+}
+
+async function notificarJugadasPersonales() {
+  if (!TG_ACTIVO) return;
+  const pendientes = await cargarJugadasPendientes();
+  if (!pendientes.length) return;
+  const f2 = n => String(n).padStart(2, '0');
+  const avisos = [];
+
+  for (const j of pendientes) {
+    const sorteo = (estado.sorteos[j.clave] || estado.especiales[j.clave] || estado.cuartetas[j.clave]);
+    if (!sorteo || !sorteo.numeros || sorteo.numeros.length === 0) continue;
+    if (estado.fecha !== j.fecha) continue;
+    const r = evaluarJugadaServidor(j, sorteo);
+    if (!r) continue;
+    await marcarJugadaNotificada(j.id);
+    const nums = j.numeros.map(f2).join('-');
+    const real = r.real.map(f2).join('-');
+    const emoji = r.gano ? '🎯' : '❌';
+    avisos.push(`${emoji} <b>${sorteo.nombre}</b>\n     Jugaste: <b>${nums}</b> · Salió: <b>${real}</b>\n     ${r.detalle} · ${r.gano ? '¡GANASTE! 🏆' : 'No acertaste'}`);
+  }
+
+  if (avisos.length) {
+    await enviarTelegram(`🎟️ <b>RESULTADO DE TUS JUGADAS</b> — ${fechaRD()}\n\n` + avisos.join('\n\n'));
+  }
+}
+
+app.post('/api/jugada', async (req, res) => {
+  const j = req.body;
+  if (!j || !j.clave || !j.numeros || !j.fecha) return res.status(400).json({ error: 'Faltan campos' });
+  const jugada = { id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`, clave: j.clave, fecha: j.fecha, tipo: j.tipo || 'especial', numeros: j.numeros, monto: j.monto || null, notificado: false, creado: new Date().toISOString() };
+  const ok = await guardarJugadaSupabase(jugada);
+  res.json({ ok, id: jugada.id });
+});
+
+
 
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
