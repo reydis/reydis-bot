@@ -557,6 +557,20 @@ function parsearWuloteria(html) {
   return salida;
 }
 
+// Páginas de detalle (/loto/...): historial en HTML normal
+//   <li class="wl-hist__row"> <time dateTime="2026-10-12"> ... <span class="wl-fig__v">24</span> ...
+function parsearHistorialWuloteria(html) {
+  const $ = cheerio.load(html); const out = []; const vistos = new Set();
+  $('li.wl-hist__row').each((_, li) => {
+    const fecha = ($(li).find('time').first().attr('datetime') || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || vistos.has(fecha)) return;
+    const nums = $(li).find('.wl-fig__v').map((__, s) => parseInt($(s).text().trim(), 10)).get().filter(n => !isNaN(n));
+    if (!nums.length) return;
+    vistos.add(fecha); out.push({ fecha, numeros: nums });
+  });
+  return out;
+}
+
 async function scrapeWuloteria() {
   const faltanCuartetas = Object.values(estado.cuartetas).some(c => c.numeros.length < 4);
   const faltanEspeciales = Object.values(WULOTERIA_ESPECIALES).some(k => estado.especiales[k] && estado.especiales[k].numeros.length < estado.especiales[k].cant);
@@ -1164,7 +1178,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v8.5-WULOTERIA', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.6-WULOTERIA-HIST', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1263,7 +1277,8 @@ app.get('/api/backfill-wuloteria', async (req, res) => {
     for (const [slug, ruta] of Object.entries(WULOTERIA_PAGINAS)) {
       try {
         const r = await axios.get(`https://wuloteria.com/loto/${ruta}`, { headers: HEADERS, timeout: 15000 });
-        const encontrados = parsearWuloteria(r.data).filter(x => x.slug === slug);
+        let encontrados = parsearHistorialWuloteria(r.data).map(x => ({ ...x, slug }));
+        if (!encontrados.length) encontrados = parsearWuloteria(r.data).filter(x => x.slug === slug);
         encontrados.forEach(agregar);
         logBF(`${slug}: ${encontrados.length} sorteos en la página`);
       } catch (e) { logBF(`AVISO ${slug}: ${e.response?.status || e.message}`); }
@@ -1465,7 +1480,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.5-WULOTERIA en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v8.6-WULOTERIA-HIST en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
