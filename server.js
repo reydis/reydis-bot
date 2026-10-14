@@ -510,6 +510,78 @@ async function scrapeCuartetaLotDominicanas() {
   return conteo;
 }
 
+// ── WULOTERIA ───────────────────────────────────────────────────────────────
+// Wuloteria (Next.js) mete todos los resultados como JSON dentro del HTML:
+//   {"drawSlot":"manana","game":"La Cuarteta Mañana","gameSlug":"la-cuarteta-manana",
+//    "numbers":[30,85,49,50],"date":"2026-10-14",...}
+// Leemos esos objetos directo, sin depender de clases CSS. Es la única fuente
+// viva que encontramos para La Cuarteta y Pega 3 Más (oct 2026).
+const WULOTERIA_CUARTETAS = {
+  'la-cuarteta-manana': 'cuarteta_m',
+  'cuarteta-medio-dia': 'cuarteta_md',
+  'cuarteta-tarde':     'cuarteta_t',
+  'cuarteta-noche':     'cuarteta_n',
+};
+const WULOTERIA_ESPECIALES = {
+  'pega-3-mas':        'pega3mas',
+  'super-kino-tv':     'superkino',
+  'mega-chances':      'megachance',
+  'el-quemaito-mayor': 'quemaito',
+};
+// Páginas de detalle (cada una trae los últimos ~10 sorteos) — para el backfill
+const WULOTERIA_PAGINAS = {
+  'la-cuarteta-manana': 'anguila/la-cuarteta-manana',
+  'cuarteta-medio-dia': 'anguila/cuarteta-medio-dia',
+  'cuarteta-tarde':     'anguila/cuarteta-tarde',
+  'cuarteta-noche':     'anguila/cuarteta-noche',
+  'pega-3-mas':         'leidsa/pega-3-mas',
+};
+
+function parsearWuloteria(html) {
+  const texto = String(html).replace(/\\"/g, '"');
+  const vistos = new Set();
+  const salida = [];
+  const re = /\{[^{}]*?"gameSlug":"[^"]+"[^{}]*\}/g;
+  let m;
+  while ((m = re.exec(texto)) !== null) {
+    let obj;
+    try { obj = JSON.parse(m[0]); } catch (e) { continue; }
+    if (!obj.gameSlug || !Array.isArray(obj.numbers) || !/^\d{4}-\d{2}-\d{2}$/.test(obj.date || '')) continue;
+    const nums = obj.numbers.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+    if (!nums.length) continue;
+    const id = `${obj.gameSlug}|${obj.date}`;
+    if (vistos.has(id)) continue;
+    vistos.add(id);
+    salida.push({ slug: obj.gameSlug, juego: obj.game || '', fecha: obj.date, numeros: nums });
+  }
+  return salida;
+}
+
+async function scrapeWuloteria() {
+  const faltanCuartetas = Object.values(estado.cuartetas).some(c => c.numeros.length < 4);
+  const faltanEspeciales = Object.values(WULOTERIA_ESPECIALES).some(k => estado.especiales[k] && estado.especiales[k].numeros.length < estado.especiales[k].cant);
+  if (!faltanCuartetas && !faltanEspeciales) return 0;
+  const hoy = fechaRD();
+  let conteo = 0;
+  try {
+    const res = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
+    for (const r of parsearWuloteria(res.data)) {
+      if (r.fecha !== hoy) continue;
+      const kc = WULOTERIA_CUARTETAS[r.slug];
+      if (kc && estado.cuartetas[kc] && estado.cuartetas[kc].numeros.length < 4 && r.numeros.length === 4) {
+        estado.cuartetas[kc].numeros = r.numeros; estado.cuartetas[kc].estado = 'disponible'; conteo++;
+        continue;
+      }
+      const ke = WULOTERIA_ESPECIALES[r.slug];
+      const juego = ke && estado.especiales[ke];
+      if (juego && juego.numeros.length < juego.cant && r.numeros.length === juego.cant) {
+        juego.numeros = r.numeros; juego.estado = 'disponible'; conteo++;
+      }
+    }
+  } catch (e) {}
+  return conteo;
+}
+
 const ESPECIALES_ENLOTERIA = { superkino: 'super-kino-tv', loto: 'loto', lotomas: 'loto', megachance: 'megachance', pega3mas: 'pega-3-mas', pega4king: 'pega-4', quemaito: 'el-quemaito-mayor' };
 const ESPECIALES_ENLOTERIA_RE = { superkino: /kino/i, loto: /loto/i, lotomas: /loto/i, megachance: /mega\s*chance/i, pega3mas: /pega\s*3/i, pega4king: /pega\s*4/i, quemaito: /quemaito/i };
 
@@ -596,6 +668,17 @@ async function diagnosticarFuentes() {
     resultado.enloteria = { ok: true, status: r.status, numeros_leidsa_hoy: nums, funciono: nums.length === 3, nota: nums.length === 0 ? 'Puede ser normal si el sorteo de hoy aun no ha salido' : undefined };
   } catch (e) {
     resultado.enloteria = { ok: false, error: e.message, status: e.response?.status || null };
+  }
+
+  // 3b. Wuloteria (Cuarteta + Pega 3 Más)
+  try {
+    const r = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
+    const todos = parsearWuloteria(r.data);
+    const interes = todos.filter(x => WULOTERIA_CUARTETAS[x.slug] || WULOTERIA_ESPECIALES[x.slug]);
+    resultado.wuloteria = { ok: true, status: r.status, sorteos_leidos: todos.length, funciono: interes.length > 0,
+      cuartetas_y_especiales: interes.map(x => `${x.fecha} ${x.slug}: ${x.numeros.join('-')}`) };
+  } catch (e) {
+    resultado.wuloteria = { ok: false, error: e.message, status: e.response?.status || null };
   }
 
   // 4. Yelu
@@ -1045,6 +1128,7 @@ async function sincronizar() {
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeEnloteria();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeYelu();
 
+    await scrapeWuloteria(); // Cuarteta + Pega 3 Más (fuente principal) y respaldo de Kino/MegaChance/Quemaito
     if (Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length > 0) await scrapeCuartetaLotDominicanas();
     if (Object.values(estado.especiales).filter(e => e.numeros.length < e.cant).length > 0) await scrapeEspecialesEnloteria();
     
@@ -1080,7 +1164,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v8.4-BACKFILL-RESTORED', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.5-WULOTERIA', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1153,6 +1237,94 @@ app.get('/api/backfill-especiales', async (req, res) => {
   finally { estadoBackfill.activo = false; }
 });
 app.get('/api/backfill-estado', (req, res) => res.json(estadoBackfill));
+
+// Backfill de La Cuarteta y Pega 3 Más desde Wuloteria.
+// Cada página de detalle trae los últimos ~10 sorteos (no tiene URLs por fecha),
+// así que esto rellena aprox. los últimos 10 días.
+// Uso: /api/backfill-wuloteria?guardar=1   (sin guardar=1 es simulación)
+app.get('/api/backfill-wuloteria', async (req, res) => {
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const guardar = req.query.guardar === '1';
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, fuente: 'wuloteria', modo: guardar ? 'GUARDAR' : 'SIMULACION' });
+
+  const logBF = msg => { console.log(`[BF-WU] ${msg}`); estadoBackfill.log.push(msg); };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    const hoy = fechaRD();
+    // 1. Juntar resultados por fecha
+    const porFecha = {}; // { fecha: [{slug, numeros}] }
+    const agregar = (r) => { (porFecha[r.fecha] = porFecha[r.fecha] || []).push(r); };
+    try {
+      const r = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
+      parsearWuloteria(r.data).filter(x => WULOTERIA_PAGINAS[x.slug]).forEach(agregar);
+      logBF('Portada leída');
+    } catch (e) { logBF(`AVISO portada: ${e.response?.status || e.message}`); }
+    for (const [slug, ruta] of Object.entries(WULOTERIA_PAGINAS)) {
+      try {
+        const r = await axios.get(`https://wuloteria.com/loto/${ruta}`, { headers: HEADERS, timeout: 15000 });
+        const encontrados = parsearWuloteria(r.data).filter(x => x.slug === slug);
+        encontrados.forEach(agregar);
+        logBF(`${slug}: ${encontrados.length} sorteos en la página`);
+      } catch (e) { logBF(`AVISO ${slug}: ${e.response?.status || e.message}`); }
+      await pausa(1200);
+    }
+    const fechas = Object.keys(porFecha).filter(f => f < hoy).sort();
+    if (!fechas.length) { logBF('Nada que rellenar (solo había resultados de hoy, o ninguno).'); return; }
+
+    // 2. Cargar esos días de Supabase para no pisar lo que ya existe
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length-1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 });
+        for (const row of r.data) existentes[row.fecha] = row;
+      } catch (e) { logBF(`AVISO Supabase: ${e.message}`); }
+    }
+
+    // 3. Rellenar solo lo que falta
+    const resumen = [];
+    for (const f of fechas) {
+      const base = existentes[f] || estado.historico.find(d => d.fecha === f) ||
+                   { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.cuartetas = base.cuartetas || crearCuartetas();
+      base.especiales = base.especiales || crearJuegosEspeciales();
+      let cambio = false;
+      for (const r of porFecha[f]) {
+        const kc = WULOTERIA_CUARTETAS[r.slug];
+        if (kc && r.numeros.length === 4) {
+          const c = base.cuartetas[kc] || crearCuartetas()[kc];
+          if (!c.numeros || c.numeros.length < 4) {
+            base.cuartetas[kc] = { ...c, numeros: r.numeros, estado: 'disponible' };
+            cambio = true; resumen.push({ fecha: f, clave: kc, nums: r.numeros });
+            logBF(`${f} ${kc}: ${r.numeros.join('-')}`);
+          }
+          continue;
+        }
+        const ke = WULOTERIA_ESPECIALES[r.slug];
+        if (ke) {
+          const plantilla = crearJuegosEspeciales()[ke];
+          const j = base.especiales[ke] || plantilla;
+          if (r.numeros.length === plantilla.cant && (!j.numeros || j.numeros.length < plantilla.cant)) {
+            base.especiales[ke] = { ...plantilla, ...j, numeros: r.numeros, estado: 'disponible' };
+            cambio = true; resumen.push({ fecha: f, clave: ke, nums: r.numeros });
+            logBF(`${f} ${ke}: ${r.numeros.join('-')}`);
+          }
+        }
+      }
+      if (cambio && guardar) {
+        if (!base.sorteos) base.sorteos = crearSorteos();
+        await guardarEnSupabase(base);
+        const idx = estado.historico.findIndex(d => d.fecha === f);
+        if (idx >= 0) estado.historico[idx] = { ...estado.historico[idx], cuartetas: base.cuartetas, especiales: base.especiales };
+      }
+    }
+    if (guardar) guardarEnDisco();
+    logBF(`✅ Backfill Wuloteria terminado. ${resumen.length} registros ${guardar ? 'guardados' : '(simulación)'}.`);
+    estadoBackfill.resumen = resumen;
+  } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
+});
 
 // ── JUGADAS PERSONALES → SUPABASE + NOTIFICACIÓN TELEGRAM ─────────────────
 // Guarda tickets del usuario en Supabase para poder notificarle si gana/pierde.
@@ -1293,7 +1465,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.4-BACKFILL-RESTORED en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v8.5-WULOTERIA en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
