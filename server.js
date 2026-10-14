@@ -413,14 +413,14 @@ async function scrapeEnloteria() {
 // (Super Kino TV, Loto, Loto Más, Mega Chance, Pega 3 Más, El Quemaito
 // Mayor, Pega 4 Real) — antes solo se había aplicado a las 20 quinielas
 // normales, dejando los especiales dependiendo de fuentes ya rotas.
+// Slugs verificados en enloteria.com oct 2026.
+// pega-3-mas y pega-4 NO tienen página propia en Enloteria — se eliminaron.
 const ENLOTERIA_ESPECIAL_SLUGS = {
   'super-kino-tv': 'superkino',
   'loto': 'loto',
   'loto-pool': 'lotomas',
   'megachance': 'megachance',
-  'pega-3-mas': 'pega3mas',
   'el-quemaito-mayor': 'quemaito',
-  'pega-4': 'pega4king',
 };
 
 async function scrapeEspecialesEnloteria() {
