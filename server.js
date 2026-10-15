@@ -1163,10 +1163,15 @@ async function sincronizar() {
     estado.hora_actualizacion = horaRD();
     guardarEnDisco();
     await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
-    await notificarNuevosSorteos();
-    await cazarAciertos({ enviar: true });
-    await revisarYEnviarPredicciones();
-    await notificarJugadasPersonales();
+    // Cada paso en su propio try: si uno falla, los demás siguen corriendo
+    const paso = async (nombre, fn) => { try { await fn(); } catch (e) { console.error(`⚠️ [${nombre}]`, e.message); } };
+    await paso('jugadas-auto', generarJugadasAutomaticas);
+    await paso('evaluar-auto', evaluarJugadasAutomaticas);
+    await paso('nuevos-sorteos', notificarNuevosSorteos);
+    await paso('aciertos', () => cazarAciertos({ enviar: true }));
+    await paso('predicciones', revisarYEnviarPredicciones);
+    await paso('jugadas-personales', notificarJugadasPersonales);
+    await paso('resumen-auto', enviarResumenAutoDelDia);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1192,7 +1197,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v8.6-WULOTERIA-HIST', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.7-JUGADAS-AUTO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1471,6 +1476,477 @@ app.post('/api/jugada', async (req, res) => {
 
 
 
+// ════════════════════════════════════════════════════════════════════════════
+// ── JUGADAS AUTOMÁTICAS (para auditoría) ────────────────────────────────────
+// Cada día, ANTES de cada sorteo (ventana de 75 min), el servidor registra en
+// la tabla `jugadas` de Supabase:
+//   • origen 'auto'    → lo que predice el sistema
+//   • origen 'control' → la misma cantidad de jugadas AL AZAR, mismo tipo y
+//                        misma lotería. Sin este grupo no se puede saber si el
+//                        sistema le gana al azar o fue suerte.
+// Después del sorteo las evalúa solo (aciertos, si ganó y el premio en
+// "unidades": cuánto paga por cada RD$1 jugado) y guarda todo.
+// Las automáticas no se pueden borrar desde el dashboard: así nadie quita las
+// perdedoras y la auditoría queda limpia.
+// ════════════════════════════════════════════════════════════════════════════
+const AUTO = {
+  activo: process.env.AUTO_JUGADAS !== '0',
+  // Grupo FIJO de quinielas (no se re-escoge cada día; ver explicación arriba).
+  // Se puede cambiar con la variable de entorno AUTO_LOTERIAS=leidsa,real_t,...
+  loterias: (process.env.AUTO_LOTERIAS || 'laprimera,real_t,gana_mas,loteka,leidsa,nacional').split(',').map(s => s.trim()).filter(Boolean),
+  superpales: [['real_t', 'gana_mas'], ['leidsa', 'nacional']],
+  especiales: ['superkino', 'pega3mas', 'megachance', 'quemaito', 'loto', 'lotomas'],
+  cuartetas: ['cuarteta_m', 'cuarteta_md', 'cuarteta_t', 'cuarteta_n'],
+  ticketsEspecial: 3,           // 3 predichos + 3 de control por juego especial
+  ventanaMin: 75,               // se generan entre 75 y 0 minutos antes del sorteo
+  diasLoto: ['Wed', 'Sat'],     // Loto / Loto Más solo miércoles y sábado
+  horasDomingo: { leidsa: '3:55 PM', pega3mas: '3:55 PM', superkino: '3:55 PM' },
+  // Pagos por cada RD$1 (los más comunes en bancas de RD; AJUSTAR a su banca)
+  pagos: {
+    punto: [60, 8, 4],                                 // 1ra, 2da, 3ra
+    pale: { '0-1': 1000, '0-2': 1000, '1-2': 100 },    // 1ra+2da, 1ra+3ra, 2da+3ra
+    tripleta: { 3: 20000, 2: 100 },                    // los 3 / 2 de los 3
+    superpale: 2000,                                   // 1ra de cada lotería
+  },
+};
+const AUTO_TICKETS = {
+  superkino:  { min: 1, max: 80, n: 10 },
+  pega3mas:   { min: 0, max: 50, n: 3, posicional: true },
+  loto:       { min: 1, max: 40, n: 6 },
+  lotomas:    { min: 1, max: 40, n: 7 },
+  megachance: { min: 0, max: 99, n: 5 },
+  quemaito:   { min: 0, max: 99, n: 1 },
+  cuarteta:   { min: 0, max: 99, n: 4 },
+};
+// Probabilidad exacta de ganar AL AZAR con 1 jugada (quiniela: 3 bolos 00-99
+// independientes) y retorno esperado por cada RD$1 con la tabla de pagos de
+// arriba. Se calcula recorriendo los 1,000,000 resultados posibles.
+const AUTO_TEORICO = (() => {
+  const P = AUTO.pagos; const acc = { punto: [0, 0], pale: [0, 0], tripleta: [0, 0] };
+  for (let a = 0; a < 100; a++) for (let b = 0; b < 100; b++) for (let c = 0; c < 100; c++) {
+    const r = [a, b, c];
+    const pu = r.reduce((s, x, i) => s + (x === 0 ? P.punto[i] : 0), 0);
+    let pa = 0; for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) if (i !== k && r[i] === 0 && r[k] === 1) pa = Math.max(pa, P.pale[[i, k].sort().join('-')] || 0);
+    const resto = [...r]; let m = 0; for (const x of [0, 1, 2]) { const j = resto.indexOf(x); if (j >= 0) { m++; resto.splice(j, 1); } }
+    const tr = P.tripleta[m] || 0;
+    if (pu) { acc.punto[0]++; acc.punto[1] += pu; }
+    if (pa) { acc.pale[0]++; acc.pale[1] += pa; }
+    if (tr) { acc.tripleta[0]++; acc.tripleta[1] += tr; }
+  }
+  const out = {};
+  for (const [k, [n, s]] of Object.entries(acc)) out[k] = { prob_pct: +(100 * n / 1e6).toFixed(4), retorno: +(s / 1e6).toFixed(3) };
+  out.superpale = { prob_pct: +(100 * 2 / 1e4).toFixed(4), retorno: +(P.superpale * 2 / 1e4).toFixed(3) };
+  return out;
+})();
+
+let autoPlan = { fecha: null, ultimoError: null, generadas: 0, evaluadas: 0 };
+const autoHechos = new Set();
+let autoHechosFecha = null;
+let autoResumenEnviado = null;
+
+const SB_HEADERS = () => ({ apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' });
+
+function nuevaJugadaAuto(base) {
+  return {
+    id: `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    monto: 1, notificado: true, evaluado: false, creado: new Date().toISOString(),
+    clave2: null, contexto: null, ...base,
+  };
+}
+function aleatorios(n, min, max, distintos = true) {
+  const out = [];
+  while (out.length < n) {
+    const x = min + Math.floor(Math.random() * (max - min + 1));
+    if (distintos && out.includes(x)) continue;
+    out.push(x);
+  }
+  return out;
+}
+function serieDe(tipo, clave) {
+  return [...estado.historico]
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(d => d[tipo] && d[tipo][clave] && d[tipo][clave].numeros)
+    .filter(n => Array.isArray(n) && n.length)
+    .map(n => n.map(Number));
+}
+function rangoReal(cfg, serie) {
+  let max = cfg.max;
+  for (const nums of serie) for (const n of nums) if (n > max && n <= 99) max = n; // p.ej. el Kino trae 81-84
+  return { min: cfg.min, max };
+}
+function rankingFrecuencia(serie, min, max) {
+  const sc = {};
+  serie.forEach((nums, i) => { const w = 1 + i / Math.max(1, serie.length); nums.forEach(n => (sc[n] = (sc[n] || 0) + w)); });
+  const r = []; for (let n = min; n <= max; n++) r.push(n);
+  return r.sort((a, b) => (sc[b] || 0) - (sc[a] || 0) || a - b);
+}
+function repetidosDelDia() {
+  const c = {};
+  for (const s of Object.values(estado.sorteos)) {
+    if (!s.numeros || s.numeros.length < 3) continue;
+    for (const n of new Set(s.numeros.map(Number))) c[n] = (c[n] || 0) + 1;
+  }
+  return Object.entries(c).filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+}
+function numerosAnguilaHoy() {
+  const out = [];
+  for (const k of ['anguila_m', 'anguila_t', 'anguila_n', 'anguila_nn']) {
+    const s = estado.sorteos[k]; if (s && s.numeros) out.push(...s.numeros.map(Number));
+  }
+  for (const c of Object.values(estado.cuartetas)) if (c.numeros) out.push(...c.numeros.map(Number));
+  return [...new Set(out)];
+}
+function completar(base, ranking, n, min, max) {
+  const out = [];
+  for (const x of [...base, ...ranking]) { if (x >= min && x <= max && !out.includes(x)) out.push(x); if (out.length === n) break; }
+  return out;
+}
+function horaDeHoy(clave, horaBase) {
+  if (diaSemanaRD() === 'Sun' && AUTO.horasDomingo[clave]) return AUTO.horasDomingo[clave];
+  return horaBase;
+}
+function enVentana(hora) {
+  const m = horaTextoAMinutos(hora); if (m === null) return false;
+  const falta = m - minutosActualesRD();
+  return falta >= 0 && falta <= AUTO.ventanaMin;
+}
+
+// ── Generadores ──────────────────────────────────────────────────────────────
+function generarQuinielaAuto(clave, hoy, hora) {
+  const pred = calcularPrediccionConContextoDelDia(clave);
+  if (!pred || pred.diasHistoricos < 5 || pred.top3.length < 3) return [];
+  const [a, b, c] = pred.top3;
+  const rnd = aleatorios(3, 0, 99);
+  const base = { clave, fecha: hoy, hora_sorteo: hora, grupo: `q|${clave}`, generado_rd: horaRD() };
+  const ctx = { top3: pred.top3, repetidos_hoy: (pred.contextoHoy || []).slice(0, 8).map(x => x.numero), dias_hist: pred.diasHistoricos };
+  return [
+    nuevaJugadaAuto({ ...base, origen: 'auto', metodo: 'radar4', tipo: 'punto', numeros: [a], contexto: ctx }),
+    nuevaJugadaAuto({ ...base, origen: 'auto', metodo: 'radar4', tipo: 'pale', numeros: [a, b], contexto: ctx }),
+    nuevaJugadaAuto({ ...base, origen: 'auto', metodo: 'radar4', tipo: 'tripleta', numeros: [a, b, c], contexto: ctx }),
+    nuevaJugadaAuto({ ...base, origen: 'control', metodo: 'aleatorio', tipo: 'punto', numeros: [rnd[0]] }),
+    nuevaJugadaAuto({ ...base, origen: 'control', metodo: 'aleatorio', tipo: 'pale', numeros: rnd.slice(0, 2) }),
+    nuevaJugadaAuto({ ...base, origen: 'control', metodo: 'aleatorio', tipo: 'tripleta', numeros: rnd }),
+  ];
+}
+function generarSuperpaleAuto(c1, c2, hoy, hora) {
+  const p1 = calcularPrediccionConContextoDelDia(c1), p2 = calcularPrediccionConContextoDelDia(c2);
+  if (!p1 || !p2 || p1.diasHistoricos < 5 || p2.diasHistoricos < 5 || p1.top1 == null || p2.top1 == null) return [];
+  const base = { clave: c1, clave2: c2, fecha: hoy, tipo: 'superpale', hora_sorteo: hora, grupo: `sp|${c1}+${c2}`, generado_rd: horaRD() };
+  return [
+    nuevaJugadaAuto({ ...base, origen: 'auto', metodo: 'radar4', numeros: [p1.top1, p2.top1] }),
+    nuevaJugadaAuto({ ...base, origen: 'control', metodo: 'aleatorio', numeros: aleatorios(2, 0, 99, false) }),
+  ];
+}
+function generarEspecialAuto(clave, hoy, hora) {
+  const cfg = AUTO_TICKETS[clave];
+  const serie = serieDe('especiales', clave);
+  if (!cfg || serie.length < 3) return { jugadas: [], motivo: `sin historial suficiente (${serie.length} sorteos)` };
+  const { min, max } = rangoReal(cfg, serie);
+  const base = { clave, fecha: hoy, hora_sorteo: hora, grupo: `e|${clave}`, generado_rd: horaRD(), tipo: 'especial' };
+  const tickets = []; // [{metodo, numeros}]
+  if (cfg.posicional) {
+    const rk = [0, 1, 2].map(p => rankingFrecuencia(serie.filter(s => s[p] !== undefined).map(s => [s[p]]), min, max));
+    for (let t = 0; t < AUTO.ticketsEspecial; t++) tickets.push({ metodo: `posicional-${t + 1}`, numeros: rk.map(r => r[t]) });
+  } else {
+    const rank = rankingFrecuencia(serie, min, max);
+    const ordenar = a => (cfg.n > 1 ? [...a].sort((x, y) => x - y) : a);
+    if (clave === 'superkino') {
+      tickets.push({ metodo: 'kino-repetidos', numeros: ordenar(completar(repetidosDelDia(), rank, cfg.n, min, max)) });
+      tickets.push({ metodo: 'kino-anguila', numeros: ordenar(completar(numerosAnguilaHoy(), rank, cfg.n, min, max)) });
+      tickets.push({ metodo: 'kino-historico', numeros: ordenar(rank.slice(0, cfg.n)) });
+    } else {
+      tickets.push({ metodo: 'frecuencia', numeros: ordenar(rank.slice(0, cfg.n)) });
+      tickets.push({ metodo: 'repetidos-dia', numeros: ordenar(completar(repetidosDelDia(), rank, cfg.n, min, max)) });
+      tickets.push({ metodo: 'frecuencia-2', numeros: ordenar(rank.slice(cfg.n, cfg.n * 2)) });
+    }
+  }
+  // Evitar tickets idénticos (pasa cuando no hay repetidos hoy)
+  const vistos = new Set(); const rank2 = rankingFrecuencia(serie, min, max); let extra = cfg.n * 2;
+  for (const t of tickets) {
+    while (vistos.has(t.numeros.join(',')) && extra < rank2.length) { t.numeros = [...t.numeros.slice(0, -1), rank2[extra++]]; if (cfg.n > 1 && !cfg.posicional) t.numeros.sort((x, y) => x - y); }
+    vistos.add(t.numeros.join(','));
+  }
+  const jugadas = tickets.map(t => nuevaJugadaAuto({ ...base, origen: 'auto', metodo: t.metodo, numeros: t.numeros }));
+  for (let i = 0; i < tickets.length; i++) {
+    let nums = aleatorios(cfg.n, min, max, !cfg.posicional);
+    if (cfg.n > 1 && !cfg.posicional) nums.sort((x, y) => x - y);
+    jugadas.push(nuevaJugadaAuto({ ...base, origen: 'control', metodo: clave === 'superkino' ? 'kino-aleatorio' : 'aleatorio', numeros: nums }));
+  }
+  return { jugadas };
+}
+function generarCuartetaAuto(clave, hoy, hora) {
+  const cfg = AUTO_TICKETS.cuarteta;
+  const serie = serieDe('cuartetas', clave);
+  if (serie.length < 3) return { jugadas: [], motivo: `sin historial suficiente (${serie.length} sorteos)` };
+  const rank = rankingFrecuencia(serie, cfg.min, cfg.max);
+  const pos = {}; rank.forEach((n, i) => (pos[n] = i));
+  const anguila = numerosAnguilaHoy().filter(n => n >= cfg.min && n <= cfg.max).sort((a, b) => pos[a] - pos[b]).slice(0, 2);
+  const base = { clave, fecha: hoy, hora_sorteo: hora, grupo: `c|${clave}`, generado_rd: horaRD(), tipo: 'cuarteta' };
+  return { jugadas: [
+    nuevaJugadaAuto({ ...base, origen: 'auto', metodo: 'frecuencia+anguila', numeros: completar(anguila, rank, 4, cfg.min, cfg.max).sort((a, b) => a - b), contexto: { anguila_hoy: anguila } }),
+    nuevaJugadaAuto({ ...base, origen: 'control', metodo: 'aleatorio', numeros: aleatorios(4, cfg.min, cfg.max).sort((a, b) => a - b) }),
+  ] };
+}
+
+// ── Supabase ─────────────────────────────────────────────────────────────────
+async function insertarJugadas(filas) {
+  if (!SUPABASE_ACTIVO || !filas.length) return false;
+  try {
+    await axios.post(`${SUPABASE_URL}/rest/v1/jugadas`, filas, { headers: { ...SB_HEADERS(), Prefer: 'return=minimal' }, timeout: 15000 });
+    autoPlan.ultimoError = null;
+    return true;
+  } catch (e) {
+    autoPlan.ultimoError = `insertar: ${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 300)}`;
+    console.error('⚠️ [AUTO]', autoPlan.ultimoError);
+    return false;
+  }
+}
+async function upsertJugadas(filas) {
+  if (!SUPABASE_ACTIVO || !filas.length) return false;
+  try {
+    await axios.post(`${SUPABASE_URL}/rest/v1/jugadas?on_conflict=id`, filas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 });
+    return true;
+  } catch (e) {
+    autoPlan.ultimoError = `actualizar: ${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 300)}`;
+    console.error('⚠️ [AUTO]', autoPlan.ultimoError);
+    return false;
+  }
+}
+async function leerJugadas(query) {
+  const r = await axios.get(`${SUPABASE_URL}/rest/v1/jugadas?${query}`, { headers: SB_HEADERS(), timeout: 15000 });
+  return r.data || [];
+}
+async function asegurarAutoHechos(hoy) {
+  if (autoHechosFecha === hoy) return true;
+  try {
+    const filas = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=grupo`);
+    autoHechos.clear();
+    for (const f of filas) if (f.grupo) autoHechos.add(f.grupo);
+    autoHechosFecha = hoy;
+    return true;
+  } catch (e) {
+    autoPlan.ultimoError = `leer: ${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 300)}`;
+    return false;
+  }
+}
+
+// ── Generación (se llama en cada sincronizar) ───────────────────────────────
+async function generarJugadasAutomaticas() {
+  if (!AUTO.activo || !SUPABASE_ACTIVO) return;
+  const hoy = fechaRD();
+  if (estado.fecha !== hoy) return;
+  if (!(await asegurarAutoHechos(hoy))) return;
+  autoPlan.fecha = hoy;
+  const nuevas = [], grupos = [], avisos = [];
+  const f2 = n => String(n).padStart(2, '0');
+  const pendiente = (s, min) => !s || !s.numeros || s.numeros.length < min;
+
+  for (const clave of AUTO.loterias) {
+    const s = estado.sorteos[clave]; const g = `q|${clave}`;
+    if (!s || autoHechos.has(g) || !pendiente(s, 3)) continue;
+    const hora = horaDeHoy(clave, s.hora);
+    if (!enVentana(hora)) continue;
+    const js = generarQuinielaAuto(clave, hoy, hora);
+    grupos.push(g); nuevas.push(...js);
+    const a = js.filter(j => j.origen === 'auto');
+    if (a.length) avisos.push(`🎯 <b>${s.nombre}</b> (${hora})\n     Punto <b>${f2(a[0].numeros[0])}</b> · Palé <b>${a[1].numeros.map(f2).join('-')}</b> · Tripleta <b>${a[2].numeros.map(f2).join('-')}</b>`);
+  }
+  for (const [c1, c2] of AUTO.superpales) {
+    const s1 = estado.sorteos[c1], s2 = estado.sorteos[c2]; const g = `sp|${c1}+${c2}`;
+    if (!s1 || !s2 || autoHechos.has(g) || !pendiente(s1, 3) || !pendiente(s2, 3)) continue;
+    const h1 = horaDeHoy(c1, s1.hora), h2 = horaDeHoy(c2, s2.hora);
+    const primera = horaTextoAMinutos(h1) <= horaTextoAMinutos(h2) ? h1 : h2;
+    if (!enVentana(primera)) continue;
+    const js = generarSuperpaleAuto(c1, c2, hoy, primera);
+    grupos.push(g); nuevas.push(...js);
+    const a = js.find(j => j.origen === 'auto');
+    if (a) avisos.push(`🔗 <b>Súper Palé</b> ${s1.nombre} + ${s2.nombre}: <b>${a.numeros.map(f2).join('-')}</b>`);
+  }
+  for (const clave of AUTO.especiales) {
+    const e = estado.especiales[clave]; const g = `e|${clave}`;
+    if (!e || autoHechos.has(g) || !pendiente(e, e.cant || 1)) continue;
+    if ((clave === 'loto' || clave === 'lotomas') && !AUTO.diasLoto.includes(diaSemanaRD())) continue;
+    const hora = horaDeHoy(clave, e.hora);
+    if (!enVentana(hora)) continue;
+    const r = generarEspecialAuto(clave, hoy, hora);
+    grupos.push(g); nuevas.push(...r.jugadas);
+    const a = r.jugadas.filter(j => j.origen === 'auto');
+    if (a.length) avisos.push(`🎰 <b>${e.nombre}</b> (${hora})\n` + a.map(j => `     ${j.metodo}: <b>${j.numeros.map(f2).join('-')}</b>`).join('\n'));
+    else if (r.motivo) console.log(`[AUTO] ${clave}: ${r.motivo}`);
+  }
+  for (const clave of AUTO.cuartetas) {
+    const c = estado.cuartetas[clave]; const g = `c|${clave}`;
+    if (!c || autoHechos.has(g) || !pendiente(c, 4)) continue;
+    if (!enVentana(c.hora)) continue;
+    const r = generarCuartetaAuto(clave, hoy, c.hora);
+    grupos.push(g); nuevas.push(...r.jugadas);
+    const a = r.jugadas.find(j => j.origen === 'auto');
+    if (a) avisos.push(`🎲 <b>${c.nombre}</b> (${c.hora}): <b>${a.numeros.map(f2).join('-')}</b>`);
+  }
+
+  if (!grupos.length) return;
+  if (nuevas.length) {
+    const ok = await insertarJugadas(nuevas);
+    if (!ok) return; // se reintenta en el próximo sync
+    autoPlan.generadas += nuevas.length;
+  }
+  grupos.forEach(g => autoHechos.add(g));
+  if (avisos.length && TG_ACTIVO) {
+    await enviarTelegram(`🤖 <b>JUGADAS AUTOMÁTICAS</b> — ${hoy}\n<i>Registradas antes del sorteo (+ igual cantidad al azar como control)</i>\n\n${avisos.join('\n\n')}`);
+  }
+}
+
+// ── Evaluación ───────────────────────────────────────────────────────────────
+function emparejar(a, b) { // coincidencias contando repetidos una sola vez cada uno
+  const resto = [...b]; let k = 0;
+  for (const x of a) { const i = resto.indexOf(x); if (i >= 0) { k++; resto.splice(i, 1); } }
+  return k;
+}
+function resultadoDe(grupoTipo, clave, fecha) {
+  const desde = fecha === estado.fecha ? estado : (estado.historico.find(d => d.fecha === fecha) || null);
+  if (!desde) return null;
+  const tabla = desde[grupoTipo] || {};
+  const r = tabla[clave];
+  return r && Array.isArray(r.numeros) && r.numeros.length ? r.numeros.map(Number) : null;
+}
+function evaluarAuto(j) {
+  const P = AUTO.pagos; const nums = (j.numeros || []).map(Number);
+  if (['punto', 'pale', 'tripleta'].includes(j.tipo)) {
+    const real = resultadoDe('sorteos', j.clave, j.fecha); if (!real || real.length < 3) return null;
+    let premio = 0;
+    if (j.tipo === 'punto') premio = real.reduce((s, x, i) => s + (x === nums[0] ? (P.punto[i] || 0) : 0), 0);
+    if (j.tipo === 'pale') {
+      for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) if (i !== k && real[i] === nums[0] && real[k] === nums[1]) premio = Math.max(premio, P.pale[[i, k].sort().join('-')] || 0);
+    }
+    if (j.tipo === 'tripleta') { const m = emparejar(nums, real); premio = P.tripleta[m] || 0; }
+    return { resultado: real, aciertos: emparejar(nums, real), gano: premio > 0, premio };
+  }
+  if (j.tipo === 'superpale') {
+    const r1 = resultadoDe('sorteos', j.clave, j.fecha), r2 = resultadoDe('sorteos', j.clave2, j.fecha);
+    if (!r1 || !r2) return null;
+    const m = emparejar(nums, [r1[0], r2[0]]);
+    return { resultado: r1, resultado2: r2, aciertos: m, gano: m === 2, premio: m === 2 ? P.superpale : 0 };
+  }
+  if (j.tipo === 'cuarteta') {
+    const real = resultadoDe('cuartetas', j.clave, j.fecha); if (!real || real.length < 4) return null;
+    const m = emparejar(nums, real);
+    return { resultado: real, aciertos: m, gano: m === 4, premio: null };
+  }
+  const e = estado.especiales[j.clave];
+  const real = resultadoDe('especiales', j.clave, j.fecha);
+  if (!real || (e && e.cant && real.length < e.cant)) return null;
+  let aciertos, gano;
+  if (j.clave === 'pega3mas') { aciertos = nums.filter((n, i) => real[i] === n).length; gano = aciertos === 3; }
+  else {
+    aciertos = j.clave === 'megachance' ? emparejar(nums, real) : nums.filter(n => real.includes(n)).length;
+    gano = j.clave === 'superkino' ? (aciertos === 0 || aciertos >= 5)
+         : (j.clave === 'loto' || j.clave === 'lotomas') ? aciertos >= 3
+         : j.clave === 'megachance' ? aciertos >= 2
+         : aciertos >= 1;
+  }
+  return { resultado: real, aciertos, gano, premio: null };
+}
+async function evaluarJugadasAutomaticas() {
+  if (!AUTO.activo || !SUPABASE_ACTIVO) return;
+  const desde = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+  let pend;
+  try { pend = await leerJugadas(`evaluado=eq.false&origen=in.(auto,control)&fecha=gte.${desde}&select=*&limit=1000`); }
+  catch (e) { return; }
+  const listas = [], ganadoras = [];
+  for (const j of pend) {
+    const r = evaluarAuto(j); if (!r) continue;
+    listas.push({ ...j, ...r, resultado2: r.resultado2 || null, evaluado: true, evaluado_en: new Date().toISOString() });
+    if (r.gano && j.origen === 'auto') ganadoras.push({ j, r });
+  }
+  if (!listas.length) return;
+  if (!(await upsertJugadas(listas))) return;
+  autoPlan.evaluadas += listas.length;
+  if (ganadoras.length && TG_ACTIVO) {
+    const f2 = n => String(n).padStart(2, '0');
+    const nombre = (j) => (estado.sorteos[j.clave] || estado.especiales[j.clave] || estado.cuartetas[j.clave] || {}).nombre || j.clave;
+    const txt = ganadoras.map(({ j, r }) => `🏆 <b>${nombre(j)}${j.clave2 ? ' + ' + nombre({ clave: j.clave2 }) : ''}</b> · ${j.tipo}${j.metodo ? ' (' + j.metodo + ')' : ''}\n     Jugó <b>${j.numeros.map(f2).join('-')}</b> · salió ${r.resultado.map(f2).join('-')}${r.resultado2 ? ' / ' + r.resultado2.map(f2).join('-') : ''}${r.premio ? ` · paga <b>${r.premio}x</b>` : ''}`).join('\n\n');
+    await enviarTelegram(`🤖🏆 <b>JUGADA AUTOMÁTICA GANADORA</b>\n\n${txt}`);
+  }
+}
+
+// ── Resumen y auditoría ──────────────────────────────────────────────────────
+function agregarAuditoria(filas) {
+  const g = {};
+  for (const j of filas) {
+    const tipoClave = ['punto', 'pale', 'tripleta', 'superpale', 'cuarteta'].includes(j.tipo) ? j.tipo : j.clave;
+    const k = `${tipoClave}|${j.origen}`;
+    if (!g[k]) g[k] = { tipo: tipoClave, origen: j.origen, jugadas: 0, evaluadas: 0, ganadas: 0, aciertos: 0, premio: 0, costo: 0, conPremio: false };
+    const x = g[k]; x.jugadas++;
+    if (j.evaluado) {
+      x.evaluadas++; x.aciertos += j.aciertos || 0;
+      if (j.gano) x.ganadas++;
+      if (j.premio !== null && j.premio !== undefined) { x.conPremio = true; x.premio += Number(j.premio) || 0; x.costo += Number(j.monto) || 1; }
+    }
+  }
+  const tipos = [...new Set(Object.values(g).map(x => x.tipo))];
+  return tipos.map(t => {
+    const fila = { tipo: t, teorico: AUTO_TEORICO[t] || null };
+    for (const o of ['auto', 'control']) {
+      const x = g[`${t}|${o}`];
+      fila[o] = x ? {
+        jugadas: x.jugadas, evaluadas: x.evaluadas, ganadas: x.ganadas,
+        tasa: x.evaluadas ? +(100 * x.ganadas / x.evaluadas).toFixed(2) : null,
+        aciertos_prom: x.evaluadas ? +(x.aciertos / x.evaluadas).toFixed(2) : null,
+        retorno_por_peso: x.conPremio && x.costo ? +(x.premio / x.costo).toFixed(3) : null,
+      } : null;
+    }
+    return fila;
+  });
+}
+async function enviarResumenAutoDelDia() {
+  if (!AUTO.activo || !SUPABASE_ACTIVO || !TG_ACTIVO) return;
+  const hoy = fechaRD();
+  if (autoResumenEnviado === hoy || minutosActualesRD() < 23 * 60 + 15) return;
+  let filas;
+  try { filas = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=tipo,clave,origen,evaluado,gano,aciertos,premio,monto`); }
+  catch (e) { return; }
+  autoResumenEnviado = hoy;
+  if (!filas.length) return;
+  const nom = { punto: 'Punto', pale: 'Palé', tripleta: 'Tripleta', superpale: 'Súper Palé', cuarteta: 'Cuarteta', superkino: 'Kino', pega3mas: 'Pega 3 Más', megachance: 'Mega Chance', quemaito: 'Quemaito', loto: 'Loto', lotomas: 'Loto Más' };
+  const fmt = x => x ? `${x.ganadas}/${x.evaluadas}${x.retorno_por_peso !== null ? ` · ret ${x.retorno_por_peso}` : ''}` : '—';
+  const lineas = agregarAuditoria(filas).map(f => `• <b>${nom[f.tipo] || f.tipo}</b>: 🤖 ${fmt(f.auto)}  |  🎲 ${fmt(f.control)}`);
+  await enviarTelegram(`📒 <b>RESUMEN JUGADAS AUTOMÁTICAS</b> — ${hoy}\n<i>ganadas/evaluadas · ret = lo que devolvió cada RD$1 (1.0 = quedó igual)</i>\n🤖 sistema  |  🎲 azar (control)\n\n${lineas.join('\n')}`);
+}
+
+app.get('/api/jugadas', async (req, res) => {
+  if (!SUPABASE_ACTIVO) return res.json({ jugadas: [], error: 'Supabase no configurado' });
+  const dias = Math.min(120, Math.max(1, parseInt(req.query.dias, 10) || 7));
+  const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
+  try {
+    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc&limit=3000`);
+    res.json({ jugadas: filas, desde });
+  } catch (e) { res.json({ jugadas: [], error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
+});
+app.get('/api/auditoria', async (req, res) => {
+  if (!SUPABASE_ACTIVO) return res.json({ error: 'Supabase no configurado' });
+  const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
+  const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
+  try {
+    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluado,gano,aciertos,premio,monto&limit=100000`);
+    const primera = filas.reduce((m, f) => (!m || (f.fecha && f.fecha < m) ? f.fecha : m), null) || desde;
+    res.json({ desde: primera, total: filas.length, pagos: AUTO.pagos, loterias: AUTO.loterias, resumen: agregarAuditoria(filas) });
+  } catch (e) { res.json({ error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
+});
+app.get('/api/debug-jugadas', async (req, res) => {
+  if (!SUPABASE_ACTIVO) return res.json({ ok: false, mensaje: 'Supabase no configurado' });
+  try {
+    await leerJugadas('select=id,origen,metodo,grupo,clave2,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,contexto,evaluado_en&limit=1');
+    const hoy = fechaRD();
+    const deHoy = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=grupo,origen`);
+    res.json({ ok: true, tabla: 'jugadas lista con todas las columnas', activo: AUTO.activo, loterias: AUTO.loterias, superpales: AUTO.superpales,
+      hoy, jugadas_auto_hoy: deHoy.length, grupos_hoy: [...new Set(deHoy.map(x => x.grupo))], hora_rd: horaRD(), estado: autoPlan });
+  } catch (e) {
+    res.json({ ok: false, status: e.response?.status || null, error: e.response?.data || e.message,
+      solucion: 'Corre el SQL de la tabla jugadas en Supabase (SQL Editor) y vuelve a abrir esta página.' });
+  }
+});
+
+
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
   res.sendStatus(200); 
@@ -1494,7 +1970,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.6-WULOTERIA-HIST en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v8.7-JUGADAS-AUTO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
