@@ -209,6 +209,20 @@ async function inicializarPersistenciaRemota() {
 // ── CONFIGURACIÓN DEL ESTADO ────────────────────────────────────────────────
 function fechaRD() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 function horaRD() { return new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()); }
+// Estas dos se usaban en revisarYEnviarPredicciones() pero nunca existieron:
+// cada sync tiraba ReferenceError ahí y se saltaba las predicciones y el aviso de jugadas.
+function minutosActualesRD() {
+  const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Santo_Domingo', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).split(':').map(Number);
+  return (h % 24) * 60 + m;
+}
+function horaTextoAMinutos(txt) {
+  const m = String(txt || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10) % 12;
+  if (m[3].toUpperCase() === 'PM') h += 12;
+  return h * 60 + parseInt(m[2], 10);
+}
+function diaSemanaRD() { return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santo_Domingo', weekday: 'short' }).format(new Date()); }
 
 const persistido = cargarDeDisco();
 let estado = {
