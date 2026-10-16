@@ -1172,6 +1172,7 @@ async function sincronizar() {
     await paso('predicciones', revisarYEnviarPredicciones);
     await paso('jugadas-personales', notificarJugadasPersonales);
     await paso('resumen-auto', enviarResumenAutoDelDia);
+    await paso('teoria-repetidos', enviarAnalisisRepetidos);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1197,7 +1198,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v8.7-JUGADAS-AUTO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v8.8-TEORIA-REPETIDOS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1927,54 +1928,4 @@ app.get('/api/auditoria', async (req, res) => {
   const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
   const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   try {
-    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluado,gano,aciertos,premio,monto&limit=100000`);
-    const primera = filas.reduce((m, f) => (!m || (f.fecha && f.fecha < m) ? f.fecha : m), null) || desde;
-    res.json({ desde: primera, total: filas.length, pagos: AUTO.pagos, loterias: AUTO.loterias, resumen: agregarAuditoria(filas) });
-  } catch (e) { res.json({ error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
-});
-app.get('/api/debug-jugadas', async (req, res) => {
-  if (!SUPABASE_ACTIVO) return res.json({ ok: false, mensaje: 'Supabase no configurado' });
-  try {
-    await leerJugadas('select=id,origen,metodo,grupo,clave2,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,contexto,evaluado_en&limit=1');
-    const hoy = fechaRD();
-    const deHoy = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=grupo,origen`);
-    res.json({ ok: true, tabla: 'jugadas lista con todas las columnas', activo: AUTO.activo, loterias: AUTO.loterias, superpales: AUTO.superpales,
-      hoy, jugadas_auto_hoy: deHoy.length, grupos_hoy: [...new Set(deHoy.map(x => x.grupo))], hora_rd: horaRD(), estado: autoPlan });
-  } catch (e) {
-    res.json({ ok: false, status: e.response?.status || null, error: e.response?.data || e.message,
-      solucion: 'Corre el SQL de la tabla jugadas en Supabase (SQL Editor) y vuelve a abrir esta página.' });
-  }
-});
-
-
-// ── WEBHOOK Telegram ───────────────────────────────────────────────────────
-app.post('/api/telegram-webhook', async (req, res) => {
-  res.sendStatus(200); 
-  try {
-    const msg = req.body && req.body.message;
-    if (!msg || !msg.text) return;
-    const chatId = msg.chat.id;
-    const [cmd] = msg.text.trim().split(/\s+/);
-    const comando = cmd.toLowerCase().replace(/@\w+$/, '');
-
-    if (comando === '/start') {
-      await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { chat_id: chatId, text: `🇩🇴 <b>REYDIS RADAR PRO</b> 📡\n\nTu chat ID: <code>${chatId}</code>`, parse_mode: 'HTML' });
-    } else if (comando === '/hoy') {
-      await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { chat_id: chatId, text: `🇩🇴 <b>RESULTADOS</b> — ${fechaRD()}\n\nConsulta la web para ver en tiempo real.`, parse_mode: 'HTML' });
-    }
-  } catch (e) {}
-});
-
-// ── Protección anti-crash ──────────────────────────────────────────────────
-process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtException]', err.message));
-process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
-
-app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.7-JUGADAS-AUTO en puerto ${PORT}`);
-  await inicializarPersistenciaRemota();
-  if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
-  await sincronizar();
-
-  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
-  setInterval(async () => { try { await axios.get(`${SELF_URL}/`, { timeout: 5000 }); } catch (e) {} }, 14 * 60 * 1000);
-});
+    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluad
