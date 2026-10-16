@@ -1928,4 +1928,124 @@ app.get('/api/auditoria', async (req, res) => {
   const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
   const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   try {
-    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluad
+    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluado,gano,aciertos,premio,monto&limit=100000`);
+    const primera = filas.reduce((m, f) => (!m || (f.fecha && f.fecha < m) ? f.fecha : m), null) || desde;
+    res.json({ desde: primera, total: filas.length, pagos: AUTO.pagos, loterias: AUTO.loterias, resumen: agregarAuditoria(filas) });
+  } catch (e) { res.json({ error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
+});
+app.get('/api/debug-jugadas', async (req, res) => {
+  if (!SUPABASE_ACTIVO) return res.json({ ok: false, mensaje: 'Supabase no configurado' });
+  try {
+    await leerJugadas('select=id,origen,metodo,grupo,clave2,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,contexto,evaluado_en&limit=1');
+    const hoy = fechaRD();
+    const deHoy = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=grupo,origen`);
+    res.json({ ok: true, tabla: 'jugadas lista con todas las columnas', activo: AUTO.activo, loterias: AUTO.loterias, superpales: AUTO.superpales,
+      hoy, jugadas_auto_hoy: deHoy.length, grupos_hoy: [...new Set(deHoy.map(x => x.grupo))], hora_rd: horaRD(), estado: autoPlan });
+  } catch (e) {
+    res.json({ ok: false, status: e.response?.status || null, error: e.response?.data || e.message,
+      solucion: 'Corre el SQL de la tabla jugadas en Supabase (SQL Editor) y vuelve a abrir esta página.' });
+  }
+});
+
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── TEORÍA ⚡: ¿los repetidos del día vuelven a salir de noche más de lo normal?
+// ⚡ = número que salió en 2+ loterías DE DÍA. Se mira qué fracción de los
+// números que salen DE NOCHE eran ⚡, y se compara con lo que daría el azar:
+// si hay 9 ⚡, un número al azar (00-99) tiene 9% de probabilidad de ser uno.
+// ════════════════════════════════════════════════════════════════════════════
+const NOCHE_TEORIA = new Set(['king_n','loteka','laprimera_n','leidsa','nacional','anguila_nn','new_york_n','florida_n']);
+function analizarRepetidosDia(dia) {
+  const sorteos = (dia && dia.sorteos) || {};
+  const conteo = {}; let loteriasDia = 0, loteriasNoche = 0;
+  for (const [k, s] of Object.entries(sorteos)) {
+    if (NOCHE_TEORIA.has(k) || !s || !Array.isArray(s.numeros) || s.numeros.length < 3) continue;
+    loteriasDia++;
+    for (const n of new Set(s.numeros.map(Number))) conteo[n] = (conteo[n] || 0) + 1;
+  }
+  const rayos = new Set(Object.entries(conteo).filter(([, c]) => c >= 2).map(([n]) => +n));
+  let numsNoche = 0, aciertos = 0; const cuales = [];
+  for (const k of NOCHE_TEORIA) {
+    const s = sorteos[k];
+    if (!s || !Array.isArray(s.numeros) || s.numeros.length < 3) continue;
+    loteriasNoche++;
+    for (const n of s.numeros.slice(0, 3).map(Number)) {
+      numsNoche++;
+      if (rayos.has(n)) { aciertos++; cuales.push({ n, loteria: s.nombre || k }); }
+    }
+  }
+  if (loteriasDia < 6 || loteriasNoche < 3) return null; // día incompleto: no cuenta
+  const p = rayos.size / 100;
+  return { fecha: dia.fecha, rayos: rayos.size, loteriasDia, loteriasNoche, numsNoche, aciertos,
+           esperado: +(numsNoche * p).toFixed(2), varianza: numsNoche * p * (1 - p),
+           pct: numsNoche ? +(100 * aciertos / numsNoche).toFixed(1) : 0, pctEsperado: +(100 * p).toFixed(1), cuales };
+}
+function analisisRepetidosAcumulado() {
+  const dias = [...estado.historico, { fecha: estado.fecha, sorteos: estado.sorteos }]
+    .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(analizarRepetidosDia).filter(Boolean);
+  let obs = 0, esp = 0, vari = 0, nums = 0, arriba = 0, abajo = 0;
+  for (const d of dias) { obs += d.aciertos; esp += d.esperado; vari += d.varianza; nums += d.numsNoche; if (d.aciertos > d.esperado) arriba++; else if (d.aciertos < d.esperado) abajo++; }
+  const z = vari > 0 ? (obs - esp) / Math.sqrt(vari) : 0;
+  const veredicto = dias.length < 10 ? 'pocos días todavía'
+    : z >= 3 ? 'los ⚡ salen de noche MÁS que el azar (señal fuerte)'
+    : z >= 2 ? 'prometedor: por encima del azar, falta confirmar con más días'
+    : z >= 1 ? 'ligeramente por encima del azar (todavía no concluyente)'
+    : z <= -1 ? 'por debajo del azar'
+    : 'igual que el azar';
+  return { dias: dias.length, numeros_noche: nums, observados: obs, esperados: +esp.toFixed(1),
+           pct: nums ? +(100 * obs / nums).toFixed(1) : 0, pct_esperado: nums ? +(100 * esp / nums).toFixed(1) : 0,
+           dias_arriba: arriba, dias_abajo: abajo, z: +z.toFixed(2), veredicto, detalle: dias };
+}
+let analisisRepEnviado = null;
+async function enviarAnalisisRepetidos() {
+  if (!TG_ACTIVO) return;
+  const hoy = fechaRD();
+  if (analisisRepEnviado === hoy || minutosActualesRD() < 23 * 60 + 15) return;
+  analisisRepEnviado = hoy;
+  const d = analizarRepetidosDia({ fecha: hoy, sorteos: estado.sorteos });
+  const a = analisisRepetidosAcumulado();
+  const f2 = n => String(n).padStart(2, '0');
+  const hoyTxt = d
+    ? `Hoy de día hubo <b>${d.rayos} ⚡</b> (${d.pctEsperado}% de los números).\nDe noche salieron <b>${d.aciertos} de ${d.numsNoche}</b> números que eran ⚡ → <b>${d.pct}%</b> vs ${d.pctEsperado}% esperado ${d.aciertos > d.esperado ? '📈' : d.aciertos < d.esperado ? '📉' : '➖'}` +
+      (d.cuales.length ? `\n     ${d.cuales.map(c => `${f2(c.n)} (${c.loteria})`).join(' · ')}` : '')
+    : 'Hoy faltan resultados para medirlo.';
+  await enviarTelegram(`⚡ <b>TEORÍA DE LOS REPETIDOS</b> — ${hoy}\n\n${hoyTxt}\n\n📚 <b>Acumulado ${a.dias} días:</b> ${a.observados} de ${a.numeros_noche} (${a.pct}%) vs ${a.pct_esperado}% esperado\n     Días por encima: ${a.dias_arriba} · por debajo: ${a.dias_abajo}\n     Veredicto: <i>${a.veredicto}</i>`);
+}
+app.get('/api/analisis-repetidos', (req, res) => {
+  const a = analisisRepetidosAcumulado();
+  res.json({ ...a, detalle: a.detalle.map(({ varianza, ...x }) => x).reverse() });
+});
+
+// ── WEBHOOK Telegram ───────────────────────────────────────────────────────
+app.post('/api/telegram-webhook', async (req, res) => {
+  res.sendStatus(200); 
+  try {
+    const msg = req.body && req.body.message;
+    if (!msg || !msg.text) return;
+    const chatId = msg.chat.id;
+    const [cmd] = msg.text.trim().split(/\s+/);
+    const comando = cmd.toLowerCase().replace(/@\w+$/, '');
+
+    if (comando === '/start') {
+      await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { chat_id: chatId, text: `🇩🇴 <b>REYDIS RADAR PRO</b> 📡\n\nTu chat ID: <code>${chatId}</code>`, parse_mode: 'HTML' });
+    } else if (comando === '/hoy') {
+      await axios.post(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, { chat_id: chatId, text: `🇩🇴 <b>RESULTADOS</b> — ${fechaRD()}\n\nConsulta la web para ver en tiempo real.`, parse_mode: 'HTML' });
+    }
+  } catch (e) {}
+});
+
+// ── Protección anti-crash ──────────────────────────────────────────────────
+process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtException]', err.message));
+process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
+
+app.listen(PORT, async () => {
+  console.log(`\n🚀 Reydis Engine v8.8-TEORIA-REPETIDOS en puerto ${PORT}`);
+  await inicializarPersistenciaRemota();
+  if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
+  await sincronizar();
+
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `https://reydis-bot-service.onrender.com`;
+  setInterval(async () => { try { await axios.get(`${SELF_URL}/`, { timeout: 5000 }); } catch (e) {} }, 14 * 60 * 1000);
+});
