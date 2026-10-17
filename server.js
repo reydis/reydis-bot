@@ -166,24 +166,35 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 const SUPABASE_ACTIVO = !!(SUPABASE_URL && SUPABASE_KEY);
 
+// La columna 'anguilas' (Anguila de cada hora) es nueva: si todavía no se creó
+// en Supabase, se guarda igual todo lo demás y se avisa en /api/debug-anguila.
+let columnaAnguilas = true;
 async function guardarEnSupabase(snapshot) {
   if (!SUPABASE_ACTIVO) return false;
+  const fila = { fecha: snapshot.fecha, sorteos: snapshot.sorteos, cuartetas: snapshot.cuartetas, especiales: snapshot.especiales || {} };
+  if (columnaAnguilas && snapshot.anguilas && Object.keys(snapshot.anguilas).length) fila.anguilas = snapshot.anguilas;
+  const opts = { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, timeout: 10000 };
   try {
-    await axios.post(`${SUPABASE_URL}/rest/v1/historico?on_conflict=fecha`, 
-      { fecha: snapshot.fecha, sorteos: snapshot.sorteos, cuartetas: snapshot.cuartetas, especiales: snapshot.especiales || {} },
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, timeout: 10000 }
-    );
+    await axios.post(`${SUPABASE_URL}/rest/v1/historico?on_conflict=fecha`, fila, opts);
     return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    if (fila.anguilas && /anguilas/.test(JSON.stringify(e.response?.data || ''))) {
+      columnaAnguilas = false; delete fila.anguilas;
+      try { await axios.post(`${SUPABASE_URL}/rest/v1/historico?on_conflict=fecha`, fila, opts); return true; } catch (e2) { return false; }
+    }
+    return false;
+  }
 }
 
 async function cargarDeSupabase() {
   if (!SUPABASE_ACTIVO) return null;
+  const h = { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 10000 };
+  const leer = (cols) => axios.get(`${SUPABASE_URL}/rest/v1/historico?select=${cols}&order=fecha.desc&limit=90`, h);
   try {
-    const res = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,cuartetas,especiales&order=fecha.desc&limit=90`,
-      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 10000 }
-    );
-    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas, especiales: r.especiales || {} }));
+    let res;
+    try { res = await leer('fecha,sorteos,cuartetas,especiales,anguilas'); }
+    catch (e) { columnaAnguilas = false; res = await leer('fecha,sorteos,cuartetas,especiales'); }
+    return res.data.map(r => ({ fecha: r.fecha, sorteos: r.sorteos, cuartetas: r.cuartetas, especiales: r.especiales || {}, anguilas: r.anguilas || {} }));
   } catch (e) { return null; }
 }
 
@@ -197,6 +208,7 @@ async function inicializarPersistenciaRemota() {
       if (hoyData.sorteos) estado.sorteos = hoyData.sorteos;
       if (hoyData.cuartetas) estado.cuartetas = hoyData.cuartetas;
       if (hoyData.especiales) estado.especiales = hoyData.especiales;
+      if (hoyData.anguilas && Object.keys(hoyData.anguilas).length) estado.anguilas = { ...crearAnguilasHora(), ...hoyData.anguilas };
       for (const k of Object.keys(estado.sorteos)) if (estado.sorteos[k].numeros && estado.sorteos[k].numeros.length >= 3) { yaNotificado[k] = true; yaChequeado[`${k}|radar`] = true; yaChequeado[`${k}|punto`] = true; }
       for (const k of Object.keys(estado.cuartetas)) if (estado.cuartetas[k].numeros && estado.cuartetas[k].numeros.length >= 4) yaNotificado[k] = true;
       for (const k of Object.keys(estado.especiales)) if (estado.especiales[k].numeros && estado.especiales[k].numeros.length > 0) yaNotificado[k] = true;
@@ -224,16 +236,33 @@ function horaTextoAMinutos(txt) {
 }
 function diaSemanaRD() { return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santo_Domingo', weekday: 'short' }).format(new Date()); }
 
+// Anguila de cada hora (aparte de las 4 clásicas: 10 AM, 1 PM, 6 PM y 9 PM).
+// Solo para consulta: NO entran en ⚡ repetidos, predicciones, jugadas auto ni avisos.
+const ANGUILA_HORA_LIST = [
+  ['ang_08', 'Anguila 8:00 AM', '8:00 AM', 'anguila-8-am', 'anguilla-8am'],
+  ['ang_09', 'Anguila 9:00 AM', '9:00 AM', 'anguila-9-am', 'anguilla-9am'],
+  ['ang_11', 'Anguila 11:00 AM', '11:00 AM', 'anguila-11-am', 'anguilla-11am'],
+  ['ang_12', 'Anguila 12:00 PM', '12:00 PM', 'anguila-12-pm', 'anguilla-12pm'],
+  ['ang_14', 'Anguila 2:00 PM', '2:00 PM', 'anguila-2-pm', 'anguilla-2pm'],
+  ['ang_15', 'Anguila 3:00 PM', '3:00 PM', 'anguila-3-pm', 'anguilla-3pm'],
+  ['ang_16', 'Anguila 4:00 PM', '4:00 PM', 'anguila-4-pm', 'anguilla-4pm'],
+  ['ang_17', 'Anguila 5:00 PM', '5:00 PM', 'anguila-5-pm', 'anguilla-5pm'],
+  ['ang_19', 'Anguila 7:00 PM', '7:00 PM', 'anguila-7-pm', 'anguilla-7pm'],
+  ['ang_20', 'Anguila 8:00 PM', '8:00 PM', 'anguila-8-pm', 'anguilla-8pm'],
+  ['ang_22', 'Anguila 10:00 PM', '10:00 PM', 'anguila-10-pm', 'anguilla-10pm'],
+];
+const ANGUILA_PRINCIPALES_WU = { 'anguila-manana': 'anguila_m', 'anguila-medio-dia': 'anguila_t', 'anguila-tarde': 'anguila_n', 'anguila-noche': 'anguila_nn' };
+function crearAnguilasHora() { const o = {}; for (const [k, nombre, hora] of ANGUILA_HORA_LIST) o[k] = { nombre, hora, numeros: [], estado: 'pendiente' }; return o; }
 const persistido = cargarDeDisco();
 let estado = {
   fecha: fechaRD(), hora_actualizacion: horaRD(),
-  sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales(),
+  sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales(), anguilas: crearAnguilasHora(),
   historico: persistido?.historico || []
 };
 
 function crearCuartetas() { return { cuarteta_m: { nombre:'La Cuarteta Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM', numeros:[], estado:'pendiente' }, cuarteta_t: { nombre:'La Cuarteta Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, cuarteta_n: { nombre:'La Cuarteta Noche', hora:'9:00 PM', numeros:[], estado:'pendiente' } }; }
 function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40], cant:7 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'12:00 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
-function crearSorteos() { return { anguila_m: { nombre:'Anguila Mañana', hora:'9:00 AM', numeros:[], estado:'pendiente' }, laprimera: { nombre:'La Primera Día', hora:'10:30 AM', numeros:[], estado:'pendiente' }, lotedom: { nombre:'LoteDom', hora:'12:00 PM', numeros:[], estado:'pendiente' }, suerte: { nombre:'La Suerte 12:30', hora:'12:30 PM', numeros:[], estado:'pendiente' }, king_t: { nombre:'King Tarde', hora:'12:30 PM', numeros:[], estado:'pendiente' }, real_t: { nombre:'Lotería Real', hora:'12:30 PM', numeros:[], estado:'pendiente' }, anguila_t: { nombre:'Anguila 1:00 PM', hora:'1:00 PM', numeros:[], estado:'pendiente' }, gana_mas: { nombre:'Gana Más', hora:'2:30 PM', numeros:[], estado:'pendiente' }, new_york_t: { nombre:'New York Tarde', hora:'3:30 PM', numeros:[], estado:'pendiente' }, florida_d: { nombre:'Florida Día', hora:'2:00 PM', numeros:[], estado:'pendiente' }, suerte_t2: { nombre:'La Suerte Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, anguila_n: { nombre:'Anguila 6:00 PM', hora:'6:00 PM', numeros:[], estado:'pendiente' }, king_n: { nombre:'King Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, loteka: { nombre:'Loteka', hora:'6:55 PM', numeros:[], estado:'pendiente' }, laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM', numeros:[], estado:'pendiente' }, leidsa: { nombre:'Leidsa', hora:'8:55 PM', numeros:[], estado:'pendiente' }, nacional: { nombre:'Lotería Nacional', hora:'9:00 PM', numeros:[], estado:'pendiente' }, anguila_nn: { nombre:'Anguila 9:00 PM', hora:'9:00 PM', numeros:[], estado:'pendiente' }, new_york_n: { nombre:'New York Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' }, florida_n: { nombre:'Florida Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' } }; }
+function crearSorteos() { return { anguila_m: { nombre:'Anguila Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, laprimera: { nombre:'La Primera Día', hora:'10:30 AM', numeros:[], estado:'pendiente' }, lotedom: { nombre:'LoteDom', hora:'12:00 PM', numeros:[], estado:'pendiente' }, suerte: { nombre:'La Suerte 12:30', hora:'12:30 PM', numeros:[], estado:'pendiente' }, king_t: { nombre:'King Tarde', hora:'12:30 PM', numeros:[], estado:'pendiente' }, real_t: { nombre:'Lotería Real', hora:'12:30 PM', numeros:[], estado:'pendiente' }, anguila_t: { nombre:'Anguila 1:00 PM', hora:'1:00 PM', numeros:[], estado:'pendiente' }, gana_mas: { nombre:'Gana Más', hora:'2:30 PM', numeros:[], estado:'pendiente' }, new_york_t: { nombre:'New York Tarde', hora:'3:30 PM', numeros:[], estado:'pendiente' }, florida_d: { nombre:'Florida Día', hora:'2:00 PM', numeros:[], estado:'pendiente' }, suerte_t2: { nombre:'La Suerte Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, anguila_n: { nombre:'Anguila 6:00 PM', hora:'6:00 PM', numeros:[], estado:'pendiente' }, king_n: { nombre:'King Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, loteka: { nombre:'Loteka', hora:'6:55 PM', numeros:[], estado:'pendiente' }, laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM', numeros:[], estado:'pendiente' }, leidsa: { nombre:'Leidsa', hora:'8:55 PM', numeros:[], estado:'pendiente' }, nacional: { nombre:'Lotería Nacional', hora:'9:00 PM', numeros:[], estado:'pendiente' }, anguila_nn: { nombre:'Anguila 9:00 PM', hora:'9:00 PM', numeros:[], estado:'pendiente' }, new_york_n: { nombre:'New York Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' }, florida_n: { nombre:'Florida Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' } }; }
 
 const MAPA = { 'anguila mañana': 'anguila_m', 'anguila medio día': 'anguila_t', 'anguila tarde': 'anguila_n', 'anguila noche': 'anguila_nn', 'la primera día': 'laprimera', 'primera noche': 'laprimera_n', 'quiniela lotedom': 'lotedom', 'lotedom': 'lotedom', 'la suerte 12:30': 'suerte', 'la suerte 18:00': 'suerte_t2', 'quiniela real': 'real_t', 'lotería real': 'real_t', 'gana más': 'gana_mas', 'new york tarde': 'new_york_t', 'new york noche': 'new_york_n', 'quiniela leidsa': 'leidsa', 'lotería nacional': 'nacional', 'quiniela loteka': 'loteka', 'king lottery 12:30': 'king_t', 'king lottery 7:30': 'king_n', 'florida día': 'florida_d', 'florida noche': 'florida_n', 'la suerte tarde': 'suerte_t2', 'king tarde': 'king_t', 'king noche': 'king_n' };
 const MAPA_ESPECIALES = { 'pega 3 más':'pega3mas', 'super kino tv':'superkino', 'loto más':'lotomas', 'loto':'loto', 'el quemaito':'quemaito', 'mega chance':'megachance', 'pega 4':'pega4king' };
@@ -369,13 +398,13 @@ function parsearEnloteria(html) {
 // fecha coincida con "hoy" (según nuestro propio reloj de RD) antes de aceptar
 // los números — así nunca confundimos el resultado de ayer con el de hoy,
 // ni tomamos el placeholder vacío del sorteo de hoy que aún no ha salido.
-function extraerResultadoHoyEnloteria(html, cantidadNumeros) {
+function extraerResultadoHoyEnloteria(html, cantidadNumeros, fechaBuscada) {
   const $ = cheerio.load(html);
   const card = $('.result-card').first();
   if (!card.length) return [];
   const fechaTexto = card.find('.result-date').first().text().trim();
   const fecha = fechaEnloteria(fechaTexto);
-  if (fecha !== fechaRD()) return [];
+  if (fecha !== (fechaBuscada || fechaRD())) return [];
   const nums = [];
   card.find('.result-number').each((_, el) => {
     const t = $(el).text().trim();
@@ -401,7 +430,7 @@ const ENLOTERIA_SORTEO_SLUGS = {
   'king-lottery-dia': 'king_t',
   'king-lottery-noche': 'king_n',
   'loteka': 'loteka',
-  'anguilla-8am': 'anguila_m',
+  'anguilla-10am': 'anguila_m',
   'anguilla-1pm': 'anguila_t',
   'anguilla-6pm': 'anguila_n',
   'anguilla-9pm': 'anguila_nn',
@@ -588,13 +617,32 @@ function parsearHistorialWuloteria(html) {
 async function scrapeWuloteria() {
   const faltanCuartetas = Object.values(estado.cuartetas).some(c => c.numeros.length < 4);
   const faltanEspeciales = Object.values(WULOTERIA_ESPECIALES).some(k => estado.especiales[k] && estado.especiales[k].numeros.length < estado.especiales[k].cant);
-  if (!faltanCuartetas && !faltanEspeciales) return 0;
+  const faltanAnguilas = Object.values(estado.anguilas || {}).some(a => a.numeros.length < 3) || !estado._anguilaMVerificada;
+  if (!faltanCuartetas && !faltanEspeciales && !faltanAnguilas) return 0;
+  if (!estado.anguilas) estado.anguilas = crearAnguilasHora();
   const hoy = fechaRD();
   let conteo = 0;
   try {
     const res = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
     for (const r of parsearWuloteria(res.data)) {
       if (r.fecha !== hoy) continue;
+      const ka = ANGUILA_HORA_LIST.find(x => x[3] === r.slug);
+      if (ka && r.numeros.length === 3 && estado.anguilas[ka[0]] && estado.anguilas[ka[0]].numeros.length < 3) {
+        estado.anguilas[ka[0]].numeros = r.numeros; estado.anguilas[ka[0]].estado = 'disponible'; conteo++;
+        continue;
+      }
+      const kp = ANGUILA_PRINCIPALES_WU[r.slug];
+      if (kp && r.numeros.length === 3 && estado.sorteos[kp]) {
+        const s = estado.sorteos[kp];
+        if (s.numeros.length < 3) { s.numeros = r.numeros; s.estado = 'disponible'; conteo++; }
+        else if (kp === 'anguila_m' && s.numeros.join('-') !== r.numeros.join('-')) {
+          // Antes se leía el sorteo de las 8 AM como "Anguila Mañana": se corrige con el de las 10 AM
+          console.log(`[ANGUILA] Corrigiendo Anguila Mañana ${s.numeros.join('-')} → ${r.numeros.join('-')} (sorteo de 10 AM)`);
+          s.numeros = r.numeros; conteo++;
+        }
+        if (kp === 'anguila_m') estado._anguilaMVerificada = true;
+        continue;
+      }
       const kc = WULOTERIA_CUARTETAS[r.slug];
       if (kc && estado.cuartetas[kc] && estado.cuartetas[kc].numeros.length < 4 && r.numeros.length === 4) {
         estado.cuartetas[kc].numeros = r.numeros; estado.cuartetas[kc].estado = 'disponible'; conteo++;
@@ -1128,7 +1176,7 @@ async function revisarYEnviarPredicciones() {
     await enviarTelegram(`🔮 <b>PREDICCIONES DEL MOMENTO</b> — ${fechaRD()}\n\n` + avisos.join('\n\n') +
       `\n\n<i>Combina: frecuencia+posición · adyacentes · ciclo de vencimiento · repetidos del día.</i>`);
     guardarEnDisco();
-    await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
+    await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas });
   }
 }
 
@@ -1143,10 +1191,10 @@ async function sincronizar() {
   try {
     const hoy = fechaRD();
     if (hoy !== estado.fecha) {
-      const snapshot = { fecha: estado.fecha, sorteos: JSON.parse(JSON.stringify(estado.sorteos)), cuartetas: JSON.parse(JSON.stringify(estado.cuartetas)), especiales: JSON.parse(JSON.stringify(estado.especiales)) };
+      const snapshot = { fecha: estado.fecha, sorteos: JSON.parse(JSON.stringify(estado.sorteos)), cuartetas: JSON.parse(JSON.stringify(estado.cuartetas)), especiales: JSON.parse(JSON.stringify(estado.especiales)), anguilas: JSON.parse(JSON.stringify(estado.anguilas || {})) };
       estado.historico.unshift(snapshot);
       if (estado.historico.length > 90) estado.historico.pop();
-      estado.sorteos = crearSorteos(); estado.cuartetas = crearCuartetas(); estado.especiales = crearJuegosEspeciales(); estado.fecha = hoy;
+      estado.sorteos = crearSorteos(); estado.cuartetas = crearCuartetas(); estado.especiales = crearJuegosEspeciales(); estado.anguilas = crearAnguilasHora(); estado._anguilaMVerificada = false; estado.fecha = hoy;
       Object.keys(yaNotificado).forEach(k => delete yaNotificado[k]); Object.keys(yaChequeado).forEach(k => delete yaChequeado[k]); Object.keys(yaPredicho).forEach(k => delete yaPredicho[k]);
       guardarEnDisco(); await guardarEnSupabase(snapshot);
     }
@@ -1162,7 +1210,7 @@ async function sincronizar() {
     
     estado.hora_actualizacion = horaRD();
     guardarEnDisco();
-    await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales });
+    await guardarEnSupabase({ fecha: estado.fecha, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas });
     // Cada paso en su propio try: si uno falla, los demás siguen corriendo
     const paso = async (nombre, fn) => { try { await fn(); } catch (e) { console.error(`⚠️ [${nombre}]`, e.message); } };
     await paso('jugadas-auto', generarJugadasAutomaticas);
@@ -1179,7 +1227,7 @@ async function sincronizar() {
 setInterval(sincronizar, 15 * 60 * 1000);
 
 // ── ENDPOINTS Frontend y Diagnóstico ───────────────────────────────────────
-app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales }); });
+app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas || {} }); });
 app.get('/api/historico', (req, res) => res.json({ historico: estado.historico, total: estado.historico.length }));
 app.get('/api/debug', async (req, res) => {
   try {
@@ -1198,7 +1246,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v8.9-PENDIENTES', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.0-ANGUILA-HORAS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1249,7 +1297,7 @@ app.get('/api/backfill-especiales', async (req, res) => {
       for (const f of fechas) {
         try {
           const res2 = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
-          const nums = extraerResultadoHoyEnloteria(res2.data, plantilla.cant);
+          const nums = extraerResultadoHoyEnloteria(res2.data, plantilla.cant, f);
           if (nums.length === plantilla.cant) {
             const base = existentes[f] || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
             base.especiales = base.especiales || crearJuegosEspeciales();
@@ -1450,7 +1498,7 @@ async function notificarJugadasPersonales() {
   const avisos = [];
 
   for (const j of pendientes) {
-    const sorteo = (estado.sorteos[j.clave] || estado.especiales[j.clave] || estado.cuartetas[j.clave]);
+    const sorteo = (estado.sorteos[j.clave] || estado.especiales[j.clave] || estado.cuartetas[j.clave] || (estado.anguilas || {})[j.clave]);
     if (!sorteo || !sorteo.numeros || sorteo.numeros.length === 0) continue;
     if (estado.fecha !== j.fecha) continue;
     if (j.tipo === 'superpale' && j.clave2) {
@@ -2028,6 +2076,99 @@ app.get('/api/analisis-repetidos', (req, res) => {
   res.json({ ...a, detalle: a.detalle.map(({ varianza, ...x }) => x).reverse() });
 });
 
+
+// ── ANGUILA: rellenar historial de cada hora + corregir "Anguila Mañana" ─────
+// Uso: /api/backfill-anguila?guardar=1                     → últimos ~10 días (Wuloteria)
+//      /api/backfill-anguila?desde=2026-08-20&hasta=2026-10-06&guardar=1 → además días viejos (Enloteria)
+// "Anguila Mañana" se SOBRESCRIBE con el sorteo de 10 AM (antes se guardaba el de 8 AM).
+// Las otras 3 clásicas y las de cada hora solo se rellenan si faltan.
+app.get('/api/backfill-anguila', async (req, res) => {
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const guardar = req.query.guardar === '1';
+  const { desde, hasta } = req.query;
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, fuente: 'anguila', modo: guardar ? 'GUARDAR' : 'SIMULACION', rango_enloteria: desde && hasta ? `${desde} → ${hasta}` : 'no' });
+  const logBF = msg => { console.log(`[BF-ANG] ${msg}`); estadoBackfill.log.push(msg); };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    const hoy = fechaRD();
+    const datos = {}; // fecha → { clave: numeros }
+    const poner = (f, k, nums) => { if (f >= hoy || !Array.isArray(nums) || nums.length !== 3) return; (datos[f] = datos[f] || {})[k] = nums; };
+    const paginas = [...Object.entries(ANGUILA_PRINCIPALES_WU).map(([slug, k]) => [slug, k]), ...ANGUILA_HORA_LIST.map(x => [x[3], x[0]])];
+    for (const [slug, k] of paginas) {
+      try {
+        const r = await axios.get(`https://wuloteria.com/loto/anguila/${slug}`, { headers: HEADERS, timeout: 15000 });
+        const h = parsearHistorialWuloteria(r.data);
+        h.forEach(x => poner(x.fecha, k, x.numeros));
+        logBF(`Wuloteria ${slug}: ${h.length} sorteos`);
+      } catch (e) { logBF(`AVISO Wuloteria ${slug}: ${e.response?.status || e.message}`); }
+      await pausa(800);
+    }
+    if (desde && hasta) {
+      const ENL = [['anguilla-10am', 'anguila_m'], ['anguilla-1pm', 'anguila_t'], ['anguilla-6pm', 'anguila_n'], ['anguilla-9pm', 'anguila_nn'], ...ANGUILA_HORA_LIST.map(x => [x[4], x[0]])];
+      for (const f of listaFechas(desde, hasta)) {
+        if (f >= hoy) continue;
+        let n = 0;
+        for (const [slug, k] of ENL) {
+          if (datos[f] && datos[f][k]) continue;
+          try {
+            const r = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+            const nums = extraerResultadoHoyEnloteria(r.data, 3, f);
+            if (nums.length === 3) { poner(f, k, nums); n++; }
+          } catch (e) {}
+          await pausa(1000);
+        }
+        logBF(`Enloteria ${f}: ${n} sorteos`);
+      }
+    }
+    const fechas = Object.keys(datos).sort();
+    if (!fechas.length) { logBF('Nada que procesar.'); return; }
+    const existentes = {};
+    if (SUPABASE_ACTIVO) {
+      try {
+        const cols = columnaAnguilas ? 'fecha,sorteos,cuartetas,especiales,anguilas' : 'fecha,sorteos,cuartetas,especiales';
+        const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=${cols}&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 });
+        for (const row of r.data) existentes[row.fecha] = row;
+      } catch (e) { logBF(`AVISO Supabase: ${e.message}`); }
+    }
+    let corregidas = 0, rellenadas = 0, horas = 0;
+    for (const f of fechas) {
+      const base = existentes[f] || estado.historico.find(d => d.fecha === f) || { fecha: f, sorteos: crearSorteos(), cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = base.sorteos || crearSorteos();
+      base.anguilas = { ...crearAnguilasHora(), ...(base.anguilas || {}) };
+      let cambio = false;
+      for (const [k, nums] of Object.entries(datos[f])) {
+        if (k.startsWith('ang_')) {
+          if (!base.anguilas[k].numeros || base.anguilas[k].numeros.length < 3) { base.anguilas[k] = { ...base.anguilas[k], numeros: nums, estado: 'disponible' }; horas++; cambio = true; }
+          continue;
+        }
+        const s = base.sorteos[k] || crearSorteos()[k];
+        const actual = (s.numeros || []).map(Number);
+        if (actual.length < 3) { base.sorteos[k] = { ...s, numeros: nums, estado: 'disponible' }; rellenadas++; cambio = true; }
+        else if (k === 'anguila_m' && actual.join('-') !== nums.join('-')) {
+          logBF(`${f} Anguila Mañana: ${actual.join('-')} → ${nums.join('-')}`);
+          base.sorteos[k] = { ...s, numeros: nums, estado: 'disponible' }; corregidas++; cambio = true;
+        }
+      }
+      if (cambio && guardar) {
+        await guardarEnSupabase(base);
+        const idx = estado.historico.findIndex(d => d.fecha === f);
+        if (idx >= 0) estado.historico[idx] = { ...estado.historico[idx], sorteos: base.sorteos, anguilas: base.anguilas };
+      }
+    }
+    if (guardar) guardarEnDisco();
+    estadoBackfill.resumen = { dias: fechas.length, anguila_manana_corregidas: corregidas, clasicas_rellenadas: rellenadas, sorteos_de_cada_hora: horas, columna_anguilas: columnaAnguilas };
+    logBF(`✅ Listo: ${fechas.length} días · ${corregidas} Anguila Mañana corregidas · ${rellenadas} clásicas rellenadas · ${horas} sorteos de cada hora ${guardar ? 'guardados' : '(simulación)'}${columnaAnguilas ? '' : ' · ⚠️ falta crear la columna anguilas en Supabase: las de cada hora NO se guardaron'}`);
+  } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
+});
+app.get('/api/debug-anguila', (req, res) => {
+  res.json({ columna_anguilas_en_supabase: columnaAnguilas, anguila_manana_hoy: estado.sorteos.anguila_m,
+    anguilas_de_cada_hora_hoy: Object.fromEntries(Object.entries(estado.anguilas || {}).map(([k, a]) => [a.nombre, a.numeros.join('-') || 'pendiente'])),
+    dias_en_historial_con_anguilas: estado.historico.filter(d => d.anguilas && Object.values(d.anguilas).some(a => a.numeros && a.numeros.length)).length });
+});
+
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
   res.sendStatus(200); 
@@ -2051,7 +2192,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v8.9-PENDIENTES en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.0-ANGUILA-HORAS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
