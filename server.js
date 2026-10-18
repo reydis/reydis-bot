@@ -401,7 +401,7 @@ function parsearEnloteria(html) {
 // Loto LEIDSA: un solo sorteo → 6 números (1-40) + bolo azul "Más" + bolo rojo "Súper Más".
 // Recibe la lista completa que publique la fuente y la reparte en loto / lotomas.
 function repartirLoto(nums) {
-  if (!Array.isArray(nums) || nums.length < 6) return false;
+  if (!Array.isArray(nums) || nums.length < 6 || !AUTO.diasLoto.includes(diaSemanaRD())) return false;
   let cambio = false;
   const loto = estado.especiales.loto, mas = estado.especiales.lotomas;
   if (loto && loto.numeros.length < 6) { loto.numeros = nums.slice(0, 6); loto.estado = 'disponible'; cambio = true; }
@@ -660,7 +660,8 @@ async function scrapeWuloteria() {
         estado.cuartetas[kc].numeros = r.numeros; estado.cuartetas[kc].estado = 'disponible'; conteo++;
         continue;
       }
-      if (/^loto(-leidsa)?$|^loto-mas|^loto-super-mas/.test(r.slug) && repartirLoto(r.numeros)) { conteo++; continue; }
+      // En Wuloteria "loto" es OTRO juego (sale días que LEIDSA no juega); el de LEIDSA con sus 2 bolos extra es "loto-mas" (8 números)
+      if (r.slug === 'loto-mas' && r.numeros.length >= 8 && repartirLoto(r.numeros)) { conteo++; continue; }
       const ke = WULOTERIA_ESPECIALES[r.slug];
       const juego = ke && estado.especiales[ke];
       if (juego && juego.numeros.length < juego.cant && r.numeros.length === juego.cant) {
