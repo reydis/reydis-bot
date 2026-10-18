@@ -200,6 +200,7 @@ async function cargarDeSupabase() {
 
 async function inicializarPersistenciaRemota() {
   if (!SUPABASE_ACTIVO) return;
+  await cargarEnviados();
   const remoto = await cargarDeSupabase();
   if (remoto && remoto.length > 0) {
     estado.historico = remoto.filter(r => r.fecha !== estado.fecha);
@@ -1016,6 +1017,8 @@ async function enviarResumenRadarDelDia() {
   const hoy = fechaRD();
   if (radarResumenEnviado === hoy || minutosActualesRD() < 23 * 60 + 10) return;
   radarResumenEnviado = hoy;
+  if (yaEnviado('resumen-radar')) return;
+  await marcarEnviado('resumen-radar');
   const f2 = n => String(n).padStart(2, '0');
   const lineas = []; let ev = 0, ac = 0;
   for (const [clave, s] of Object.entries(estado.sorteos)) {
@@ -1171,6 +1174,7 @@ async function revisarYEnviarPredicciones() {
 
   for (const [clave, s] of Object.entries(estado.sorteos)) {
     if (yaPredicho[clave]) continue;
+    if (yaEnviado(`pred|${clave}`)) { yaPredicho[clave] = true; continue; }
     if (s.numeros && s.numeros.length >= 3) { yaPredicho[clave] = true; continue; }
     const minutosSorteo = horaTextoAMinutos(s.hora);
     if (minutosSorteo === null) continue;
@@ -1181,6 +1185,7 @@ async function revisarYEnviarPredicciones() {
     if (pred.diasHistoricos < 5) { yaPredicho[clave] = true; continue; }
 
     yaPredicho[clave] = true;
+    await marcarEnviado(`pred|${clave}`);
     // Guarda también el scoreDetalle y la fecha para el dashboard de precisión
     s.prediccion = {
       top1: pred.top1,
@@ -1242,6 +1247,7 @@ async function sincronizar() {
       guardarEnDisco(); await guardarEnSupabase(snapshot);
     }
 
+    await cargarEnviados(); // nuevo día → lista vacía; mismo día → no hace nada
     await scrapeConectateAPI();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeLotDominicanas();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeEnloteria();
@@ -1290,7 +1296,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.1-LOTO-MAS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.2-SIN-REPETIDOS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1819,6 +1825,28 @@ async function leerJugadas(query) {
   const r = await axios.get(`${SUPABASE_URL}/rest/v1/jugadas?${query}`, { headers: SB_HEADERS(), timeout: 15000 });
   return r.data || [];
 }
+
+// ── MENSAJES YA ENVIADOS (sobreviven reinicios y deploys) ───────────────────
+// Render borra la memoria y el disco en cada reinicio, así que se anota en Supabase
+// (tabla jugadas, origen 'sistema': ninguna consulta de jugadas ni auditoría los lee).
+const enviadosHoy = new Set();
+let enviadosFecha = null;
+async function cargarEnviados() {
+  const hoy = fechaRD();
+  if (enviadosFecha === hoy) return;
+  enviadosHoy.clear(); enviadosFecha = hoy;
+  if (!SUPABASE_ACTIVO) return;
+  try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.sistema&select=grupo`)).forEach(f => f.grupo && enviadosHoy.add(f.grupo)); }
+  catch (e) { console.log('[ENVIADOS] no se pudo leer:', e.message); }
+}
+function yaEnviado(tag) { return enviadosFecha === fechaRD() && enviadosHoy.has(tag); }
+async function marcarEnviado(tag) {
+  const hoy = fechaRD();
+  if (enviadosFecha !== hoy) { enviadosHoy.clear(); enviadosFecha = hoy; }
+  enviadosHoy.add(tag);
+  if (!SUPABASE_ACTIVO) return;
+  await upsertJugadas([{ id: `sys|${hoy}|${tag}`, clave: 'sistema', fecha: hoy, tipo: 'sistema', numeros: [], origen: 'sistema', grupo: tag, notificado: true, evaluado: true }]);
+}
 async function asegurarAutoHechos(hoy) {
   if (autoHechosFecha === hoy) return true;
   try {
@@ -2010,7 +2038,8 @@ async function enviarResumenAutoDelDia() {
   try { filas = await leerJugadas(`fecha=eq.${hoy}&origen=in.(auto,control)&select=tipo,clave,origen,evaluado,gano,aciertos,premio,monto`); }
   catch (e) { return; }
   autoResumenEnviado = hoy;
-  if (!filas.length) return;
+  if (!filas.length || yaEnviado('resumen-auto')) return;
+  await marcarEnviado('resumen-auto');
   const nom = { punto: 'Punto', pale: 'Palé', tripleta: 'Tripleta', superpale: 'Súper Palé', cuarteta: 'Cuarteta', superkino: 'Kino', pega3mas: 'Pega 3 Más', megachance: 'Mega Chance', quemaito: 'Quemaito', loto: 'Loto', lotomas: 'Loto Más' };
   const fmt = x => x ? `${x.ganadas}/${x.evaluadas}${x.retorno_por_peso !== null ? ` · ret ${x.retorno_por_peso}` : ''}` : '—';
   const lineas = agregarAuditoria(filas).map(f => `• <b>${nom[f.tipo] || f.tipo}</b>: 🤖 ${fmt(f.auto)}  |  🎲 ${fmt(f.control)}`);
@@ -2107,6 +2136,8 @@ async function enviarAnalisisRepetidos() {
   const hoy = fechaRD();
   if (analisisRepEnviado === hoy || minutosActualesRD() < 23 * 60 + 15) return;
   analisisRepEnviado = hoy;
+  if (yaEnviado('teoria')) return;
+  await marcarEnviado('teoria');
   const d = analizarRepetidosDia({ fecha: hoy, sorteos: estado.sorteos });
   const a = analisisRepetidosAcumulado();
   const f2 = n => String(n).padStart(2, '0');
@@ -2286,7 +2317,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.1-LOTO-MAS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.2-SIN-REPETIDOS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
