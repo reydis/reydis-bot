@@ -261,7 +261,7 @@ let estado = {
 };
 
 function crearCuartetas() { return { cuarteta_m: { nombre:'La Cuarteta Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM', numeros:[], estado:'pendiente' }, cuarteta_t: { nombre:'La Cuarteta Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, cuarteta_n: { nombre:'La Cuarteta Noche', hora:'9:00 PM', numeros:[], estado:'pendiente' } }; }
-function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,40], cant:7 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'12:00 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
+function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más · Súper Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,15], cant:2 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'12:00 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
 function crearSorteos() { return { anguila_m: { nombre:'Anguila Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, laprimera: { nombre:'La Primera Día', hora:'10:30 AM', numeros:[], estado:'pendiente' }, lotedom: { nombre:'LoteDom', hora:'12:00 PM', numeros:[], estado:'pendiente' }, suerte: { nombre:'La Suerte 12:30', hora:'12:30 PM', numeros:[], estado:'pendiente' }, king_t: { nombre:'King Tarde', hora:'12:30 PM', numeros:[], estado:'pendiente' }, real_t: { nombre:'Lotería Real', hora:'12:30 PM', numeros:[], estado:'pendiente' }, anguila_t: { nombre:'Anguila 1:00 PM', hora:'1:00 PM', numeros:[], estado:'pendiente' }, gana_mas: { nombre:'Gana Más', hora:'2:30 PM', numeros:[], estado:'pendiente' }, new_york_t: { nombre:'New York Tarde', hora:'3:30 PM', numeros:[], estado:'pendiente' }, florida_d: { nombre:'Florida Día', hora:'2:00 PM', numeros:[], estado:'pendiente' }, suerte_t2: { nombre:'La Suerte Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, anguila_n: { nombre:'Anguila 6:00 PM', hora:'6:00 PM', numeros:[], estado:'pendiente' }, king_n: { nombre:'King Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, loteka: { nombre:'Loteka', hora:'6:55 PM', numeros:[], estado:'pendiente' }, laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM', numeros:[], estado:'pendiente' }, leidsa: { nombre:'Leidsa', hora:'8:55 PM', numeros:[], estado:'pendiente' }, nacional: { nombre:'Lotería Nacional', hora:'9:00 PM', numeros:[], estado:'pendiente' }, anguila_nn: { nombre:'Anguila 9:00 PM', hora:'9:00 PM', numeros:[], estado:'pendiente' }, new_york_n: { nombre:'New York Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' }, florida_n: { nombre:'Florida Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' } }; }
 
 const MAPA = { 'anguila mañana': 'anguila_m', 'anguila medio día': 'anguila_t', 'anguila tarde': 'anguila_n', 'anguila noche': 'anguila_nn', 'la primera día': 'laprimera', 'primera noche': 'laprimera_n', 'quiniela lotedom': 'lotedom', 'lotedom': 'lotedom', 'la suerte 12:30': 'suerte', 'la suerte 18:00': 'suerte_t2', 'quiniela real': 'real_t', 'lotería real': 'real_t', 'gana más': 'gana_mas', 'new york tarde': 'new_york_t', 'new york noche': 'new_york_n', 'quiniela leidsa': 'leidsa', 'lotería nacional': 'nacional', 'quiniela loteka': 'loteka', 'king lottery 12:30': 'king_t', 'king lottery 7:30': 'king_n', 'florida día': 'florida_d', 'florida noche': 'florida_n', 'la suerte tarde': 'suerte_t2', 'king tarde': 'king_t', 'king noche': 'king_n' };
@@ -398,7 +398,17 @@ function parsearEnloteria(html) {
 // fecha coincida con "hoy" (según nuestro propio reloj de RD) antes de aceptar
 // los números — así nunca confundimos el resultado de ayer con el de hoy,
 // ni tomamos el placeholder vacío del sorteo de hoy que aún no ha salido.
-function extraerResultadoHoyEnloteria(html, cantidadNumeros, fechaBuscada) {
+// Loto LEIDSA: un solo sorteo → 6 números (1-40) + bolo azul "Más" + bolo rojo "Súper Más".
+// Recibe la lista completa que publique la fuente y la reparte en loto / lotomas.
+function repartirLoto(nums) {
+  if (!Array.isArray(nums) || nums.length < 6) return false;
+  let cambio = false;
+  const loto = estado.especiales.loto, mas = estado.especiales.lotomas;
+  if (loto && loto.numeros.length < 6) { loto.numeros = nums.slice(0, 6); loto.estado = 'disponible'; cambio = true; }
+  if (mas && mas.numeros.length < 2 && nums.length >= 8) { mas.numeros = nums.slice(6, 8); mas.estado = 'disponible'; cambio = true; }
+  return cambio;
+}
+function extraerResultadoHoyEnloteria(html, cantidadNumeros, fechaBuscada, todos) {
   const $ = cheerio.load(html);
   const card = $('.result-card').first();
   if (!card.length) return [];
@@ -410,6 +420,7 @@ function extraerResultadoHoyEnloteria(html, cantidadNumeros, fechaBuscada) {
     const t = $(el).text().trim();
     if (/^\d{1,2}$/.test(t)) nums.push(parseInt(t, 10));
   });
+  if (todos) return nums.length >= cantidadNumeros ? nums : [];
   return nums.length >= cantidadNumeros ? nums.slice(0, cantidadNumeros) : [];
 }
 
@@ -461,7 +472,6 @@ async function scrapeEnloteria() {
 const ENLOTERIA_ESPECIAL_SLUGS = {
   'super-kino-tv': 'superkino',
   'loto': 'loto',
-  'loto-pool': 'lotomas',
   'megachance': 'megachance',
   'el-quemaito-mayor': 'quemaito',
 };
@@ -469,6 +479,7 @@ const ENLOTERIA_ESPECIAL_SLUGS = {
 async function scrapeEspecialesEnloteria() {
   const pendientes = Object.entries(ENLOTERIA_ESPECIAL_SLUGS).filter(([, clave]) => {
     const j = estado.especiales[clave];
+    if (clave === 'loto' && estado.especiales.lotomas && estado.especiales.lotomas.numeros.length < 2 && AUTO.diasLoto.includes(diaSemanaRD())) return true; // falta el bolo Más
     return j && j.numeros.length < j.cant;
   });
   if (!pendientes.length) return 0;
@@ -477,6 +488,7 @@ async function scrapeEspecialesEnloteria() {
     const juego = estado.especiales[clave];
     try {
       const res = await axios.get(`https://enloteria.com/resultados-${slug}-hoy`, { headers: HEADERS, timeout: 15000 });
+      if (clave === 'loto') { if (repartirLoto(extraerResultadoHoyEnloteria(res.data, 6, null, true))) conteo++; continue; }
       const nums = extraerResultadoHoyEnloteria(res.data, juego.cant);
       if (nums.length === juego.cant) {
         juego.numeros = nums; juego.estado = 'disponible'; conteo++;
@@ -616,7 +628,7 @@ function parsearHistorialWuloteria(html) {
 
 async function scrapeWuloteria() {
   const faltanCuartetas = Object.values(estado.cuartetas).some(c => c.numeros.length < 4);
-  const faltanEspeciales = Object.values(WULOTERIA_ESPECIALES).some(k => estado.especiales[k] && estado.especiales[k].numeros.length < estado.especiales[k].cant);
+  const faltanEspeciales = Object.values(WULOTERIA_ESPECIALES).some(k => estado.especiales[k] && estado.especiales[k].numeros.length < estado.especiales[k].cant) || (estado.especiales.lotomas && estado.especiales.lotomas.numeros.length < 2 && AUTO.diasLoto.includes(diaSemanaRD()));
   const faltanAnguilas = Object.values(estado.anguilas || {}).some(a => a.numeros.length < 3) || !estado._anguilaMVerificada;
   if (!faltanCuartetas && !faltanEspeciales && !faltanAnguilas) return 0;
   if (!estado.anguilas) estado.anguilas = crearAnguilasHora();
@@ -648,6 +660,7 @@ async function scrapeWuloteria() {
         estado.cuartetas[kc].numeros = r.numeros; estado.cuartetas[kc].estado = 'disponible'; conteo++;
         continue;
       }
+      if (/^loto(-leidsa)?$|^loto-mas|^loto-super-mas/.test(r.slug) && repartirLoto(r.numeros)) { conteo++; continue; }
       const ke = WULOTERIA_ESPECIALES[r.slug];
       const juego = ke && estado.especiales[ke];
       if (juego && juego.numeros.length < juego.cant && r.numeros.length === juego.cant) {
@@ -986,11 +999,40 @@ async function cazarAciertos({ enviar = true } = {}) {
   }
 
   if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
-    `🎯 <b>ACIERTOS DE HOY</b> — ${fechaRD()}\n` +
-    `📊 ${totalAciertos} aciertos en ${totalSorteos} sorteos evaluados\n\n` +
-    avisos.join('\n\n')
+    `🎯 <b>RADAR PUNTO</b> — ${fechaRD()} ${horaRD()}\n` +
+    (totalSorteos > 1 ? `📊 ${totalAciertos} aciertos en estos ${totalSorteos} sorteos\n\n` : '') +
+    avisos.join('\n\n') +
+    `\n\n<i>El total del día llega en la noche.</i>`
   );
   return avisos;
+}
+
+// Resumen de la noche: TODOS los sorteos del día juntos (se recalcula desde cero,
+// así no depende de reinicios del servidor).
+let radarResumenEnviado = null;
+async function enviarResumenRadarDelDia() {
+  if (!TG_ACTIVO) return;
+  const hoy = fechaRD();
+  if (radarResumenEnviado === hoy || minutosActualesRD() < 23 * 60 + 10) return;
+  radarResumenEnviado = hoy;
+  const f2 = n => String(n).padStart(2, '0');
+  const lineas = []; let ev = 0, ac = 0;
+  for (const [clave, s] of Object.entries(estado.sorteos)) {
+    if (!s.numeros || s.numeros.length < 3) continue;
+    const serie = [...estado.historico].filter(d => d.fecha < hoy).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+      .map(d => d.sorteos && d.sorteos[clave]).filter(x => x && x.numeros && x.numeros.length >= 3).map(x => x.numeros.map(Number));
+    if (serie.length < 2) continue;
+    const pesos = {};
+    serie.forEach((nums, j) => { const w = Math.max(1, serie.length - j); [60, 8, 4].forEach((p, i) => { if (nums[i] !== undefined) pesos[nums[i]] = (pesos[nums[i]] || 0) + p * w; }); });
+    const top = Object.entries(pesos).sort((a, b) => b[1] - a[1])[0];
+    if (!top) continue;
+    const hit = s.numeros.map(Number).includes(+top[0]);
+    ev++; if (hit) ac++;
+    lineas.push(`${hit ? '✅' : '❌'} ${s.nombre}: predijo <b>${f2(+top[0])}</b> · salió ${s.numeros.map(f2).join('-')}`);
+  }
+  if (!ev) return;
+  const esperado = (ev * 0.0297).toFixed(1);
+  await enviarTelegram(`📊 <b>RADAR PUNTO — RESUMEN DEL DÍA</b> ${hoy}\n<b>${ac} de ${ev}</b> sorteos acertados (por azar se esperaban ~${esperado})\n\n${lineas.join('\n')}`);
 }
 
 // ── PREDICCIÓN ANTICIPADA — SCORE COMBINADO DE 3 SEÑALES ──────────────────
@@ -1219,6 +1261,7 @@ async function sincronizar() {
     await paso('aciertos', () => cazarAciertos({ enviar: true }));
     await paso('predicciones', revisarYEnviarPredicciones);
     await paso('jugadas-personales', notificarJugadasPersonales);
+    await paso('resumen-radar', enviarResumenRadarDelDia);
     await paso('resumen-auto', enviarResumenAutoDelDia);
     await paso('teoria-repetidos', enviarAnalisisRepetidos);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
@@ -1246,7 +1289,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.0-ANGUILA-HORAS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.1-LOTO-MAS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1554,7 +1597,7 @@ const AUTO = {
   // Se puede cambiar con la variable de entorno AUTO_LOTERIAS=leidsa,real_t,...
   loterias: (process.env.AUTO_LOTERIAS || 'laprimera,real_t,gana_mas,loteka,leidsa,nacional').split(',').map(s => s.trim()).filter(Boolean),
   superpales: [['real_t', 'gana_mas'], ['leidsa', 'nacional']],
-  especiales: ['superkino', 'pega3mas', 'megachance', 'quemaito', 'loto', 'lotomas'],
+  especiales: ['superkino', 'pega3mas', 'megachance', 'quemaito', 'loto'], // Loto Más no es un ticket aparte: son los bolos extra del Loto
   cuartetas: ['cuarteta_m', 'cuarteta_md', 'cuarteta_t', 'cuarteta_n'],
   ticketsEspecial: 3,           // 3 predichos + 3 de control por juego especial
   ventanaMin: 75,               // se generan entre 75 y 0 minutos antes del sorteo
@@ -1932,6 +1975,7 @@ async function evaluarJugadasAutomaticas() {
 function agregarAuditoria(filas) {
   const g = {};
   for (const j of filas) {
+    if (j.clave === 'lotomas') continue; // tickets viejos de Loto Más (formato equivocado, nunca evaluables)
     const tipoClave = ['punto', 'pale', 'tripleta', 'superpale', 'cuarteta'].includes(j.tipo) ? j.tipo : j.clave;
     const k = `${tipoClave}|${j.origen}`;
     if (!g[k]) g[k] = { tipo: tipoClave, origen: j.origen, jugadas: 0, evaluadas: 0, ganadas: 0, aciertos: 0, premio: 0, costo: 0, conPremio: false };
@@ -2169,6 +2213,55 @@ app.get('/api/debug-anguila', (req, res) => {
     dias_en_historial_con_anguilas: estado.historico.filter(d => d.anguilas && Object.values(d.anguilas).some(a => a.numeros && a.numeros.length)).length });
 });
 
+
+// ── LOTO: ver qué publica la fuente y rellenar los bolos Más / Súper Más ──
+app.get('/api/debug-loto', async (req, res) => {
+  const out = { hoy_loto: estado.especiales.loto, hoy_loto_mas: estado.especiales.lotomas };
+  try {
+    const r = await axios.get('https://enloteria.com/resultados-loto-hoy', { headers: HEADERS, timeout: 15000 });
+    const $ = cheerio.load(r.data); const card = $('.result-card').first();
+    out.enloteria = { fecha: card.find('.result-date').first().text().trim(), numeros: card.find('.result-number').map((_, e) => $(e).text().trim()).get() };
+  } catch (e) { out.enloteria = { error: e.response?.status || e.message }; }
+  try {
+    const r = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
+    out.wuloteria = parsearWuloteria(r.data).filter(x => /loto/i.test(x.slug));
+  } catch (e) { out.wuloteria = { error: e.response?.status || e.message }; }
+  res.json(out);
+});
+// /api/backfill-loto-mas?desde=2026-09-20&hasta=2026-10-17&guardar=1  (máx. 15 días por llamada; solo miércoles y sábado)
+app.get('/api/backfill-loto-mas', async (req, res) => {
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const { desde, hasta } = req.query; const guardar = req.query.guardar === '1';
+  if (!desde || !hasta) return res.status(400).json({ error: 'Faltan desde y hasta (AAAA-MM-DD)' });
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, fuente: 'loto-mas', modo: guardar ? 'GUARDAR' : 'SIMULACION', rango: `${desde} → ${hasta}` });
+  const logBF = m => { console.log(`[BF-LOTO] ${m}`); estadoBackfill.log.push(m); };
+  let n = 0;
+  try {
+    for (const f of listaFechas(desde, hasta)) {
+      const dia = new Date(f + 'T12:00:00Z').getUTCDay();
+      if (dia !== 3 && dia !== 6 || f >= fechaRD()) continue;
+      try {
+        const r = await axios.get(`https://enloteria.com/resultados-loto-${f}`, { headers: HEADERS, timeout: 15000 });
+        const nums = extraerResultadoHoyEnloteria(r.data, 6, f, true);
+        if (nums.length < 8) { logBF(`${f}: la fuente trae ${nums.length} números (sin bolos extra)`); continue; }
+        const base = estado.historico.find(d => d.fecha === f);
+        if (!base) { logBF(`${f}: día no está en el historial`); continue; }
+        base.especiales = base.especiales || crearJuegosEspeciales();
+        if (!base.especiales.loto || !(base.especiales.loto.numeros || []).length) base.especiales.loto = { ...crearJuegosEspeciales().loto, numeros: nums.slice(0, 6), estado: 'disponible' };
+        base.especiales.lotomas = { ...crearJuegosEspeciales().lotomas, numeros: nums.slice(6, 8), estado: 'disponible' };
+        logBF(`${f}: Loto ${nums.slice(0, 6).join('-')} · Más ${nums[6]} · Súper Más ${nums[7]}`); n++;
+        if (guardar) await guardarEnSupabase(base);
+      } catch (e) { logBF(`${f}: ${e.response?.status || e.message}`); }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    if (guardar) guardarEnDisco();
+    estadoBackfill.resumen = { sorteos: n };
+    logBF(`✅ Listo: ${n} sorteos de Loto con bolos extra ${guardar ? 'guardados' : '(simulación)'}`);
+  } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
+});
+
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
   res.sendStatus(200); 
@@ -2192,7 +2285,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.0-ANGUILA-HORAS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.1-LOTO-MAS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
