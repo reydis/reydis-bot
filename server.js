@@ -213,7 +213,7 @@ async function inicializarPersistenciaRemota() {
     if (hoyData) {
       if (hoyData.sorteos) estado.sorteos = hoyData.sorteos;
       if (hoyData.cuartetas) estado.cuartetas = hoyData.cuartetas;
-      if (hoyData.especiales) estado.especiales = hoyData.especiales;
+      if (hoyData.especiales) estado.especiales = { ...crearJuegosEspeciales(), ...hoyData.especiales }; // juegos nuevos aparecen aunque el día ya existiera
       if (hoyData.anguilas && Object.keys(hoyData.anguilas).length) estado.anguilas = { ...crearAnguilasHora(), ...hoyData.anguilas };
       for (const k of Object.keys(estado.sorteos)) if (estado.sorteos[k].numeros && estado.sorteos[k].numeros.length >= 3) { yaNotificado[k] = true; yaChequeado[`${k}|radar`] = true; yaChequeado[`${k}|punto`] = true; }
       for (const k of Object.keys(estado.cuartetas)) if (estado.cuartetas[k].numeros && estado.cuartetas[k].numeros.length >= 4) yaNotificado[k] = true;
@@ -267,7 +267,7 @@ let estado = {
 };
 
 function crearCuartetas() { return { cuarteta_m: { nombre:'La Cuarteta Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, cuarteta_md: { nombre:'La Cuarteta Medio Día', hora:'1:00 PM', numeros:[], estado:'pendiente' }, cuarteta_t: { nombre:'La Cuarteta Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, cuarteta_n: { nombre:'La Cuarteta Noche', hora:'9:00 PM', numeros:[], estado:'pendiente' } }; }
-function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más · Súper Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,15], cant:2 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'12:00 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 } }; }
+function crearJuegosEspeciales() { return { pega3mas: { nombre:'Pega 3 Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'pega3', numeros:[], estado:'pendiente', rango:[0,50], cant:3 }, superkino: { nombre:'Super Kino TV', empresa:'LEIDSA', hora:'9:00 PM', tipo:'kino', numeros:[], estado:'pendiente', rango:[1,84], cant:20 }, loto: { nombre:'Loto', empresa:'LEIDSA', hora:'9:00 PM', tipo:'loto', numeros:[], estado:'pendiente', rango:[1,40], cant:6 }, lotomas: { nombre:'Loto Más · Súper Más', empresa:'LEIDSA', hora:'9:00 PM', tipo:'lotomas', numeros:[], estado:'pendiente', rango:[1,15], cant:2 }, quemaito: { nombre:'El Quemaito Mayor', empresa:'LOTEDOM', hora:'12:00 PM', tipo:'quiniela', numeros:[], estado:'pendiente', rango:[0,99], cant:1 }, megachance:{ nombre:'Mega Chance', empresa:'LOTEKA', hora:'7:55 PM', tipo:'chance', numeros:[], estado:'pendiente', rango:[0,99], cant:5 }, pega4king: { nombre:'Pega 4 Real', empresa:'REAL', hora:'12:55 PM', tipo:'pega4', numeros:[], estado:'pendiente', rango:[0,9], cant:4 }, loto5: { nombre:'Loto 5', empresa:'LA PRIMERA', hora:'8:00 PM', tipo:'loto5', numeros:[], estado:'pendiente', rango:[1,38], cant:6 }, lotopoolreal: { nombre:'Loto Pool Real', empresa:'REAL', hora:'1:00 PM', tipo:'lotopool', numeros:[], estado:'pendiente', rango:[0,99], cant:4 }, lotopoolleidsa: { nombre:'Loto Pool Leidsa', empresa:'LEIDSA', hora:'8:55 PM', tipo:'lotopool', numeros:[], estado:'pendiente', rango:[0,31], cant:5 } }; }
 function crearSorteos() { return { anguila_m: { nombre:'Anguila Mañana', hora:'10:00 AM', numeros:[], estado:'pendiente' }, laprimera: { nombre:'La Primera Día', hora:'10:30 AM', numeros:[], estado:'pendiente' }, lotedom: { nombre:'LoteDom', hora:'12:00 PM', numeros:[], estado:'pendiente' }, suerte: { nombre:'La Suerte 12:30', hora:'12:30 PM', numeros:[], estado:'pendiente' }, king_t: { nombre:'King Tarde', hora:'12:30 PM', numeros:[], estado:'pendiente' }, real_t: { nombre:'Lotería Real', hora:'12:30 PM', numeros:[], estado:'pendiente' }, anguila_t: { nombre:'Anguila 1:00 PM', hora:'1:00 PM', numeros:[], estado:'pendiente' }, gana_mas: { nombre:'Gana Más', hora:'2:30 PM', numeros:[], estado:'pendiente' }, new_york_t: { nombre:'New York Tarde', hora:'3:30 PM', numeros:[], estado:'pendiente' }, florida_d: { nombre:'Florida Día', hora:'2:00 PM', numeros:[], estado:'pendiente' }, suerte_t2: { nombre:'La Suerte Tarde', hora:'6:00 PM', numeros:[], estado:'pendiente' }, anguila_n: { nombre:'Anguila 6:00 PM', hora:'6:00 PM', numeros:[], estado:'pendiente' }, king_n: { nombre:'King Noche', hora:'7:00 PM', numeros:[], estado:'pendiente' }, loteka: { nombre:'Loteka', hora:'6:55 PM', numeros:[], estado:'pendiente' }, laprimera_n: { nombre:'La Primera Noche', hora:'8:00 PM', numeros:[], estado:'pendiente' }, leidsa: { nombre:'Leidsa', hora:'8:55 PM', numeros:[], estado:'pendiente' }, nacional: { nombre:'Lotería Nacional', hora:'9:00 PM', numeros:[], estado:'pendiente' }, anguila_nn: { nombre:'Anguila 9:00 PM', hora:'9:00 PM', numeros:[], estado:'pendiente' }, new_york_n: { nombre:'New York Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' }, florida_n: { nombre:'Florida Noche', hora:'10:30 PM', numeros:[], estado:'pendiente' } }; }
 
 const MAPA = { 'anguila mañana': 'anguila_m', 'anguila medio día': 'anguila_t', 'anguila tarde': 'anguila_n', 'anguila noche': 'anguila_nn', 'la primera día': 'laprimera', 'primera noche': 'laprimera_n', 'quiniela lotedom': 'lotedom', 'lotedom': 'lotedom', 'la suerte 12:30': 'suerte', 'la suerte 18:00': 'suerte_t2', 'quiniela real': 'real_t', 'lotería real': 'real_t', 'gana más': 'gana_mas', 'new york tarde': 'new_york_t', 'new york noche': 'new_york_n', 'quiniela leidsa': 'leidsa', 'lotería nacional': 'nacional', 'quiniela loteka': 'loteka', 'king lottery 12:30': 'king_t', 'king lottery 7:30': 'king_n', 'florida día': 'florida_d', 'florida noche': 'florida_n', 'la suerte tarde': 'suerte_t2', 'king tarde': 'king_t', 'king noche': 'king_n' };
@@ -482,6 +482,46 @@ const ENLOTERIA_ESPECIAL_SLUGS = {
   'el-quemaito-mayor': 'quemaito',
 };
 
+// ── JUEGOS NUEVOS: Loto 5 (La Primera), Loto Pool Real, Loto Pool Leidsa ─────
+// Loto 5: 5 números (1-38) + bolo "5+" (1-10) → se guardan los 6.
+// Loto Pool Real: 4 números (00-99). Loto Pool Leidsa: 5 números (00-31).
+// Se prueban varios nombres de página y SOLO se acepta un resultado que cumpla
+// la forma del juego (cantidad y rango), así no se mezcla con otro "Loto Pool".
+const ESPECIALES_NUEVOS = {
+  loto5:          { enl: ['loto-5', 'loto-5-la-primera', 'la-primera-loto-5'], wu: ['loto-5'],
+                    valida: n => n.length === 6 && n.slice(0, 5).every(x => x >= 1 && x <= 38) && n[5] >= 1 && n[5] <= 10 },
+  lotopoolreal:   { enl: ['loto-pool-real', 'real-loto-pool', 'loto-pool'], wu: ['loto-pool', 'loto-pool-real'],
+                    valida: n => n.length === 4 && n.every(x => x >= 0 && x <= 99) },
+  lotopoolleidsa: { enl: ['loto-pool', 'loto-pool-leidsa', 'leidsa-loto-pool'], wu: ['loto-pool-leidsa'],
+                    valida: n => n.length === 5 && n.every(x => x >= 0 && x <= 31) },
+};
+const slugNuevoOk = {}; // clave → slug de Enloteria que funcionó
+async function leerNuevoEnloteria(clave, fecha) {
+  const cfg = ESPECIALES_NUEVOS[clave];
+  const slugs = slugNuevoOk[clave] ? [slugNuevoOk[clave]] : cfg.enl;
+  for (const slug of slugs) {
+    try {
+      const url = fecha ? `https://enloteria.com/resultados-${slug}-${fecha}` : `https://enloteria.com/resultados-${slug}-hoy`;
+      const r = await axios.get(url, { headers: HEADERS, timeout: 15000 });
+      const nums = extraerResultadoHoyEnloteria(r.data, 1, fecha || null, true);
+      if (cfg.valida(nums)) { slugNuevoOk[clave] = slug; return nums; }
+    } catch (e) {}
+  }
+  return null;
+}
+async function scrapeEspecialesNuevos() {
+  let conteo = 0;
+  for (const clave of Object.keys(ESPECIALES_NUEVOS)) {
+    const j = estado.especiales[clave];
+    if (!j || j.numeros.length >= j.cant) continue;
+    const m = horaTextoAMinutos(j.hora);
+    if (m !== null && minutosActualesRD() < m) continue; // todavía no se ha jugado
+    const nums = await leerNuevoEnloteria(clave);
+    if (nums) { j.numeros = nums; j.estado = 'disponible'; conteo++; }
+  }
+  return conteo;
+}
+
 async function scrapeEspecialesEnloteria() {
   const pendientes = Object.entries(ENLOTERIA_ESPECIAL_SLUGS).filter(([, clave]) => {
     const j = estado.especiales[clave];
@@ -668,6 +708,10 @@ async function scrapeWuloteria() {
       }
       // En Wuloteria "loto" es OTRO juego (sale días que LEIDSA no juega); el de LEIDSA con sus 2 bolos extra es "loto-mas" (8 números)
       if (r.slug === 'loto-mas' && r.numeros.length >= 8 && repartirLoto(r.numeros)) { conteo++; continue; }
+      const kn = Object.keys(ESPECIALES_NUEVOS).find(k => ESPECIALES_NUEVOS[k].wu.includes(r.slug));
+      if (kn && estado.especiales[kn] && estado.especiales[kn].numeros.length < estado.especiales[kn].cant && ESPECIALES_NUEVOS[kn].valida(r.numeros)) {
+        estado.especiales[kn].numeros = r.numeros; estado.especiales[kn].estado = 'disponible'; conteo++; continue;
+      }
       const ke = WULOTERIA_ESPECIALES[r.slug];
       const juego = ke && estado.especiales[ke];
       if (juego && juego.numeros.length < juego.cant && r.numeros.length === juego.cant) {
@@ -1264,6 +1308,7 @@ async function sincronizar() {
     await scrapeWuloteria(); // Cuarteta + Pega 3 Más (fuente principal) y respaldo de Kino/MegaChance/Quemaito
     if (Object.values(estado.cuartetas).filter(c => c.numeros.length < 4).length > 0) await scrapeCuartetaLotDominicanas();
     if (Object.values(estado.especiales).filter(e => e.numeros.length < e.cant).length > 0) await scrapeEspecialesEnloteria();
+    await scrapeEspecialesNuevos();
     
     estado.hora_actualizacion = horaRD();
     guardarEnDisco();
@@ -1304,7 +1349,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.4-TEORIA-COMPLETA', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.5-JUEGOS-NUEVOS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1528,6 +1573,14 @@ function evaluarJugadaServidor(jugada, sorteoActual) {
     aciertos = nums.filter((n, i) => real[i] === n).length;
     gano = aciertos === 3;
     detalle = `${aciertos} en posición exacta`;
+  } else if (jugada.clave === 'loto5' || jugada.clave === 'lotopoolleidsa') {
+    aciertos = nums.filter(n => real.slice(0, 5).includes(n)).length;
+    gano = aciertos >= 3;
+    detalle = `${aciertos} de 5`;
+  } else if (jugada.clave === 'lotopoolreal') {
+    aciertos = nums.filter(n => real.slice(0, 4).includes(n)).length;
+    gano = aciertos >= 2;
+    detalle = `${aciertos} de 4${aciertos === 1 ? ' (solo devuelve lo jugado)' : ''}`;
   } else if (jugada.clave === 'megachance') {
     aciertos = nums.filter(n => real.includes(n)).length;
     gano = aciertos >= 2;
@@ -1612,12 +1665,12 @@ const AUTO = {
   // Se puede cambiar con la variable de entorno AUTO_LOTERIAS=leidsa,real_t,...
   loterias: (process.env.AUTO_LOTERIAS || 'laprimera,real_t,gana_mas,loteka,leidsa,nacional').split(',').map(s => s.trim()).filter(Boolean),
   superpales: [['real_t', 'gana_mas'], ['leidsa', 'nacional']],
-  especiales: ['superkino', 'pega3mas', 'megachance', 'quemaito', 'loto'], // Loto Más no es un ticket aparte: son los bolos extra del Loto
+  especiales: ['superkino', 'pega3mas', 'megachance', 'quemaito', 'loto', 'loto5', 'lotopoolreal', 'lotopoolleidsa'], // Loto Más no es un ticket aparte: son los bolos extra del Loto
   cuartetas: ['cuarteta_m', 'cuarteta_md', 'cuarteta_t', 'cuarteta_n'],
   ticketsEspecial: 3,           // 3 predichos + 3 de control por juego especial
   ventanaMin: 75,               // se generan entre 75 y 0 minutos antes del sorteo
   diasLoto: ['Wed', 'Sat'],     // Loto / Loto Más solo miércoles y sábado
-  horasDomingo: { leidsa: '3:55 PM', pega3mas: '3:55 PM', superkino: '3:55 PM', nacional: '6:00 PM' },
+  horasDomingo: { leidsa: '3:55 PM', pega3mas: '3:55 PM', superkino: '3:55 PM', nacional: '6:00 PM', lotopoolleidsa: '3:55 PM' },
   // Pagos por cada RD$1 (los más comunes en bancas de RD; AJUSTAR a su banca)
   pagos: {
     punto: [60, 8, 4],                                 // 1ra, 2da, 3ra
@@ -1633,6 +1686,9 @@ const AUTO_TICKETS = {
   lotomas:    { min: 1, max: 40, n: 7 },
   megachance: { min: 0, max: 99, n: 5 },
   quemaito:   { min: 0, max: 99, n: 1 },
+  loto5:          { min: 1, max: 38, n: 5, principales: 5 }, // el 6to número es el bolo 5+ (1-10), no se juega en el ticket
+  lotopoolreal:   { min: 0, max: 99, n: 4 },
+  lotopoolleidsa: { min: 0, max: 31, n: 5 },
   cuarteta:   { min: 0, max: 99, n: 4 },
 };
 // Probabilidad exacta de ganar AL AZAR con 1 jugada (quiniela: 3 bolos 00-99
@@ -1688,7 +1744,7 @@ function serieDe(tipo, clave) {
 }
 function rangoReal(cfg, serie) {
   let max = cfg.max;
-  for (const nums of serie) for (const n of nums) if (n > max && n <= 99) max = n; // p.ej. el Kino trae 81-84
+  if (cfg.max === 80) for (const nums of serie) for (const n of nums) if (n > max && n <= 99) max = n; // el Kino trae 81-84
   return { min: cfg.min, max };
 }
 function rankingFrecuencia(serie, min, max) {
@@ -1767,7 +1823,7 @@ function generarSuperpaleAuto(c1, c2, hoy, hora) {
 }
 function generarEspecialAuto(clave, hoy, hora) {
   const cfg = AUTO_TICKETS[clave];
-  const serie = serieDe('especiales', clave);
+  const serie = serieDe('especiales', clave).map(n => (cfg && cfg.principales ? n.slice(0, cfg.principales) : n));
   if (!cfg || serie.length < 3) return { jugadas: [], motivo: `sin historial suficiente (${serie.length} sorteos)` };
   const { min, max } = rangoReal(cfg, serie);
   const base = { clave, fecha: hoy, hora_sorteo: hora, grupo: `e|${clave}`, generado_rd: horaRD(), tipo: 'especial' };
@@ -1989,6 +2045,8 @@ function evaluarAuto(j) {
   if (!real || (e && e.cant && real.length < e.cant)) return null;
   let aciertos, gano;
   if (j.clave === 'pega3mas') { aciertos = nums.filter((n, i) => real[i] === n).length; gano = aciertos === 3; }
+  else if (j.clave === 'loto5' || j.clave === 'lotopoolleidsa') { aciertos = nums.filter(n => real.slice(0, 5).includes(n)).length; gano = aciertos >= 3; }
+  else if (j.clave === 'lotopoolreal') { aciertos = emparejar(nums, real.slice(0, 4)); gano = aciertos >= 2; } // 1 acierto solo devuelve lo jugado
   else {
     aciertos = j.clave === 'megachance' ? emparejar(nums, real) : nums.filter(n => real.includes(n)).length;
     gano = j.clave === 'superkino' ? (aciertos === 0 || aciertos >= 5)
@@ -2061,7 +2119,7 @@ async function enviarResumenAutoDelDia() {
   autoResumenEnviado = hoy;
   if (!filas.length || yaEnviado('resumen-auto')) return;
   await marcarEnviado('resumen-auto');
-  const nom = { punto: 'Punto', pale: 'Palé', tripleta: 'Tripleta', superpale: 'Súper Palé', cuarteta: 'Cuarteta', superkino: 'Kino', pega3mas: 'Pega 3 Más', megachance: 'Mega Chance', quemaito: 'Quemaito', loto: 'Loto', lotomas: 'Loto Más' };
+  const nom = { punto: 'Punto', pale: 'Palé', tripleta: 'Tripleta', superpale: 'Súper Palé', cuarteta: 'Cuarteta', superkino: 'Kino', pega3mas: 'Pega 3 Más', megachance: 'Mega Chance', quemaito: 'Quemaito', loto: 'Loto', lotomas: 'Loto Más', loto5: 'Loto 5', lotopoolreal: 'Loto Pool Real', lotopoolleidsa: 'Loto Pool Leidsa' };
   const fmt = x => x ? `${x.ganadas}/${x.evaluadas}${x.retorno_por_peso !== null ? ` · ret ${x.retorno_por_peso}` : ''}` : '—';
   const lineas = agregarAuditoria(filas).map(f => `• <b>${nom[f.tipo] || f.tipo}</b>: 🤖 ${fmt(f.auto)}  |  🎲 ${fmt(f.control)}`);
   await enviarTelegram(`📒 <b>RESUMEN JUGADAS AUTOMÁTICAS</b> — ${hoy}\n<i>ganadas/evaluadas · ret = lo que devolvió cada RD$1 (1.0 = quedó igual)</i>\n🤖 sistema  |  🎲 azar (control)\n\n${lineas.join('\n')}`);
@@ -2390,6 +2448,60 @@ app.get('/api/backfill-quinielas', async (req, res) => {
   finally { estadoBackfill.activo = false; }
 });
 
+
+// ── JUEGOS NUEVOS: ver qué publica cada fuente + rellenar historial ───────
+app.get('/api/debug-especiales-nuevos', async (req, res) => {
+  const out = { hoy: Object.fromEntries(Object.keys(ESPECIALES_NUEVOS).map(k => [k, estado.especiales[k]])), slug_que_funciono: slugNuevoOk, enloteria: {}, wuloteria: null };
+  for (const [clave, cfg] of Object.entries(ESPECIALES_NUEVOS)) {
+    out.enloteria[clave] = {};
+    for (const slug of cfg.enl) {
+      try {
+        const r = await axios.get(`https://enloteria.com/resultados-${slug}-hoy`, { headers: HEADERS, timeout: 15000 });
+        const $ = cheerio.load(r.data); const card = $('.result-card').first();
+        const nums = card.find('.result-number').map((_, e) => parseInt($(e).text().trim(), 10)).get().filter(n => !isNaN(n));
+        out.enloteria[clave][slug] = { fecha: card.find('.result-date').first().text().trim(), numeros: nums, valido: cfg.valida(nums) };
+      } catch (e) { out.enloteria[clave][slug] = { error: e.response?.status || e.message }; }
+    }
+  }
+  try {
+    const r = await axios.get('https://wuloteria.com/', { headers: HEADERS, timeout: 15000 });
+    out.wuloteria = parsearWuloteria(r.data).filter(x => /loto|pool/i.test(x.slug));
+  } catch (e) { out.wuloteria = { error: e.response?.status || e.message }; }
+  res.json(out);
+});
+// /api/backfill-especiales-nuevos?desde=2026-10-05&hasta=2026-10-18&guardar=1  (máx. 15 días)
+app.get('/api/backfill-especiales-nuevos', async (req, res) => {
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const { desde, hasta } = req.query; const guardar = req.query.guardar === '1';
+  if (!desde || !hasta) return res.status(400).json({ error: 'Faltan desde y hasta (AAAA-MM-DD)' });
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, fuente: 'especiales-nuevos', modo: guardar ? 'GUARDAR' : 'SIMULACION', rango: `${desde} → ${hasta}` });
+  const logBF = m => { console.log(`[BF-NUEVOS] ${m}`); estadoBackfill.log.push(m); };
+  let total = 0;
+  try {
+    for (const f of listaFechas(desde, hasta).filter(x => x < fechaRD())) {
+      const base = estado.historico.find(d => d.fecha === f);
+      if (!base) { logBF(`${f}: día no está en el historial`); continue; }
+      base.especiales = { ...crearJuegosEspeciales(), ...(base.especiales || {}) };
+      const partes = [];
+      for (const clave of Object.keys(ESPECIALES_NUEVOS)) {
+        const ya = base.especiales[clave];
+        if (ya && Array.isArray(ya.numeros) && ya.numeros.length >= crearJuegosEspeciales()[clave].cant) { partes.push(`${clave} ya estaba`); continue; }
+        const nums = await leerNuevoEnloteria(clave, f);
+        if (nums) { base.especiales[clave] = { ...crearJuegosEspeciales()[clave], numeros: nums, estado: 'disponible' }; partes.push(`${clave} ${nums.join('-')}`); total++; }
+        else partes.push(`${clave} sin dato`);
+        await new Promise(r => setTimeout(r, 800));
+      }
+      logBF(`${f}: ${partes.join(' · ')}`);
+      if (guardar) await guardarEnSupabase(base);
+    }
+    if (guardar) guardarEnDisco();
+    estadoBackfill.resumen = { sorteos_nuevos: total, slugs: slugNuevoOk };
+    logBF(`✅ Listo: ${total} sorteos ${guardar ? 'guardados' : '(simulación)'}`);
+  } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
+});
+
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
   res.sendStatus(200); 
@@ -2413,7 +2525,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.4-TEORIA-COMPLETA en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.5-JUEGOS-NUEVOS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
