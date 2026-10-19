@@ -1248,6 +1248,7 @@ async function sincronizar() {
     }
 
     await cargarEnviados(); // nuevo día → lista vacía; mismo día → no hace nada
+    aplicarHorasDelDia();
     await scrapeConectateAPI();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeLotDominicanas();
     if (Object.values(estado.sorteos).filter(s => s.numeros.length < 3).length > 0) await scrapeEnloteria();
@@ -1296,7 +1297,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.2-SIN-REPETIDOS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.4-TEORIA-COMPLETA', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1609,7 +1610,7 @@ const AUTO = {
   ticketsEspecial: 3,           // 3 predichos + 3 de control por juego especial
   ventanaMin: 75,               // se generan entre 75 y 0 minutos antes del sorteo
   diasLoto: ['Wed', 'Sat'],     // Loto / Loto Más solo miércoles y sábado
-  horasDomingo: { leidsa: '3:55 PM', pega3mas: '3:55 PM', superkino: '3:55 PM' },
+  horasDomingo: { leidsa: '3:55 PM', pega3mas: '3:55 PM', superkino: '3:55 PM', nacional: '6:00 PM' },
   // Pagos por cada RD$1 (los más comunes en bancas de RD; AJUSTAR a su banca)
   pagos: {
     punto: [60, 8, 4],                                 // 1ra, 2da, 3ra
@@ -1709,6 +1710,17 @@ function completar(base, ranking, n, min, max) {
   const out = [];
   for (const x of [...base, ...ranking]) { if (x >= min && x <= max && !out.includes(x)) out.push(x); if (out.length === n) break; }
   return out;
+}
+// Pone en el estado la hora real de hoy (los domingos LEIDSA y Nacional juegan temprano),
+// así las predicciones, los avisos y la app muestran la hora correcta.
+function aplicarHorasDelDia() {
+  const dom = diaSemanaRD() === 'Sun';
+  const baseS = crearSorteos(), baseE = crearJuegosEspeciales();
+  for (const [k, h] of Object.entries(AUTO.horasDomingo)) {
+    const obj = estado.sorteos[k] || estado.especiales[k];
+    const base = baseS[k] || baseE[k];
+    if (obj && base) obj.hora = dom ? h : base.hora;
+  }
 }
 function horaDeHoy(clave, horaBase) {
   if (diaSemanaRD() === 'Sun' && AUTO.horasDomingo[clave]) return AUTO.horasDomingo[clave];
@@ -2113,8 +2125,23 @@ function analizarRepetidosDia(dia) {
            esperado: +(numsNoche * p).toFixed(2), varianza: numsNoche * p * (1 - p),
            pct: numsNoche ? +(100 * aciertos / numsNoche).toFixed(1) : 0, pctEsperado: +(100 * p).toFixed(1), cuales };
 }
+// La memoria del servidor solo guarda 90 días (y cada día se cae el más viejo).
+// Para la teoría ⚡ se lee TODO el historial de Supabase una vez al día.
+let histTeoria = { fecha: null, filas: [] };
+async function cargarHistTeoria() {
+  if (!SUPABASE_ACTIVO || histTeoria.fecha === fechaRD()) return;
+  try {
+    const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos&order=fecha.asc&limit=3000`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 30000 });
+    histTeoria = { fecha: fechaRD(), filas: r.data || [] };
+  } catch (e) { console.log('[TEORIA] no se pudo leer el historial completo:', e.message); }
+}
 function analisisRepetidosAcumulado() {
-  const dias = [...estado.historico, { fecha: estado.fecha, sorteos: estado.sorteos }]
+  const porFecha = {};
+  for (const d of histTeoria.filas) porFecha[d.fecha] = d;
+  for (const d of estado.historico) porFecha[d.fecha] = d;           // lo de memoria es más nuevo
+  porFecha[estado.fecha] = { fecha: estado.fecha, sorteos: estado.sorteos };
+  const dias = Object.values(porFecha)
     .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
     .map(analizarRepetidosDia).filter(Boolean);
   let obs = 0, esp = 0, vari = 0, nums = 0, arriba = 0, abajo = 0;
@@ -2138,6 +2165,7 @@ async function enviarAnalisisRepetidos() {
   analisisRepEnviado = hoy;
   if (yaEnviado('teoria')) return;
   await marcarEnviado('teoria');
+  await cargarHistTeoria();
   const d = analizarRepetidosDia({ fecha: hoy, sorteos: estado.sorteos });
   const a = analisisRepetidosAcumulado();
   const f2 = n => String(n).padStart(2, '0');
@@ -2147,9 +2175,13 @@ async function enviarAnalisisRepetidos() {
     : 'Hoy faltan resultados para medirlo.';
   await enviarTelegram(`⚡ <b>TEORÍA DE LOS REPETIDOS</b> — ${hoy}\n\n${hoyTxt}\n\n📚 <b>Acumulado ${a.dias} días:</b> ${a.observados} de ${a.numeros_noche} (${a.pct}%) vs ${a.pct_esperado}% esperado\n     Días por encima: ${a.dias_arriba} · por debajo: ${a.dias_abajo}\n     Veredicto: <i>${a.veredicto}</i>`);
 }
-app.get('/api/analisis-repetidos', (req, res) => {
+app.get('/api/analisis-repetidos', async (req, res) => {
+  await cargarHistTeoria();
   const a = analisisRepetidosAcumulado();
-  res.json({ ...a, detalle: a.detalle.map(({ varianza, ...x }) => x).reverse() });
+  // días guardados que no cuentan por tener pocas loterías (menos de 6 de día o 3 de noche)
+  const cuentan = new Set(a.detalle.map(d => d.fecha));
+  const incompletos = [...new Set([...histTeoria.filas, ...estado.historico].map(d => d.fecha))].filter(f => f !== estado.fecha && !cuentan.has(f)).sort();
+  res.json({ ...a, dias_guardados_que_no_cuentan: incompletos, detalle: a.detalle.map(({ varianza, ...x }) => x).reverse() });
 });
 
 
@@ -2317,7 +2349,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.2-SIN-REPETIDOS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.4-TEORIA-COMPLETA en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
