@@ -47,6 +47,11 @@ async function notificarNuevosSorteos() {
   if (nuevos.length === 0) return;
   for (const n of nuevos) yaNotificado[n.clave] = true;
   if (esArranque) return;
+  // otra copia del servidor (deploy/reinicio) ya pudo haberlos avisado
+  const sinAvisar = nuevos.filter(n => !yaEnviado(`res|${n.clave}`));
+  if (!sinAvisar.length) return;
+  nuevos.length = 0; nuevos.push(...sinAvisar);
+  await marcarEnviado(nuevos.map(n => `res|${n.clave}`));
 
   const f2 = x => String(x).padStart(2, '0');
 
@@ -975,7 +980,9 @@ async function cazarAciertos({ enviar = true } = {}) {
       yaChequeado[`${clave}|radar`] = true;
     }
 
+    if (!yaChequeado[`${clave}|punto`] && yaEnviado(`radar|${clave}`)) yaChequeado[`${clave}|punto`] = true;
     if (!yaChequeado[`${clave}|punto`]) {
+      if (enviar) await marcarEnviado(`radar|${clave}`);
       totalSorteos++;
       if (serie.length >= 2) {
         const pesosP = {};
@@ -1852,12 +1859,14 @@ async function cargarEnviados() {
   catch (e) { console.log('[ENVIADOS] no se pudo leer:', e.message); }
 }
 function yaEnviado(tag) { return enviadosFecha === fechaRD() && enviadosHoy.has(tag); }
-async function marcarEnviado(tag) {
+async function marcarEnviado(...tags) {
   const hoy = fechaRD();
   if (enviadosFecha !== hoy) { enviadosHoy.clear(); enviadosFecha = hoy; }
-  enviadosHoy.add(tag);
+  tags = tags.flat().filter(Boolean);
+  if (!tags.length) return;
+  tags.forEach(t => enviadosHoy.add(t));
   if (!SUPABASE_ACTIVO) return;
-  await upsertJugadas([{ id: `sys|${hoy}|${tag}`, clave: 'sistema', fecha: hoy, tipo: 'sistema', numeros: [], origen: 'sistema', grupo: tag, notificado: true, evaluado: true }]);
+  await upsertJugadas(tags.map(tag => ({ id: `sys|${hoy}|${tag}`, clave: 'sistema', fecha: hoy, tipo: 'sistema', numeros: [], origen: 'sistema', grupo: tag, notificado: true, evaluado: true })));
 }
 async function asegurarAutoHechos(hoy) {
   if (autoHechosFecha === hoy) return true;
@@ -2322,6 +2331,61 @@ app.get('/api/backfill-loto-mas', async (req, res) => {
     if (guardar) guardarEnDisco();
     estadoBackfill.resumen = { sorteos: n };
     logBF(`✅ Listo: ${n} sorteos de Loto con bolos extra ${guardar ? 'guardados' : '(simulación)'}`);
+  } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
+  finally { estadoBackfill.activo = false; }
+});
+
+
+// ── QUINIELAS: rellenar días incompletos lotería por lotería (Enloteria por fecha) ──
+// La página general "resultados-loterias-FECHA" no trae todas; las páginas de cada
+// lotería sí (así se completó la Anguila). Solo rellena lo que falta, nunca sobrescribe.
+// Uso: /api/backfill-quinielas?desde=2026-08-05&hasta=2026-08-19&guardar=1  (máx. 15 días por llamada)
+app.get('/api/backfill-quinielas', async (req, res) => {
+  if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
+  const { desde, hasta } = req.query; const guardar = req.query.guardar === '1';
+  if (!desde || !hasta) return res.status(400).json({ error: 'Faltan desde y hasta (AAAA-MM-DD)' });
+  estadoBackfill = { activo: true, inicio: new Date().toISOString(), log: [], resumen: null };
+  res.json({ iniciado: true, fuente: 'quinielas-enloteria', modo: guardar ? 'GUARDAR' : 'SIMULACION', rango: `${desde} → ${hasta}` });
+  const logBF = m => { console.log(`[BF-QUI] ${m}`); estadoBackfill.log.push(m); };
+  const pausa = ms => new Promise(r => setTimeout(r, ms));
+  let totalNuevos = 0, diasGuardados = 0;
+  try {
+    const fechas = listaFechas(desde, hasta).filter(f => f < fechaRD());
+    const existentes = {};
+    if (SUPABASE_ACTIVO && fechas.length) {
+      try {
+        const cols = columnaAnguilas ? 'fecha,sorteos,cuartetas,especiales,anguilas' : 'fecha,sorteos,cuartetas,especiales';
+        const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=${cols}&fecha=gte.${fechas[0]}&fecha=lte.${fechas[fechas.length - 1]}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 15000 });
+        for (const row of r.data) existentes[row.fecha] = row;
+      } catch (e) { logBF(`AVISO Supabase: ${e.message}`); }
+    }
+    for (const f of fechas) {
+      const base = existentes[f] || estado.historico.find(d => d.fecha === f) || { fecha: f, sorteos: {}, cuartetas: crearCuartetas(), especiales: crearJuegosEspeciales() };
+      base.sorteos = { ...crearSorteos(), ...(base.sorteos || {}) };
+      let nuevos = 0, yaTenia = 0, sinDato = 0;
+      for (const [slug, clave] of Object.entries(ENLOTERIA_SORTEO_SLUGS)) {
+        const s = base.sorteos[clave];
+        if (s && Array.isArray(s.numeros) && s.numeros.length >= 3) { yaTenia++; continue; }
+        try {
+          const r = await axios.get(`https://enloteria.com/resultados-${slug}-${f}`, { headers: HEADERS, timeout: 15000 });
+          const nums = extraerResultadoHoyEnloteria(r.data, 3, f);
+          if (nums.length === 3 && !nums.every(x => x === nums[0])) { base.sorteos[clave] = { ...crearSorteos()[clave], numeros: nums, estado: 'disponible' }; nuevos++; }
+          else sinDato++;
+        } catch (e) { sinDato++; }
+        await pausa(900);
+      }
+      logBF(`${f}: +${nuevos} nuevas · ${yaTenia} ya estaban · ${sinDato} sin dato`);
+      totalNuevos += nuevos;
+      if (nuevos && guardar) {
+        await guardarEnSupabase(base); diasGuardados++;
+        const idx = estado.historico.findIndex(d => d.fecha === f);
+        if (idx >= 0) estado.historico[idx] = { ...estado.historico[idx], sorteos: base.sorteos };
+      }
+    }
+    if (guardar) { guardarEnDisco(); histTeoria.fecha = null; } // que la teoría ⚡ relea el historial
+    estadoBackfill.resumen = { dias: fechas.length, sorteos_nuevos: totalNuevos, dias_guardados: diasGuardados };
+    logBF(`✅ Listo: ${totalNuevos} sorteos nuevos en ${diasGuardados} días ${guardar ? 'guardados' : '(simulación)'}`);
   } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
   finally { estadoBackfill.activo = false; }
 });
