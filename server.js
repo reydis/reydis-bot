@@ -2143,7 +2143,10 @@ app.get('/api/jugadas', async (req, res) => {
   const dias = Math.min(120, Math.max(1, parseInt(req.query.dias, 10) || 7));
   const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   try {
-    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc&limit=3000`);
+    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control,lab)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc&limit=4000`);
+    // las del laboratorio llevan el nombre de su estrategia
+    const nombres = Object.fromEntries(((typeof labCargar === 'function' ? await labCargar() : []) || []).map(e => [e.id, e.nombre]));
+    for (const f of filas) if (f.origen === 'lab') f.estrategia = nombres[f.metodo] || f.metodo;
     res.json({ jugadas: filas, desde });
   } catch (e) { res.json({ jugadas: [], error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
 });
@@ -2692,7 +2695,16 @@ async function labEvaluar() {
     const { premio, aciertos } = labCobro((j.numeros || []).map(Number), real);
     listas.push({ ...j, resultado: real, aciertos, premio, gano: premio > 0, evaluado: true, evaluado_en: new Date().toISOString() });
   }
-  if (listas.length) await upsertJugadas(listas);
+  if (!listas.length) return;
+  if (!(await upsertJugadas(listas))) return;
+  // aviso por Telegram cuando una estrategia del laboratorio pega
+  const pegaron = listas.filter(j => j.origen === 'lab' && j.premio > 0);
+  if (pegaron.length && TG_ACTIVO) {
+    const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre]));
+    const f2 = n => String(n).padStart(2, '0');
+    await enviarTelegram(`🧪 <b>¡PEGÓ EN EL LABORATORIO!</b> (en papel)\n\n` + pegaron.map(j =>
+      `🎯 <b>${nombres[j.metodo] || j.metodo}</b> — ${estado.sorteos[j.clave]?.nombre || j.clave}\n     Jugó: ${j.numeros.map(f2).join('-')} · salió ${j.resultado.map(f2).join('-')}\n     Cobraría <b>RD$${j.premio}</b> por RD$${j.numeros.length} jugados`).join('\n\n'));
+  }
 }
 
 // ── backtest sobre todo el historial ──
