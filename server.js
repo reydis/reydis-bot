@@ -2569,7 +2569,8 @@ async function labCargar(forzar) {
   } catch (e) {
     labTablaOk = false;
     console.log('[LAB] falta la tabla estrategias:', e.response?.status || e.message);
-    return (labEstrategias = []);
+    labEstrategias = null; // no se guarda en caché: se vuelve a intentar en la próxima consulta
+    return [];
   }
 }
 
@@ -2739,7 +2740,7 @@ app.post('/api/lab/borrar', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/lab/ranking', async (req, res) => {
-  const ests = await labCargar();
+  const ests = await labCargar(true);
   await cargarHistTeoria();
   const dias = labDiasCompletos();
   const dias90 = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
