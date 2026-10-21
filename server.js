@@ -2739,6 +2739,20 @@ app.post('/api/lab/borrar', async (req, res) => {
   try { await axios.delete(`${SUPABASE_URL}/rest/v1/estrategias?id=eq.${encodeURIComponent(id)}`, { headers: SB_HEADERS(), timeout: 15000 }); await labCargar(true); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Números de HOY de cada estrategia activa, para los sorteos que todavía no han salido
+app.get('/api/lab/hoy', async (req, res) => {
+  const ests = (await labCargar(true)).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
+  const hoy = fechaRD();
+  const dias = [...estado.historico].filter(d => d.fecha < hoy).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).concat([{ fecha: hoy, sorteos: estado.sorteos }]);
+  const out = [];
+  for (const est of ests) for (const clave of labLoterias(est)) {
+    const s = estado.sorteos[clave]; if (!s || (s.numeros && s.numeros.length >= 3)) continue;
+    const c = labCandidatos(est, dias, dias.length - 1, clave); if (!c) continue;
+    out.push({ estrategia: est.id, nombre: est.nombre, clave, loteria: s.nombre, hora: horaDeHoy(clave, s.hora), minutos: horaTextoAMinutos(horaDeHoy(clave, s.hora)), numeros: c });
+  }
+  out.sort((a, b) => (a.minutos ?? 9999) - (b.minutos ?? 9999));
+  res.json({ fecha: hoy, jugadas: out, nota: "Si la estrategia usa 'la lotería anterior', sus números pueden cambiar cuando salga la próxima lotería." });
+});
 app.get('/api/lab/ranking', async (req, res) => {
   const ests = await labCargar(true);
   await cargarHistTeoria();
