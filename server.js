@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.8-LAB-FIJO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.9-VIGILANTE', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2814,8 +2814,53 @@ async function labResumenNoche() {
     const n = (f.numeros || []).length; if (f.origen === 'labctl') { a.cc += n; a.cw += +f.premio || 0; } else { a.c += n; a.w += +f.premio || 0; if (f.premio > 0) a.hits.push(estado.sorteos[f.clave]?.nombre || f.clave); } }
   const lineas = Object.entries(agg).sort((a, b) => (b[1].w - b[1].c) - (a[1].w - a[1].c)).map(([id, a]) =>
     `${a.w > a.c ? '🟢' : a.w > 0 ? '🟡' : '⚪'} <b>${ests[id] || id}</b>: jugó RD$${a.c} · cobró RD$${a.w}${a.hits.length ? ` (${a.hits.join(', ')})` : ''} · azar cobró RD$${a.cw}`);
-  await enviarTelegram(`🧪 <b>LABORATORIO DE ESTRATEGIAS</b> — ${hoy}\n<i>En papel: cada número = un punto de RD$1</i>\n\n${lineas.join('\n')}`);
+  const vig = await labVigilar();
+  await enviarTelegram(`🧪 <b>LABORATORIO DE ESTRATEGIAS</b> — ${hoy}\n<i>En papel: cada número = un punto de RD$1</i>\n\n${lineas.join('\n')}${vig}`);
 }
+
+// ── VIGILANTE (v9.9): con suficientes sorteos EN VIVO, pausa sola la estrategia que pierde
+// claramente contra el azar y avisa la que va claramente por encima.
+// Cada número = punto RD$1 que paga 60/8/4 → el azar devuelve 0.72 por peso, desviación ≈ 6.02 por número.
+async function leerJugadasTodas(query) { // Supabase devuelve máx. 1000 filas por consulta → se lee por páginas
+  const out = []; for (let off = 0; off < 200000; off += 1000) {
+    const p = await leerJugadas(`${query}&order=id.asc&limit=1000&offset=${off}`); out.push(...p); if (p.length < 1000) break; }
+  return out;
+}
+const LAB_MIN_SORTEOS = 60, LAB_Z_PAUSA = -2, LAB_Z_BUENA = 2;
+function labVivo(filas, desde) {
+  // se juzga por ACIERTOS (cada número tiene 3% de salir en algún premio) y el dinero como 2da condición
+  const r = { sorteos: 0, nums: 0, cobro: 0, aciertos: 0 };
+  for (const f of filas) { if (desde && f.fecha < desde) continue; r.sorteos++; r.nums += (f.numeros || []).length; r.cobro += Number(f.premio) || 0; r.aciertos += Number(f.aciertos) || 0; }
+  r.ret = r.nums ? r.cobro / r.nums : null;
+  r.esperados = +(0.03 * r.nums).toFixed(1);
+  r.z = r.nums ? +((r.aciertos - 0.03 * r.nums) / Math.sqrt(r.nums * 0.03 * 0.97)).toFixed(2) : 0;
+  return r;
+}
+async function labVigilar() {
+  let filas; try { filas = await leerJugadasTodas(`origen=eq.lab&evaluado=eq.true&select=id,metodo,numeros,premio,aciertos,fecha`); } catch (e) { return ''; }
+  const por = {}; for (const f of filas) (por[f.metodo] = por[f.metodo] || []).push(f);
+  const ests = (await labCargar(true)).filter(e => e.activa !== false);
+  const lin = []; let cambio = false;
+  for (const e of ests) {
+    const v = labVivo(por[e.id] || [], e.creado ? String(e.creado).slice(0, 10) : null);
+    if (!v.sorteos) continue;
+    let marca = '';
+    if (v.sorteos >= LAB_MIN_SORTEOS && v.z <= LAB_Z_PAUSA && v.ret < 0.72) {
+      try { await axios.patch(`${SUPABASE_URL}/rest/v1/estrategias?id=eq.${encodeURIComponent(e.id)}`, { activa: false }, { headers: SB_HEADERS(), timeout: 15000 }); cambio = true; marca = ' ⏸ <b>PAUSADA</b> (pierde claramente contra el azar)'; } catch (er) {}
+    } else if (v.sorteos >= LAB_MIN_SORTEOS && v.z >= LAB_Z_BUENA && v.ret > 0.72) marca = ' 🌟 va por encima del azar (sigue a prueba)';
+    else if (v.sorteos < LAB_MIN_SORTEOS) marca = ` · faltan ${LAB_MIN_SORTEOS - v.sorteos} sorteos para juzgarla`;
+    lin.push(`• ${e.nombre}: ${v.sorteos} sorteos · aciertos ${v.aciertos} (azar ~${v.esperados}) · ret ${v.ret.toFixed(2)}${marca}`);
+  }
+  if (cambio) await labCargar(true);
+  return lin.length ? `\n\n📈 <b>En vivo desde que empezó</b>\n${lin.join('\n')}` : '';
+}
+app.get('/api/lab/vivo', async (req, res) => {
+  let filas; try { filas = await leerJugadasTodas(`origen=eq.lab&evaluado=eq.true&select=id,metodo,numeros,premio,aciertos,fecha`); } catch (e) { return res.status(500).json({ error: e.message }); }
+  const por = {}; for (const f of filas) (por[f.metodo] = por[f.metodo] || []).push(f);
+  const ests = await labCargar(true);
+  res.json({ regla: `Con ${LAB_MIN_SORTEOS}+ sorteos: aciertos con z ≤ ${LAB_Z_PAUSA} y retorno < 0.72 → se pausa sola; z ≥ ${LAB_Z_BUENA} y retorno > 0.72 → se avisa como prometedora.`,
+    estrategias: ests.map(e => ({ id: e.id, nombre: e.nombre, activa: e.activa !== false, ...labVivo(por[e.id] || [], e.creado ? String(e.creado).slice(0, 10) : null) })) });
+});
 
 // ── WEBHOOK Telegram ───────────────────────────────────────────────────────
 app.post('/api/telegram-webhook', async (req, res) => {
@@ -2840,7 +2885,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.8-LAB-FIJO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.9-VIGILANTE en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
