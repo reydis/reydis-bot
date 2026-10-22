@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.7-LABORATORIO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.8-LAB-FIJO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2756,14 +2756,19 @@ app.get('/api/lab/hoy', async (req, res) => {
   const ests = (await labCargar(true)).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
   const hoy = fechaRD();
   const dias = [...estado.historico].filter(d => d.fecha < hoy).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).concat([{ fecha: hoy, sorteos: estado.sorteos }]);
+  // lo que YA quedó registrado hoy en Mis Jugadas (esos números ya no cambian)
+  const reg = {};
+  try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.lab&select=grupo,numeros,generado_rd`)).forEach(f => { reg[f.grupo] = f; }); } catch (e) {}
   const out = [];
   for (const est of ests) for (const clave of labLoterias(est)) {
     const s = estado.sorteos[clave]; if (!s || (s.numeros && s.numeros.length >= 3)) continue;
-    const c = labCandidatos(est, dias, dias.length - 1, clave); if (!c) continue;
-    out.push({ estrategia: est.id, nombre: est.nombre, clave, loteria: s.nombre, hora: horaDeHoy(clave, s.hora), minutos: horaTextoAMinutos(horaDeHoy(clave, s.hora)), numeros: c });
+    const r = reg[`lab|${est.id}|${clave}`];
+    const c = r ? (r.numeros || []).map(Number) : labCandidatos(est, dias, dias.length - 1, clave); if (!c || !c.length) continue;
+    out.push({ estrategia: est.id, nombre: est.nombre, clave, loteria: s.nombre, hora: horaDeHoy(clave, s.hora), minutos: horaTextoAMinutos(horaDeHoy(clave, s.hora)), numeros: c,
+      registrado: !!r, registrado_a: r ? r.generado_rd || null : null });
   }
   out.sort((a, b) => (a.minutos ?? 9999) - (b.minutos ?? 9999));
-  res.json({ fecha: hoy, jugadas: out, nota: "Si la estrategia usa 'la lotería anterior', sus números pueden cambiar cuando salga la próxima lotería." });
+  res.json({ fecha: hoy, jugadas: out, nota: "Los ✅ ya están registrados y no cambian. Los ⏳ todavía pueden cambiar hasta que se registren (~75 min antes)." });
 });
 app.get('/api/lab/ranking', async (req, res) => {
   const ests = await labCargar(true);
@@ -2835,7 +2840,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.7-LABORATORIO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.8-LAB-FIJO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
