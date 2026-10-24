@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.11-KINO-LAB', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.12-BORRAR', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1643,6 +1643,28 @@ async function notificarJugadasPersonales() {
   }
 }
 
+// 🗑 borrar una jugada SUYA (origen manual) también del servidor, para que no lleguen avisos de Telegram
+async function borrarManuales({ clave, fecha, numeros, clave2 }) {
+  let q = `origen=eq.manual&clave=eq.${encodeURIComponent(clave)}&fecha=eq.${fecha}`;
+  if (clave2) q += `&clave2=eq.${encodeURIComponent(clave2)}`;
+  if (Array.isArray(numeros) && numeros.length) { const arr = encodeURIComponent(JSON.stringify(numeros.map(Number))); q += `&numeros=cs.${arr}&numeros=cd.${arr}`; }
+  const r = await axios.delete(`${SUPABASE_URL}/rest/v1/jugadas?${q}`, { headers: { ...SB_HEADERS(), Prefer: 'return=representation' }, timeout: 15000 });
+  return (r.data || []).length;
+}
+app.post('/api/jugada/borrar', async (req, res) => {
+  const j = req.body || {};
+  if (!SUPABASE_ACTIVO || !j.clave || !j.fecha || !Array.isArray(j.numeros) || !j.numeros.length) return res.status(400).json({ error: 'Faltan campos' });
+  try { res.json({ ok: true, borradas: await borrarManuales(j) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// ver / limpiar las jugadas suyas guardadas en el servidor de un día: ?fecha=YYYY-MM-DD[&clave=superkino][&borrar=1]
+app.get('/api/jugadas-mias', async (req, res) => {
+  const fecha = req.query.fecha || fechaRD(); const clave = req.query.clave;
+  try {
+    if (req.query.borrar === '1') { if (!clave) return res.status(400).json({ error: 'Para borrar ponga también &clave=' }); return res.json({ fecha, clave, borradas: await borrarManuales({ clave, fecha }) }); }
+    const filas = await leerJugadas(`origen=eq.manual&fecha=eq.${fecha}${clave ? `&clave=eq.${clave}` : ''}&select=clave,tipo,numeros,monto,creado`);
+    res.json({ fecha, total: filas.length, jugadas: filas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.post('/api/jugada', async (req, res) => {
   const j = req.body;
   if (!j || !j.clave || !j.numeros || !j.fecha) return res.status(400).json({ error: 'Faltan campos' });
@@ -2998,7 +3020,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.11-KINO-LAB en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.12-BORRAR en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
