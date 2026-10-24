@@ -492,7 +492,7 @@ const ESPECIALES_NUEVOS = {
                     valida: n => n.length === 6 && n.slice(0, 5).every(x => x >= 1 && x <= 38) && n[5] >= 1 && n[5] <= 10 },
   lotopoolreal:   { enl: ['loto-pool-real', 'real-loto-pool', 'loto-pool'], wu: ['loto-pool', 'loto-pool-real'],
                     valida: n => n.length === 4 && n.every(x => x >= 0 && x <= 99) },
-  lotopoolleidsa: { enl: ['loto-pool', 'loto-pool-leidsa', 'leidsa-loto-pool'], wu: ['loto-pool-leidsa'],
+  lotopoolleidsa: { enl: ['loto-pool', 'loto-pool-leidsa', 'leidsa-loto-pool'], wu: ['loto-pool', 'loto-pool-leidsa'], // en Wuloteria los 2 Loto Pool se llaman 'loto-pool': se distinguen por cantidad y rango
                     valida: n => n.length === 5 && n.every(x => x >= 0 && x <= 31) },
 };
 const slugNuevoOk = {}; // clave → slug de Enloteria que funcionó
@@ -708,8 +708,8 @@ async function scrapeWuloteria() {
       }
       // En Wuloteria "loto" es OTRO juego (sale días que LEIDSA no juega); el de LEIDSA con sus 2 bolos extra es "loto-mas" (8 números)
       if (r.slug === 'loto-mas' && r.numeros.length >= 8 && repartirLoto(r.numeros)) { conteo++; continue; }
-      const kn = Object.keys(ESPECIALES_NUEVOS).find(k => ESPECIALES_NUEVOS[k].wu.includes(r.slug));
-      if (kn && estado.especiales[kn] && estado.especiales[kn].numeros.length < estado.especiales[kn].cant && ESPECIALES_NUEVOS[kn].valida(r.numeros)) {
+      const kn = Object.keys(ESPECIALES_NUEVOS).find(k => ESPECIALES_NUEVOS[k].wu.includes(r.slug) && ESPECIALES_NUEVOS[k].valida(r.numeros));
+      if (kn && estado.especiales[kn] && estado.especiales[kn].numeros.length < estado.especiales[kn].cant) {
         estado.especiales[kn].numeros = r.numeros; estado.especiales[kn].estado = 'disponible'; conteo++; continue;
       }
       const ke = WULOTERIA_ESPECIALES[r.slug];
@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.12-BORRAR', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.13-LOTOPOOL', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3020,7 +3020,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.12-BORRAR en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.13-LOTOPOOL en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
