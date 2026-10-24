@@ -1031,7 +1031,7 @@ async function cazarAciertos({ enviar = true } = {}) {
       if (serie.length >= 2) {
         const pesosP = {};
         serie.forEach((nums, j) => {
-          const w = Math.max(1, serie.length - j);
+          const w = (j + 1) /* v9.10: el más reciente pesa más */;
           if (nums[0] !== undefined) pesosP[nums[0]] = (pesosP[nums[0]] || 0) + 60 * w;
           if (nums[1] !== undefined) pesosP[nums[1]] = (pesosP[nums[1]] || 0) + 8 * w;
           if (nums[2] !== undefined) pesosP[nums[2]] = (pesosP[nums[2]] || 0) + 4 * w;
@@ -1078,7 +1078,7 @@ async function enviarResumenRadarDelDia() {
       .map(d => d.sorteos && d.sorteos[clave]).filter(x => x && x.numeros && x.numeros.length >= 3).map(x => x.numeros.map(Number));
     if (serie.length < 2) continue;
     const pesos = {};
-    serie.forEach((nums, j) => { const w = Math.max(1, serie.length - j); [60, 8, 4].forEach((p, i) => { if (nums[i] !== undefined) pesos[nums[i]] = (pesos[nums[i]] || 0) + p * w; }); });
+    serie.forEach((nums, j) => { const w = (j + 1) /* v9.10: el más reciente pesa más */; [60, 8, 4].forEach((p, i) => { if (nums[i] !== undefined) pesos[nums[i]] = (pesos[nums[i]] || 0) + p * w; }); });
     const top = Object.entries(pesos).sort((a, b) => b[1] - a[1])[0];
     if (!top) continue;
     const hit = s.numeros.map(Number).includes(+top[0]);
@@ -1109,7 +1109,7 @@ function calcularPrediccionConContextoDelDia(clave) {
   // — SEÑAL 1: frecuencia ponderada por posición y recencia —
   const score = {};
   serie.forEach((nums, j) => {
-    const w = Math.max(1, serie.length - j);
+    const w = (j + 1) /* v9.10: el más reciente pesa más */;
     if (nums[0] !== undefined) score[nums[0]] = (score[nums[0]] || 0) + 60 * w;
     if (nums[1] !== undefined) score[nums[1]] = (score[nums[1]] || 0) + 8 * w;
     if (nums[2] !== undefined) score[nums[2]] = (score[nums[2]] || 0) + 4 * w;
@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.9-VIGILANTE', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.11-KINO-LAB', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2146,7 +2146,7 @@ app.get('/api/jugadas', async (req, res) => {
     const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control,lab)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc&limit=4000`);
     // las del laboratorio llevan el nombre de su estrategia
     const nombres = Object.fromEntries(((typeof labCargar === 'function' ? await labCargar() : []) || []).map(e => [e.id, e.nombre]));
-    for (const f of filas) if (f.origen === 'lab') f.estrategia = nombres[f.metodo] || f.metodo;
+    for (const f of filas) if (f.origen === 'lab') f.estrategia = nombres[f.metodo] || (typeof kinoNombre === 'function' ? kinoNombre(f.metodo) : f.metodo);
     res.json({ jugadas: filas, desde });
   } catch (e) { res.json({ jugadas: [], error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
 });
@@ -2660,12 +2660,121 @@ function labCobro(cands, real) {
 }
 function labAzar(n) { const s = new Set(); while (s.size < n) s.add(Math.floor(Math.random() * 100)); return [...s]; }
 
+// ══════════ 🎰 KINO EN EL LABORATORIO (v9.11) ══════════
+// Tickets de 10 números (RD$25). Premios Leidsa: 0 aciertos RD$80 · 5→60 · 6→300 · 7→1,000 · 8→10,000 · 9→150,000 · 10→25M
+const KINO_PAGO = { 0: 80, 5: 60, 6: 300, 7: 1000, 8: 10000, 9: 150000, 10: 25000000 }, KINO_COSTO = 25;
+const KINO_LAB = [
+  { id: 'k-jaladora', nombre: 'Kino · Tabla jaladora', desc: 'Los 10 que más han salido AL DÍA SIGUIENTE de los 20 de ayer' },
+  { id: 'k-vecinos', nombre: 'Kino · Vecinos ±1 de ayer', desc: 'Los que están al lado (−1 / +1) de los de ayer y más se repiten' },
+  { id: 'k-espejo', nombre: 'Kino · Espejo de ayer', desc: 'Los de ayer al revés (17 → 71)' },
+  { id: 'k-terminacion', nombre: 'Kino · Jaladora por terminación', desc: 'Las 2 terminaciones (último dígito) que más jalan las de ayer' },
+  { id: 'k-decena', nombre: 'Kino · Decena caliente de ayer', desc: 'La decena (1er dígito) que más salió ayer, sin repetir los de ayer' },
+  { id: 'k-suma', nombre: 'Kino · Suma de dígitos de ayer', desc: 'Números cuya suma de dígitos termina igual que la del 1er bolo de ayer' },
+];
+const kinoNombre = id => (KINO_LAB.find(k => k.id === id) || {}).nombre || id;
+function kinoCobro(nums, real) { const s = new Set(real); const aciertos = nums.filter(n => s.has(n)).length; return { aciertos, premio: KINO_PAGO[aciertos] || 0 }; }
+function kinoSerie(antesDe) { // [{fecha, nums}] en orden, solo días anteriores a 'antesDe'
+  return [...estado.historico].filter(d => d.fecha < antesDe).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(d => ({ fecha: d.fecha, nums: ((d.especiales && d.especiales.superkino && d.especiales.superkino.numeros) || []).map(Number) }))
+    .filter(x => x.nums.length >= 20);
+}
+function kinoMax(serie) { return serie.some(x => x.nums.some(n => n > 80)) ? 84 : 80; }
+function kinoTablaJaladora(serie) {
+  const J = {}; for (let i = 1; i < serie.length; i++) for (const x of serie[i - 1].nums) { const c = J[x] = J[x] || {}; for (const y of serie[i].nums) c[y] = (c[y] || 0) + 1; }
+  return J;
+}
+function kinoTicket(id, serie) {
+  if (serie.length < 15) return null;
+  const R = kinoMax(serie), ayer = serie[serie.length - 1].nums, fq = {};
+  for (const x of serie) for (const n of x.nums) fq[n] = (fq[n] || 0) + 1;
+  const todos = []; for (let n = 1; n <= R; n++) todos.push(n);
+  const porFq = arr => [...arr].sort((a, b) => (fq[b] || 0) - (fq[a] || 0) || a - b);
+  const porScore = sc => todos.filter(n => sc[n] !== undefined).sort((a, b) => sc[b] - sc[a] || (fq[b] || 0) - (fq[a] || 0) || a - b);
+  let c = [];
+  if (id === 'k-jaladora') { const J = kinoTablaJaladora(serie), sc = {}; for (const x of ayer) for (const [y, v] of Object.entries(J[x] || {})) sc[y] = (sc[y] || 0) + v; c = porScore(sc); }
+  else if (id === 'k-vecinos') { const sc = {}; for (const x of ayer) for (const y of [x - 1, x + 1]) if (y >= 1 && y <= R && !ayer.includes(y)) sc[y] = (sc[y] || 0) + 1; c = porScore(sc); }
+  else if (id === 'k-espejo') c = [...new Set(ayer.map(x => +String(x).padStart(2, '0').split('').reverse().join('')))].filter(y => y >= 1 && y <= R && !ayer.includes(y));
+  else if (id === 'k-terminacion') {
+    const JT = {}; for (let i = 1; i < serie.length; i++) for (const x of serie[i - 1].nums) { const t = JT[x % 10] = JT[x % 10] || {}; for (const y of serie[i].nums) t[y % 10] = (t[y % 10] || 0) + 1; }
+    const st = {}; for (const x of ayer) for (const [t, v] of Object.entries(JT[x % 10] || {})) st[t] = (st[t] || 0) + v;
+    const t2 = Object.keys(st).sort((a, b) => st[b] - st[a]).slice(0, 2).map(Number);
+    c = porFq(todos.filter(n => t2.includes(n % 10)));
+  } else if (id === 'k-decena') {
+    const dd = {}; for (const x of ayer) dd[Math.floor(x / 10)] = (dd[Math.floor(x / 10)] || 0) + 1;
+    const d1 = +Object.keys(dd).sort((a, b) => dd[b] - dd[a] || a - b)[0];
+    c = porFq(todos.filter(n => Math.floor(n / 10) === d1 && !ayer.includes(n)));
+  } else if (id === 'k-suma') { const sd = String(ayer[0]).split('').reduce((a, b) => a + +b, 0) % 10; c = porFq(todos.filter(n => (Math.floor(n / 10) + n % 10) % 10 === sd)); }
+  c = c.slice(0, 10);
+  for (const n of porFq(todos)) { if (c.length >= 10) break; if (!c.includes(n)) c.push(n); } // si faltan, se completa con los más frecuentes
+  return c.sort((a, b) => a - b);
+}
+function kinoDigitos(serie, ultimos = 30) { // tabla de dígitos: terminación (último dígito) y decena (1er dígito)
+  const sub = serie.slice(-ultimos), R = kinoMax(serie), cuantos = { t: {}, d: {} };
+  for (let n = 1; n <= R; n++) { cuantos.t[n % 10] = (cuantos.t[n % 10] || 0) + 1; cuantos.d[Math.floor(n / 10)] = (cuantos.d[Math.floor(n / 10)] || 0) + 1; }
+  const mk = (clave, f) => Object.keys(cuantos[clave]).map(Number).sort((a, b) => a - b).map(dig => {
+    let veces = 0; sub.forEach(x => { veces += x.nums.filter(n => f(n) === dig).length; });
+    const esperado = sub.length * 20 * cuantos[clave][dig] / R;
+    const ayer = sub.length ? sub[sub.length - 1].nums.filter(n => f(n) === dig).length : 0;
+    return { digito: dig, veces, esperado: +esperado.toFixed(1), diferencia: +(veces - esperado).toFixed(1), ayer, ayer_esperado: +(20 * cuantos[clave][dig] / R).toFixed(1) };
+  });
+  return { sorteos: sub.length, terminaciones: mk('t', n => n % 10), decenas: mk('d', n => Math.floor(n / 10)) };
+}
+async function kinoGenerar() {
+  if (!SUPABASE_ACTIVO) return;
+  const s = estado.especiales && estado.especiales.superkino; if (!s || (s.numeros && s.numeros.length >= 20)) return;
+  const hora = horaDeHoy('superkino', s.hora); if (!enVentana(hora)) return;
+  const hoy = fechaRD(); const serie = kinoSerie(hoy); if (serie.length < 15) return;
+  const R = kinoMax(serie); const nuevas = [];
+  if (labHechosFecha !== hoy) {
+    labHechos.clear(); labHechosFecha = hoy;
+    try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.lab&select=grupo`)).forEach(f => labHechos.add(f.grupo)); } catch (e) { labHechosFecha = null; return; }
+  }
+  for (const k of KINO_LAB) {
+    const g = `labk|${k.id}`; if (labHechos.has(g)) continue;
+    const c = kinoTicket(k.id, serie); if (!c) continue;
+    const base = { clave: 'superkino', fecha: hoy, tipo: 'lab', hora_sorteo: hora, generado_rd: horaRD(), grupo: g, metodo: k.id, notificado: true, evaluado: false };
+    const az = new Set(); while (az.size < 10) az.add(1 + Math.floor(Math.random() * R));
+    nuevas.push({ ...base, id: `lab-${hoy}-${k.id}`, origen: 'lab', numeros: c });
+    nuevas.push({ ...base, id: `labctl-${hoy}-${k.id}`, origen: 'labctl', numeros: [...az].sort((a, b) => a - b), grupo: g + '|ctl' });
+    labHechos.add(g);
+  }
+  if (nuevas.length) await upsertJugadas(nuevas);
+}
+async function kinoVivo() {
+  let filas; try { filas = await leerJugadasTodas(`clave=eq.superkino&origen=in.(lab,labctl)&evaluado=eq.true&select=id,metodo,origen,numeros,premio,aciertos,fecha`); } catch (e) { return null; }
+  const v = {}; for (const f of filas) { const a = v[f.metodo] = v[f.metodo] || { sorteos: 0, aciertos: 0, cobro: 0, ctl_aciertos: 0, ctl_cobro: 0, ctl_sorteos: 0 };
+    if (f.origen === 'labctl') { a.ctl_sorteos++; a.ctl_aciertos += +f.aciertos || 0; a.ctl_cobro += +f.premio || 0; } else { a.sorteos++; a.aciertos += +f.aciertos || 0; a.cobro += +f.premio || 0; } }
+  return KINO_LAB.map(k => { const a = v[k.id] || { sorteos: 0, aciertos: 0, cobro: 0, ctl_aciertos: 0, ctl_cobro: 0, ctl_sorteos: 0 };
+    return { id: k.id, nombre: k.nombre, desc: k.desc, sorteos: a.sorteos, prom_aciertos: a.sorteos ? +(a.aciertos / a.sorteos).toFixed(2) : null, azar_esperado: 2.38,
+      jugado: a.sorteos * KINO_COSTO, cobro: a.cobro, ctl_prom: a.ctl_sorteos ? +(a.ctl_aciertos / a.ctl_sorteos).toFixed(2) : null, ctl_cobro: a.ctl_cobro }; });
+}
+async function kinoResumenTexto(hoy) {
+  let filas; try { filas = await leerJugadas(`fecha=eq.${hoy}&clave=eq.superkino&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,premio,aciertos`); } catch (e) { return ''; }
+  if (!filas.length) return '';
+  const hoyL = KINO_LAB.map(k => { const m = filas.find(f => f.metodo === k.id && f.origen === 'lab'), c = filas.find(f => f.metodo === k.id && f.origen === 'labctl');
+    if (!m) return null; return `${m.premio > 0 ? '🟢' : '⚪'} ${k.nombre.replace('Kino · ', '')}: ${m.aciertos} aciertos${m.premio ? ` · cobra RD$${m.premio}` : ''} · azar ${c ? c.aciertos : '?'}`; }).filter(Boolean);
+  const vivo = await kinoVivo() || [];
+  const acum = vivo.filter(x => x.sorteos).map(x => `• ${x.nombre.replace('Kino · ', '')}: ${x.sorteos} sorteos · prom ${x.prom_aciertos} (azar 2.38) · RD$${x.cobro} de RD$${x.jugado}`);
+  return `\n\n🎰 <b>KINO DEL LABORATORIO</b> (tickets de RD$25)\n${hoyL.join('\n')}${acum.length ? `\n\n📈 <b>Kino acumulado</b>\n${acum.join('\n')}` : ''}`;
+}
+app.get('/api/lab/kino', async (req, res) => {
+  const hoy = fechaRD(); const serie = kinoSerie(hoy);
+  let reg = {}; try { (await leerJugadas(`fecha=eq.${hoy}&clave=eq.superkino&origen=eq.lab&select=metodo,numeros,generado_rd,evaluado,aciertos,premio`)).forEach(f => { reg[f.metodo] = f; }); } catch (e) {}
+  const s = estado.especiales && estado.especiales.superkino;
+  const hoyT = KINO_LAB.map(k => { const r = reg[k.id]; return { id: k.id, nombre: k.nombre, desc: k.desc, numeros: r ? r.numeros.map(Number) : kinoTicket(k.id, serie),
+    registrado: !!r, registrado_a: r ? r.generado_rd : null, evaluado: r ? r.evaluado : false, aciertos: r ? r.aciertos : null, premio: r ? r.premio : null }; });
+  const J = kinoTablaJaladora(serie); const R = kinoMax(serie);
+  const jaladora = {}; for (let n = 1; n <= R; n++) jaladora[n] = Object.entries(J[n] || {}).sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 5).map(([y, v]) => ({ numero: +y, veces: v }));
+  res.json({ fecha: hoy, hora: s ? horaDeHoy('superkino', s.hora) : null, resultado_hoy: s && s.numeros && s.numeros.length >= 20 ? s.numeros.map(Number) : null,
+    sorteos_historial: serie.length, rango: `1-${R}`, ayer: serie.length ? serie[serie.length - 1] : null, hoy: hoyT, vivo: await kinoVivo(), digitos: kinoDigitos(serie), jaladora, pagos: KINO_PAGO, costo: KINO_COSTO });
+});
+
 // ── jugar en vivo (dentro de la ventana antes de cada sorteo) ──
 const labHechos = new Set(); let labHechosFecha = null;
 async function labGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const ests = (await labCargar()).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
-  if (!ests.length) return;
+  if (!ests.length) { try { await kinoGenerar(); } catch (e) {} return; }
   const hoy = fechaRD();
   if (labHechosFecha !== hoy) {
     labHechos.clear(); labHechosFecha = hoy;
@@ -2684,6 +2793,7 @@ async function labGenerar() {
     labHechos.add(g);
   }
   if (nuevas.length) await upsertJugadas(nuevas);
+  try { await kinoGenerar(); } catch (e) { console.log('kino lab:', e.message); }
 }
 async function labEvaluar() {
   if (!SUPABASE_ACTIVO) return;
@@ -2691,8 +2801,10 @@ async function labEvaluar() {
   let pend; try { pend = await leerJugadas(`evaluado=eq.false&origen=in.(lab,labctl)&fecha=gte.${desde}&select=*&limit=2000`); } catch (e) { return; }
   const listas = [];
   for (const j of pend) {
-    const real = resultadoDe('sorteos', j.clave, j.fecha); if (!real || real.length < 3) continue;
-    const { premio, aciertos } = labCobro((j.numeros || []).map(Number), real);
+    const esKino = j.clave === 'superkino';
+    const real = esKino ? resultadoDe('especiales', 'superkino', j.fecha) : resultadoDe('sorteos', j.clave, j.fecha);
+    if (!real || real.length < (esKino ? 20 : 3)) continue;
+    const { premio, aciertos } = esKino ? kinoCobro((j.numeros || []).map(Number), real) : labCobro((j.numeros || []).map(Number), real);
     listas.push({ ...j, resultado: real, aciertos, premio, gano: premio > 0, evaluado: true, evaluado_en: new Date().toISOString() });
   }
   if (!listas.length) return;
@@ -2700,10 +2812,10 @@ async function labEvaluar() {
   // aviso por Telegram cuando una estrategia del laboratorio pega
   const pegaron = listas.filter(j => j.origen === 'lab' && j.premio > 0);
   if (pegaron.length && TG_ACTIVO) {
-    const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre]));
+    const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre])); KINO_LAB.forEach(k => { nombres[k.id] = k.nombre; });
     const f2 = n => String(n).padStart(2, '0');
     await enviarTelegram(`🧪 <b>¡PEGÓ EN EL LABORATORIO!</b> (en papel)\n\n` + pegaron.map(j =>
-      `🎯 <b>${nombres[j.metodo] || j.metodo}</b> — ${estado.sorteos[j.clave]?.nombre || j.clave}\n     Jugó: ${j.numeros.map(f2).join('-')} · salió ${j.resultado.map(f2).join('-')}\n     Cobraría <b>RD$${j.premio}</b> por RD$${j.numeros.length} jugados`).join('\n\n'));
+      `🎯 <b>${nombres[j.metodo] || j.metodo}</b> — ${j.clave === 'superkino' ? 'Super Kino TV' : (estado.sorteos[j.clave]?.nombre || j.clave)}\n     Jugó: ${j.numeros.map(f2).join('-')}${j.clave === 'superkino' ? ` · ${j.aciertos} aciertos` : ` · salió ${j.resultado.map(f2).join('-')}`}\n     Cobraría <b>RD$${j.premio}</b> por RD$${j.clave === 'superkino' ? KINO_COSTO : j.numeros.length} jugados`).join('\n\n'));
   }
 }
 
@@ -2805,8 +2917,9 @@ async function labResumenNoche() {
   if (labResumenEnviado === hoy || minutosActualesRD() < 23 * 60 + 20) return;
   labResumenEnviado = hoy;
   if (yaEnviado('lab')) return;
-  let filas; try { filas = await leerJugadas(`fecha=eq.${hoy}&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,numeros,premio,aciertos,clave`); } catch (e) { return; }
-  if (!filas.length) return;
+  let filas; try { filas = (await leerJugadas(`fecha=eq.${hoy}&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,numeros,premio,aciertos,clave`)).filter(f => f.clave !== 'superkino'); } catch (e) { return; }
+  const kinoTxt = await kinoResumenTexto(hoy);
+  if (!filas.length && !kinoTxt) return;
   await marcarEnviado('lab');
   const ests = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre]));
   const agg = {};
@@ -2815,7 +2928,7 @@ async function labResumenNoche() {
   const lineas = Object.entries(agg).sort((a, b) => (b[1].w - b[1].c) - (a[1].w - a[1].c)).map(([id, a]) =>
     `${a.w > a.c ? '🟢' : a.w > 0 ? '🟡' : '⚪'} <b>${ests[id] || id}</b>: jugó RD$${a.c} · cobró RD$${a.w}${a.hits.length ? ` (${a.hits.join(', ')})` : ''} · azar cobró RD$${a.cw}`);
   const vig = await labVigilar();
-  await enviarTelegram(`🧪 <b>LABORATORIO DE ESTRATEGIAS</b> — ${hoy}\n<i>En papel: cada número = un punto de RD$1</i>\n\n${lineas.join('\n')}${vig}`);
+  await enviarTelegram(`🧪 <b>LABORATORIO DE ESTRATEGIAS</b> — ${hoy}\n<i>En papel: cada número = un punto de RD$1</i>\n\n${lineas.join('\n')}${vig}${kinoTxt}`);
 }
 
 // ── VIGILANTE (v9.9): con suficientes sorteos EN VIVO, pausa sola la estrategia que pierde
@@ -2838,7 +2951,7 @@ function labVivo(filas, desde) {
 }
 async function labVigilar() {
   let filas; try { filas = await leerJugadasTodas(`origen=eq.lab&evaluado=eq.true&select=id,metodo,numeros,premio,aciertos,fecha`); } catch (e) { return ''; }
-  const por = {}; for (const f of filas) (por[f.metodo] = por[f.metodo] || []).push(f);
+  const por = {}; for (const f of filas) if (!String(f.metodo).startsWith('k-')) (por[f.metodo] = por[f.metodo] || []).push(f);
   const ests = (await labCargar(true)).filter(e => e.activa !== false);
   const lin = []; let cambio = false;
   for (const e of ests) {
@@ -2885,7 +2998,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.9-VIGILANTE en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.11-KINO-LAB en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
