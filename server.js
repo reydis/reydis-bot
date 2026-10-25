@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.19-AVISO-GANA', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.20-BACKFILL-NUEVOS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2517,8 +2517,12 @@ app.get('/api/backfill-especiales-nuevos', async (req, res) => {
   const logBF = m => { console.log(`[BF-NUEVOS] ${m}`); estadoBackfill.log.push(m); };
   let total = 0;
   try {
-    for (const f of listaFechas(desde, hasta).filter(x => x < fechaRD())) {
-      const base = estado.historico.find(d => d.fecha === f);
+    // v9.20: todo el rango de una vez (máx. 150 días); los días que no están en memoria se toman de Supabase
+    histTeoria.fecha = null; await cargarHistTeoria();
+    const fechas = []; for (let d = new Date(desde + 'T12:00:00Z'), fin = new Date(hasta + 'T12:00:00Z'); d <= fin && fechas.length < 150; d.setUTCDate(d.getUTCDate() + 1)) fechas.push(d.toISOString().slice(0, 10));
+    for (const f of fechas.filter(x => x < fechaRD())) {
+      let base = estado.historico.find(d => d.fecha === f);
+      if (!base) { const r = histTeoria.filas.find(d => d.fecha === f); if (r) base = { fecha: r.fecha, sorteos: r.sorteos || {}, especiales: r.especiales || {} }; }
       if (!base) { logBF(`${f}: día no está en el historial`); continue; }
       base.especiales = { ...crearJuegosEspeciales(), ...(base.especiales || {}) };
       const partes = [];
@@ -2533,7 +2537,7 @@ app.get('/api/backfill-especiales-nuevos', async (req, res) => {
       logBF(`${f}: ${partes.join(' · ')}`);
       if (guardar) await guardarEnSupabase(base);
     }
-    if (guardar) guardarEnDisco();
+    if (guardar) { guardarEnDisco(); histTeoria.fecha = null; }
     estadoBackfill.resumen = { sorteos_nuevos: total, slugs: slugNuevoOk };
     logBF(`✅ Listo: ${total} sorteos ${guardar ? 'guardados' : '(simulación)'}`);
   } catch (e) { logBF(`❌ ERROR: ${e.message}`); }
@@ -3079,7 +3083,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.19-AVISO-GANA en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.20-BACKFILL-NUEVOS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
