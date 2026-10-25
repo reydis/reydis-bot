@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.20-BACKFILL-NUEVOS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.21-KINO-DIGITOS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2737,6 +2737,8 @@ const KINO_LAB = [
   { id: 'k-terminacion', nombre: 'Kino · Jaladora por terminación', desc: 'Las 2 terminaciones (último dígito) que más jalan las de ayer' },
   { id: 'k-decena', nombre: 'Kino · Decena caliente de ayer', desc: 'La decena (1er dígito) que más salió ayer, sin repetir los de ayer' },
   { id: 'k-suma', nombre: 'Kino · Suma de dígitos de ayer', desc: 'Números cuya suma de dígitos termina igual que la del 1er bolo de ayer' },
+  { id: 'k-equivalente', nombre: 'Kino · Equivalente de ayer', desc: 'Los de ayer con cada dígito cambiado por su equivalente: 0↔5 · 1↔6 · 2↔7 · 3↔8 · 4↔9 (10 → 65)' },
+  { id: 'k-digitos', nombre: 'Kino · Jaladora por dígito', desc: 'Cada dígito de ayer por separado (el 10 → el 1 y el 0): qué dígitos jalan al día siguiente; juega los números con los dígitos más jalados' },
 ];
 const kinoNombre = id => (KINO_LAB.find(k => k.id === id) || {}).nombre || id;
 function kinoCobro(nums, real) { const s = new Set(real); const aciertos = nums.filter(n => s.has(n)).length; return { aciertos, premio: KINO_PAGO[aciertos] || 0 }; }
@@ -2774,6 +2776,15 @@ function kinoTicket(id, serie) {
     const d1 = +Object.keys(dd).sort((a, b) => dd[b] - dd[a] || a - b)[0];
     c = porFq(todos.filter(n => Math.floor(n / 10) === d1 && !ayer.includes(n)));
   } else if (id === 'k-suma') { const sd = String(ayer[0]).split('').reduce((a, b) => a + +b, 0) % 10; c = porFq(todos.filter(n => (Math.floor(n / 10) + n % 10) % 10 === sd)); }
+  else if (id === 'k-equivalente') { const eq = d => (d + 5) % 10; c = porFq([...new Set(ayer.map(x => eq(Math.floor(x / 10)) * 10 + eq(x % 10)))].filter(y => y >= 1 && y <= R && !ayer.includes(y))); }
+  else if (id === 'k-digitos') {
+    const dg = n => [Math.floor(n / 10), n % 10]; const JD = {};
+    for (let i = 1; i < serie.length; i++) { const db = serie[i].nums.flatMap(dg); for (const d of serie[i - 1].nums.flatMap(dg)) { const c2 = JD[d] = JD[d] || {}; for (const e of db) c2[e] = (c2[e] || 0) + 1; } }
+    const sc = {}; for (const d of ayer.flatMap(dg)) for (const [e, v] of Object.entries(JD[d] || {})) sc[e] = (sc[e] || 0) + v;
+    const base = {}; for (const n of todos) for (const d of dg(n)) base[d] = (base[d] || 0) + 1;
+    const w = d => (sc[d] || 0) / (base[d] || 1);
+    c = [...todos].sort((a, b) => (w(Math.floor(b / 10)) + w(b % 10)) - (w(Math.floor(a / 10)) + w(a % 10)) || (fq[b] || 0) - (fq[a] || 0) || a - b);
+  }
   c = c.slice(0, 10);
   for (const n of porFq(todos)) { if (c.length >= 10) break; if (!c.includes(n)) c.push(n); } // si faltan, se completa con los más frecuentes
   return c.sort((a, b) => a - b);
@@ -3083,7 +3094,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.20-BACKFILL-NUEVOS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.21-KINO-DIGITOS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
