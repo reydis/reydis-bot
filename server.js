@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.17-RODEAN-TODAS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.18-ANTERIOR-VIVO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2837,26 +2837,40 @@ app.get('/api/lab/kino', async (req, res) => {
 
 // ── jugar en vivo (dentro de la ventana antes de cada sorteo) ──
 const labHechos = new Set(); let labHechosFecha = null;
+const labNums = new Map(); // grupo → números registrados (para actualizar las de 'lotería anterior')
 async function labGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const ests = (await labCargar()).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
   if (!ests.length) { try { await kinoGenerar(); } catch (e) {} return; }
   const hoy = fechaRD();
   if (labHechosFecha !== hoy) {
-    labHechos.clear(); labHechosFecha = hoy;
-    try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.lab&select=grupo`)).forEach(f => labHechos.add(f.grupo)); } catch (e) { labHechosFecha = null; return; }
+    labHechos.clear(); labNums.clear(); labHechosFecha = hoy;
+    try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.lab&select=grupo,numeros`)).forEach(f => { labHechos.add(f.grupo); labNums.set(f.grupo, JSON.stringify((f.numeros || []).map(Number))); }); } catch (e) { labHechosFecha = null; return; }
   }
   const dias = [...estado.historico].filter(d => d.fecha < hoy).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).concat([{ fecha: hoy, sorteos: estado.sorteos }]);
   const idx = dias.length - 1; const nuevas = [];
   for (const est of ests) for (const clave of labLoterias(est)) {
     const s = estado.sorteos[clave]; const g = `lab|${est.id}|${clave}`;
-    if (!s || labHechos.has(g) || (s.numeros && s.numeros.length >= 3)) continue;
+    if (!s || (s.numeros && s.numeros.length >= 3)) continue;
     if (!enVentana(horaDeHoy(clave, s.hora))) continue;
+    // v9.18: las que usan 'la lotería anterior' se actualizan si sale otra lotería antes del sorteo (hasta 2 min antes),
+    // así en vivo se mide igual que en la prueba con el historial
+    const usaAnterior = (LAB_TIPOS[est.tipo].params || []).includes('fuente') && ((est.parametros || {}).fuente || 'anterior') === 'anterior';
+    if (labHechos.has(g)) {
+      if (!usaAnterior) continue;
+      const falta = horaTextoAMinutos(horaDeHoy(clave, s.hora)) - minutosActualesRD(); if (falta < 2) continue;
+      const c2 = labCandidatos(est, dias, idx, clave); if (!c2 || JSON.stringify(c2) === labNums.get(g)) continue;
+      const base2 = { clave, fecha: hoy, tipo: 'lab', hora_sorteo: s.hora, generado_rd: horaRD(), grupo: g, metodo: est.id, notificado: true, evaluado: false };
+      nuevas.push({ ...base2, id: `lab-${hoy}-${est.id}-${clave}`, origen: 'lab', numeros: c2 });
+      nuevas.push({ ...base2, id: `labctl-${hoy}-${est.id}-${clave}`, origen: 'labctl', numeros: labAzar(c2.length), grupo: g + '|ctl' });
+      labNums.set(g, JSON.stringify(c2));
+      continue;
+    }
     const c = labCandidatos(est, dias, idx, clave); if (!c) continue;
     const base = { clave, fecha: hoy, tipo: 'lab', hora_sorteo: s.hora, generado_rd: horaRD(), grupo: g, metodo: est.id, notificado: true, evaluado: false };
     nuevas.push({ ...base, id: `lab-${hoy}-${est.id}-${clave}`, origen: 'lab', numeros: c });
     nuevas.push({ ...base, id: `labctl-${hoy}-${est.id}-${clave}`, origen: 'labctl', numeros: labAzar(c.length), grupo: g + '|ctl' });
-    labHechos.add(g);
+    labHechos.add(g); labNums.set(g, JSON.stringify(c));
   }
   if (nuevas.length) await upsertJugadas(nuevas);
   try { await kinoGenerar(); } catch (e) { console.log('kino lab:', e.message); }
@@ -3064,7 +3078,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.17-RODEAN-TODAS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.18-ANTERIOR-VIVO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
