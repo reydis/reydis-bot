@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.13-LOTOPOOL', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.16-RODEAN', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2236,7 +2236,7 @@ let histTeoria = { fecha: null, filas: [] };
 async function cargarHistTeoria() {
   if (!SUPABASE_ACTIVO || histTeoria.fecha === fechaRD()) return;
   try {
-    const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos&order=fecha.asc&limit=3000`,
+    const r = await axios.get(`${SUPABASE_URL}/rest/v1/historico?select=fecha,sorteos,especiales&order=fecha.asc&limit=3000`,
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, timeout: 30000 });
     histTeoria = { fecha: fechaRD(), filas: r.data || [] };
   } catch (e) { console.log('[TEORIA] no se pudo leer el historial completo:', e.message); }
@@ -2562,9 +2562,15 @@ const LAB_TIPOS = {
   terminal:   { nombre: 'Misma terminación', desc: 'Los 10 números que terminan como el 1er premio de la fuente (18 → x8)', params: ['fuente'] },
   frecuencia: { nombre: 'Calientes', desc: 'Los N que más han salido en esa lotería (últimos 90 sorteos)', params: ['n'] },
   atrasados:  { nombre: 'Atrasados', desc: 'Los N que más tiempo llevan sin salir en esa lotería', params: ['n'] },
+  rodean:     { nombre: 'Números que rodean (video)', desc: 'Se le da la vuelta al 1er premio de la fuente (85 → 58) y se juegan los 4 que lo rodean: 57, 59, 48, 68', params: ['fuente'] },
+  piramide:   { nombre: 'Pirámide de fechas (video)', desc: 'Pirámide de la fecha de AYER + la de HOY → número base, su equivalente (1=6…5=0), base ± el día y sus vueltas (6 números, los mismos en todas las loterías)', params: [] },
   fe:         { nombre: 'Mis números de fe', desc: 'Sus números fijos, todos los días', params: ['numeros'] },
 };
 const LAB_FUENTES = { ayer: 'el mismo sorteo AYER', anterior: 'la lotería que salió JUSTO ANTES (cualquiera)' };
+const LAB_NUEVAS = [
+  { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
+  { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'auto' },
+];
 const LAB_DEFAULT = [
   { id: 'codigoq-real', nombre: 'Código Q 35.9 · Lotería Real', tipo: 'codigoq', parametros: { Q: 35.9 }, loterias: ['real_t'] },
   { id: 'codigoq-loteka', nombre: 'Código Q 4570 · Loteka', tipo: 'codigoq', parametros: { Q: 4570 }, loterias: ['loteka'] },
@@ -2589,6 +2595,17 @@ async function labCargar(forzar) {
       const filas = LAB_DEFAULT.map(e => ({ ...e, activa: true }));
       await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, filas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 });
       return (labEstrategias = filas);
+    }
+    // v9.15: estrategias nuevas que se agregan solas una vez (si se borran, no vuelven: queda la marca 'sys|lab-sembrada|id')
+    for (const e of LAB_NUEVAS) {
+      if (r.data.some(x => x.id === e.id)) continue;
+      let ya = false; try { ya = (await leerJugadas(`id=eq.${encodeURIComponent('sys|lab-sembrada|' + e.id)}&select=id`)).length > 0; } catch (er) { ya = true; }
+      if (ya) continue;
+      try {
+        await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, [{ ...e, activa: true }], { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 });
+        await upsertJugadas([{ id: 'sys|lab-sembrada|' + e.id, origen: 'sistema', clave: 'sistema', fecha: fechaRD(), tipo: 'sistema', numeros: [], notificado: true, evaluado: true }]);
+        r.data.push({ ...e, activa: true });
+      } catch (er) {}
     }
     return (labEstrategias = r.data);
   } catch (e) {
@@ -2649,11 +2666,24 @@ function labSerie(dias, idxDia, clave, max = 90) {
   for (let i = Math.max(0, idxDia - max); i < idxDia; i++) { const s = dias[i].sorteos && dias[i].sorteos[clave]; if (s && s.numeros && s.numeros.length >= 3) out.push(s.numeros.map(Number)); }
   return out;
 }
+// Pirámide de fechas: cada fila suma los dígitos vecinos (último dígito) hasta que queda uno.
+// base = pirámide(ayer)·10 + pirámide(hoy); números: base, equivalente (+5 a cada dígito), base+día y su vuelta, |base−día| y su vuelta
+function labPiramide(fecha) {
+  if (!fecha) return null;
+  const pir = t => { let d = t.split('').map(Number); while (d.length > 1) d = d.slice(1).map((x, i) => (d[i] + x) % 10); return d[0]; };
+  const ddmmaaaa = f => { const [y, m, d] = f.split('-'); return d + m + y; };
+  const hoy = new Date(fecha + 'T12:00:00Z'); const ayer = new Date(hoy.getTime() - 86400000).toISOString().slice(0, 10);
+  const base = pir(ddmmaaaa(ayer)) * 10 + pir(ddmmaaaa(fecha)); const dia = hoy.getUTCDate();
+  const eq = n => ((Math.floor(n / 10) + 5) % 10) * 10 + (n % 10 + 5) % 10, vuelta = n => (n % 10) * 10 + Math.floor(n / 10);
+  const suma = (base + dia) % 100, resta = Math.abs(base - dia);
+  return [...new Set([base, eq(base), suma, vuelta(suma), resta, vuelta(resta)])];
+}
 function labCandidatos(est, dias, idxDia, clave) {
   const p = est.parametros || {}; const fuente = p.fuente || 'anterior';
   let c = null;
   if (est.tipo === 'codigoq') { const f = labFuente(dias, idxDia, clave, 'ayer'); c = f ? labCodigoQ(f[0], Number(p.Q) || 35.9) : null; }
   else if (est.tipo === 'fe') c = (p.numeros || []).map(Number);
+  else if (est.tipo === 'piramide') c = labPiramide(dias[idxDia] && dias[idxDia].fecha);
   else if (est.tipo === 'frecuencia' || est.tipo === 'atrasados') {
     const serie = labSerie(dias, idxDia, clave); if (serie.length < 10) return null;
     const n = Math.min(10, Math.max(1, Number(p.n) || 3));
@@ -2666,6 +2696,7 @@ function labCandidatos(est, dias, idxDia, clave) {
     else if (est.tipo === 'espejo') c = f.map(labEsp).filter((x, i) => x !== f[i]);
     else if (est.tipo === 'repite') c = f;
     else if (est.tipo === 'vecinos') c = labVecinos(f[0]);
+    else if (est.tipo === 'rodean') { const t = f[0] % 10, u = Math.floor(f[0] / 10); c = [t * 10 + (u + 9) % 10, t * 10 + (u + 1) % 10, ((t + 9) % 10) * 10 + u, ((t + 1) % 10) * 10 + u]; }
     else if (est.tipo === 'decena') c = [...Array(10).keys()].map(i => Math.floor(f[0] / 10) * 10 + i);
     else if (est.tipo === 'terminal') c = [...Array(10).keys()].map(i => i * 10 + f[0] % 10);
   }
@@ -2695,8 +2726,11 @@ const KINO_LAB = [
 ];
 const kinoNombre = id => (KINO_LAB.find(k => k.id === id) || {}).nombre || id;
 function kinoCobro(nums, real) { const s = new Set(real); const aciertos = nums.filter(n => s.has(n)).length; return { aciertos, premio: KINO_PAGO[aciertos] || 0 }; }
-function kinoSerie(antesDe) { // [{fecha, nums}] en orden, solo días anteriores a 'antesDe'
-  return [...estado.historico].filter(d => d.fecha < antesDe).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+function kinoSerie(antesDe) { // [{fecha, nums}] en orden, solo días anteriores a 'antesDe' — TODO el historial (Supabase + memoria)
+  const porFecha = {};
+  for (const d of histTeoria.filas) porFecha[d.fecha] = d;
+  for (const d of estado.historico) if (d.especiales && d.especiales.superkino && (d.especiales.superkino.numeros || []).length >= 20) porFecha[d.fecha] = d;
+  return Object.values(porFecha).filter(d => d.fecha < antesDe).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
     .map(d => ({ fecha: d.fecha, nums: ((d.especiales && d.especiales.superkino && d.especiales.superkino.numeros) || []).map(Number) }))
     .filter(x => x.nums.length >= 20);
 }
@@ -2745,7 +2779,7 @@ async function kinoGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const s = estado.especiales && estado.especiales.superkino; if (!s || (s.numeros && s.numeros.length >= 20)) return;
   const hora = horaDeHoy('superkino', s.hora); if (!enVentana(hora)) return;
-  const hoy = fechaRD(); const serie = kinoSerie(hoy); if (serie.length < 15) return;
+  const hoy = fechaRD(); await cargarHistTeoria(); const serie = kinoSerie(hoy); if (serie.length < 15) return;
   const R = kinoMax(serie); const nuevas = [];
   if (labHechosFecha !== hoy) {
     labHechos.clear(); labHechosFecha = hoy;
@@ -2780,7 +2814,7 @@ async function kinoResumenTexto(hoy) {
   return `\n\n🎰 <b>KINO DEL LABORATORIO</b> (tickets de RD$25)\n${hoyL.join('\n')}${acum.length ? `\n\n📈 <b>Kino acumulado</b>\n${acum.join('\n')}` : ''}`;
 }
 app.get('/api/lab/kino', async (req, res) => {
-  const hoy = fechaRD(); const serie = kinoSerie(hoy);
+  await cargarHistTeoria(); const hoy = fechaRD(); const serie = kinoSerie(hoy);
   let reg = {}; try { (await leerJugadas(`fecha=eq.${hoy}&clave=eq.superkino&origen=eq.lab&select=metodo,numeros,generado_rd,evaluado,aciertos,premio`)).forEach(f => { reg[f.metodo] = f; }); } catch (e) {}
   const s = estado.especiales && estado.especiales.superkino;
   const hoyT = KINO_LAB.map(k => { const r = reg[k.id]; return { id: k.id, nombre: k.nombre, desc: k.desc, numeros: r ? r.numeros.map(Number) : kinoTicket(k.id, serie),
@@ -3020,7 +3054,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.13-LOTOPOOL en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.16-RODEAN en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
