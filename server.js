@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.16-RODEAN', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.17-RODEAN-TODAS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2569,7 +2569,7 @@ const LAB_TIPOS = {
 const LAB_FUENTES = { ayer: 'el mismo sorteo AYER', anterior: 'la lotería que salió JUSTO ANTES (cualquiera)' };
 const LAB_NUEVAS = [
   { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
-  { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'auto' },
+  { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
 ];
 const LAB_DEFAULT = [
   { id: 'codigoq-real', nombre: 'Código Q 35.9 · Lotería Real', tipo: 'codigoq', parametros: { Q: 35.9 }, loterias: ['real_t'] },
@@ -2583,7 +2583,7 @@ const LAB_DEFAULT = [
 let labEstrategias = null;      // cache
 let labTablaOk = true;
 const LAB_HORA = Object.fromEntries(Object.entries(crearSorteos()).map(([k, s]) => [k, horaTextoAMinutos(s.hora)]));
-function labLoterias(est) { return est.loterias === 'auto' || !Array.isArray(est.loterias) || !est.loterias.length ? AUTO.loterias : est.loterias; }
+function labLoterias(est) { if (est.loterias === 'todas') return Object.keys(LAB_HORA); return est.loterias === 'auto' || !Array.isArray(est.loterias) || !est.loterias.length ? AUTO.loterias : est.loterias; }
 
 async function labCargar(forzar) {
   if (labEstrategias && !forzar) return labEstrategias;
@@ -2595,6 +2595,16 @@ async function labCargar(forzar) {
       const filas = LAB_DEFAULT.map(e => ({ ...e, activa: true }));
       await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, filas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 });
       return (labEstrategias = filas);
+    }
+    // v9.17: 'Números que rodean' juega en TODAS las quinielas (una sola vez; si el usuario lo cambia después, se respeta)
+    const rod = r.data.find(x => x.id === 'rodean-anterior');
+    if (rod && rod.loterias === 'auto') {
+      let ya = false; try { ya = (await leerJugadas(`id=eq.${encodeURIComponent('sys|lab-todas|rodean-anterior')}&select=id`)).length > 0; } catch (er) { ya = true; }
+      if (!ya) try {
+        await axios.patch(`${SUPABASE_URL}/rest/v1/estrategias?id=eq.rodean-anterior`, { loterias: 'todas' }, { headers: SB_HEADERS(), timeout: 15000 });
+        await upsertJugadas([{ id: 'sys|lab-todas|rodean-anterior', origen: 'sistema', clave: 'sistema', fecha: fechaRD(), tipo: 'sistema', numeros: [], notificado: true, evaluado: true }]);
+        rod.loterias = 'todas';
+      } catch (er) {}
     }
     // v9.15: estrategias nuevas que se agregan solas una vez (si se borran, no vuelven: queda la marca 'sys|lab-sembrada|id')
     for (const e of LAB_NUEVAS) {
@@ -2907,7 +2917,7 @@ app.post('/api/lab/estrategias', async (req, res) => {
   const b = req.body || {};
   if (!b.nombre || !LAB_TIPOS[b.tipo]) return res.status(400).json({ error: 'Falta nombre o tipo válido' });
   const fila = { id: b.id || `${b.tipo}-${Date.now().toString(36)}`, nombre: String(b.nombre).slice(0, 60), tipo: b.tipo,
-    parametros: b.parametros || {}, loterias: Array.isArray(b.loterias) && b.loterias.length ? b.loterias.filter(k => LAB_HORA[k]) : 'auto', activa: b.activa !== false };
+    parametros: b.parametros || {}, loterias: b.loterias === 'todas' ? 'todas' : Array.isArray(b.loterias) && b.loterias.length ? b.loterias.filter(k => LAB_HORA[k]) : 'auto', activa: b.activa !== false };
   if (fila.tipo === 'fe') fila.parametros.numeros = (fila.parametros.numeros || []).map(Number).filter(x => x >= 0 && x <= 99).slice(0, 20);
   try {
     await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, fila, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 });
@@ -3054,7 +3064,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.16-RODEAN en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.17-RODEAN-TODAS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
