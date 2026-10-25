@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.18-ANTERIOR-VIVO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.19-AVISO-GANA', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2890,11 +2890,12 @@ async function labEvaluar() {
   if (!listas.length) return;
   if (!(await upsertJugadas(listas))) return;
   // aviso por Telegram cuando una estrategia del laboratorio pega
-  const pegaron = listas.filter(j => j.origen === 'lab' && j.premio > 0);
+  // v9.19: solo se avisa cuando GANA de verdad (cobra más de lo que jugó); los aciertos chiquitos van en el resumen de la noche
+  const pegaron = listas.filter(j => j.origen === 'lab' && j.premio > (j.clave === 'superkino' ? KINO_COSTO : (j.numeros || []).length));
   if (pegaron.length && TG_ACTIVO) {
     const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre])); KINO_LAB.forEach(k => { nombres[k.id] = k.nombre; });
     const f2 = n => String(n).padStart(2, '0');
-    await enviarTelegram(`🧪 <b>¡PEGÓ EN EL LABORATORIO!</b> (en papel)\n\n` + pegaron.map(j =>
+    await enviarTelegram(`🧪 <b>¡GANÓ EN EL LABORATORIO!</b> (en papel)\n\n` + pegaron.map(j =>
       `🎯 <b>${nombres[j.metodo] || j.metodo}</b> — ${j.clave === 'superkino' ? 'Super Kino TV' : (estado.sorteos[j.clave]?.nombre || j.clave)}\n     Jugó: ${j.numeros.map(f2).join('-')}${j.clave === 'superkino' ? ` · ${j.aciertos} aciertos` : ` · salió ${j.resultado.map(f2).join('-')}`}\n     Cobraría <b>RD$${j.premio}</b> por RD$${j.clave === 'superkino' ? KINO_COSTO : j.numeros.length} jugados`).join('\n\n'));
   }
 }
@@ -3078,7 +3079,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.18-ANTERIOR-VIVO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.19-AVISO-GANA en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
