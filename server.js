@@ -1356,7 +1356,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.21-KINO-DIGITOS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.22-AUDITORIA-COMPLETA', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2165,7 +2165,7 @@ app.get('/api/jugadas', async (req, res) => {
   const dias = Math.min(120, Math.max(1, parseInt(req.query.dias, 10) || 7));
   const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   try {
-    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control,lab)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc&limit=4000`);
+    const filas = (await leerJugadasTodas(`fecha=gte.${desde}&origen=in.(auto,control,lab)&select=id,clave,clave2,fecha,tipo,numeros,origen,metodo,hora_sorteo,generado_rd,evaluado,resultado,resultado2,aciertos,gano,premio,creado&order=creado.desc,id.asc`, 5000));
     // las del laboratorio llevan el nombre de su estrategia
     const nombres = Object.fromEntries(((typeof labCargar === 'function' ? await labCargar() : []) || []).map(e => [e.id, e.nombre]));
     for (const f of filas) if (f.origen === 'lab') f.estrategia = nombres[f.metodo] || (typeof kinoNombre === 'function' ? kinoNombre(f.metodo) : f.metodo);
@@ -2177,7 +2177,7 @@ app.get('/api/auditoria', async (req, res) => {
   const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
   const desde = new Date(Date.now() - (dias - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   try {
-    const filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(auto,control)&select=fecha,tipo,clave,origen,evaluado,gano,aciertos,premio,monto&limit=100000`);
+    const filas = await leerJugadasTodas(`fecha=gte.${desde}&origen=in.(auto,control)&select=id,fecha,tipo,clave,origen,evaluado,gano,aciertos,premio,monto`);
     const primera = filas.reduce((m, f) => (!m || (f.fecha && f.fecha < m) ? f.fecha : m), null) || desde;
     res.json({ desde: primera, total: filas.length, pagos: AUTO.pagos, loterias: AUTO.loterias, resumen: agregarAuditoria(filas) });
   } catch (e) { res.json({ error: `${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}` }); }
@@ -2893,7 +2893,7 @@ async function labGenerar() {
 async function labEvaluar() {
   if (!SUPABASE_ACTIVO) return;
   const desde = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
-  let pend; try { pend = await leerJugadas(`evaluado=eq.false&origen=in.(lab,labctl)&fecha=gte.${desde}&select=*&limit=2000`); } catch (e) { return; }
+  let pend; try { pend = await leerJugadasTodas(`evaluado=eq.false&origen=in.(lab,labctl)&fecha=gte.${desde}&select=*`); } catch (e) { return; }
   const listas = [];
   for (const j of pend) {
     const esKino = j.clave === 'superkino';
@@ -2985,7 +2985,7 @@ app.get('/api/lab/ranking', async (req, res) => {
   const dias90 = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 90));
   const desde = new Date(Date.now() - (dias90 - 1) * 86400000 - 4 * 3600000).toISOString().slice(0, 10);
   let filas = [];
-  try { filas = await leerJugadas(`fecha=gte.${desde}&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,numeros,resultado,aciertos,premio&limit=20000`); } catch (e) {}
+  try { filas = await leerJugadasTodas(`fecha=gte.${desde}&origen=in.(lab,labctl)&evaluado=eq.true&select=id,metodo,origen,numeros,resultado,aciertos,premio`); } catch (e) {}
   const vivo = {};
   for (const f of filas) {
     const v = vivo[f.metodo] = vivo[f.metodo] || { jugadas: 0, costo: 0, cobro: 0, ganadas: 0, aciertos: 0, esperado: 0, ctl_costo: 0, ctl_cobro: 0 };
@@ -3030,9 +3030,9 @@ async function labResumenNoche() {
 // ── VIGILANTE (v9.9): con suficientes sorteos EN VIVO, pausa sola la estrategia que pierde
 // claramente contra el azar y avisa la que va claramente por encima.
 // Cada número = punto RD$1 que paga 60/8/4 → el azar devuelve 0.72 por peso, desviación ≈ 6.02 por número.
-async function leerJugadasTodas(query) { // Supabase devuelve máx. 1000 filas por consulta → se lee por páginas
-  const out = []; for (let off = 0; off < 200000; off += 1000) {
-    const p = await leerJugadas(`${query}&order=id.asc&limit=1000&offset=${off}`); out.push(...p); if (p.length < 1000) break; }
+async function leerJugadasTodas(query, max = 200000) { // Supabase devuelve máx. 1000 filas por consulta → se lee por páginas
+  const out = []; for (let off = 0; off < max; off += 1000) {
+    const p = await leerJugadas(`${query}${/(^|&)order=/.test(query) ? '' : '&order=id.asc'}&limit=1000&offset=${off}`); out.push(...p); if (p.length < 1000) break; }
   return out;
 }
 const LAB_MIN_SORTEOS = 60, LAB_Z_PAUSA = -2, LAB_Z_BUENA = 2;
@@ -3094,7 +3094,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.21-KINO-DIGITOS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.22-AUDITORIA-COMPLETA en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
