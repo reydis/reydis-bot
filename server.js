@@ -1331,6 +1331,7 @@ async function sincronizar() {
     await paso('resumen-auto', enviarResumenAutoDelDia);
     await paso('teoria-repetidos', enviarAnalisisRepetidos);
     await paso('lab-resumen', labResumenNoche);
+    await paso('detector-sesgo', detectorSemanal);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1356,7 +1357,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.22-AUDITORIA-COMPLETA', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.23-PRESUPUESTO-DETECTOR', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1546,11 +1547,11 @@ async function cargarJugadasPendientes() {
   } catch(e) { return []; }
 }
 
-async function marcarJugadaNotificada(id) {
+async function marcarJugadaNotificada(id, extra) {
   if (!SUPABASE_ACTIVO) return;
   try {
-    await axios.patch(`${SUPABASE_URL}/rest/v1/jugadas?id=eq.${id}`,
-      { notificado: true },
+    await axios.patch(`${SUPABASE_URL}/rest/v1/jugadas?id=eq.${encodeURIComponent(id)}`,
+      { notificado: true, ...(extra ? { ...extra, evaluado: true, evaluado_en: new Date().toISOString() } : {}) },
       { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' }, timeout: 8000 }
     );
   } catch(e) {}
@@ -1625,13 +1626,15 @@ async function notificarJugadasPersonales() {
       if (!s2 || !s2.numeros || s2.numeros.length < 3 || sorteo.numeros.length < 3) continue;
       const primeros = [Number(sorteo.numeros[0]), Number(s2.numeros[0])];
       const m = emparejar(j.numeros.map(Number), primeros);
-      await marcarJugadaNotificada(j.id);
+      await marcarJugadaNotificada(j.id, { aciertos: m, gano: m === 2, premio: premioManual(j, sorteo.numeros, s2.numeros), resultado: primeros });
       avisos.push(`${m === 2 ? '🎯' : '❌'} <b>Súper Palé ${sorteo.nombre} + ${s2.nombre}</b>\n     Jugaste: <b>${j.numeros.map(f2).join('-')}</b> · 1ros premios: <b>${primeros.map(f2).join('-')}</b>\n     ${m} de 2 · ${m === 2 ? '¡GANASTE! 🏆' : 'No acertaste'}`);
       continue;
     }
     const r = evaluarJugadaServidor(j, sorteo);
     if (!r) continue;
-    await marcarJugadaNotificada(j.id);
+    const premio = premioManual(j, r.real);
+    await marcarJugadaNotificada(j.id, { aciertos: r.aciertos, gano: premio === null ? r.gano : premio > 0, premio, resultado: r.real });
+    if (premio !== null) r.detalle += premio > 0 ? ` · cobra <b>RD$${premio}</b>` : '';
     const nums = j.numeros.map(f2).join('-');
     const real = r.real.map(f2).join('-');
     const emoji = r.gano ? '🎯' : '❌';
@@ -1665,12 +1668,109 @@ app.get('/api/jugadas-mias', async (req, res) => {
     res.json({ fecha, total: filas.length, jugadas: filas });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// ══════════ 💰 PRESUPUESTO SEMANAL + 🔍 DETECTOR DE BOLOS CARGADOS (v9.23) ══════════
+// Premio en RD$ de una jugada SUYA (monto = lo que apostó en esa jugada). null = no se sabe calcular.
+function premioManual(j, real, real2) {
+  const monto = Number(j.monto) || 0; if (!monto || !Array.isArray(real) || !real.length) return null;
+  const nums = (j.numeros || []).map(Number), P = AUTO.pagos;
+  if (j.tipo === 'punto') { const por = monto / Math.max(1, nums.length); let t = 0; real.slice(0, 3).forEach((x, i) => { if (nums.includes(Number(x))) t += por * (P.punto[i] || 0); }); return Math.round(t); }
+  if (j.tipo === 'pale') { const pos = real.slice(0, 3).map(Number).map((x, i) => nums.includes(x) ? i : -1).filter(i => i >= 0); if (pos.length < 2) return 0; const k = `${pos[0]}-${pos[1]}`; return Math.round(monto * (P.pale[k] || 0)); }
+  if (j.tipo === 'tripleta') { const a = real.slice(0, 3).map(Number).filter(x => nums.includes(x)).length; return Math.round(monto * (P.tripleta[a] || 0)); }
+  if (j.tipo === 'superpale') { if (!real2) return null; const m = emparejar(nums, [Number(real[0]), Number(real2[0])]); return m === 2 ? Math.round(monto * P.superpale) : 0; }
+  if (j.clave === 'superkino') { const a = nums.filter(n => real.map(Number).includes(n)).length; return Math.round((KINO_PAGO[a] || 0) * monto / KINO_COSTO); }
+  return null;
+}
+function lunesRD(fecha) { const d = new Date((fecha || fechaRD()) + 'T12:00:00Z'); const dw = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dw); return d.toISOString().slice(0, 10); }
+async function presupuestoTope() { try { const f = await leerJugadas(`id=eq.${encodeURIComponent('sys|config|presupuesto')}&select=monto`); return f.length ? Number(f[0].monto) || 0 : 0; } catch (e) { return 0; } }
+async function presupuestoSemana(fecha) {
+  const lunes = lunesRD(fecha); const dom = new Date(lunes + 'T12:00:00Z'); dom.setUTCDate(dom.getUTCDate() + 6); const domingo = dom.toISOString().slice(0, 10);
+  const filas = await leerJugadasTodas(`origen=eq.manual&fecha=gte.${lunes}&fecha=lte.${domingo}&select=id,clave,tipo,numeros,monto,premio,evaluado,fecha`);
+  const jugado = filas.reduce((a, f) => a + (Number(f.monto) || 0), 0);
+  const cobrado = filas.reduce((a, f) => a + (Number(f.premio) || 0), 0);
+  const sinMonto = filas.filter(f => !Number(f.monto)).length;
+  const tope = await presupuestoTope();
+  return { semana: `${lunes} → ${domingo}`, lunes, tope, jugado, cobrado, neto: cobrado - jugado, jugadas: filas.length, sin_monto: sinMonto,
+    usado_pct: tope ? Math.round(100 * jugado / tope) : null, queda: tope ? Math.max(0, tope - jugado) : null };
+}
+async function presupuestoAvisar(fecha) {
+  if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
+  const b = await presupuestoSemana(fecha); if (!b.tope) return;
+  for (const nivel of [100, 80]) {
+    if (b.usado_pct < nivel) continue;
+    const id = `sys|presu|${b.lunes}|${nivel}`;
+    try { if ((await leerJugadas(`id=eq.${encodeURIComponent(id)}&select=id`)).length) return; } catch (e) { return; }
+    await upsertJugadas([{ id, origen: 'sistema', clave: 'sistema', fecha: fechaRD(), tipo: 'sistema', numeros: [], notificado: true, evaluado: true }]);
+    await enviarTelegram(nivel === 100
+      ? `🛑 <b>PRESUPUESTO DE LA SEMANA AGOTADO</b>\n\nJugó <b>RD$${b.jugado}</b> de RD$${b.tope} (${b.usado_pct}%).\nCobrado esta semana: RD$${b.cobrado} · Neto: <b>RD$${b.neto}</b>\n\n<i>El tope se reinicia el lunes. La fe se cuida con cabeza 🙏</i>`
+      : `⚠️ <b>Presupuesto al ${b.usado_pct}%</b>\n\nJugó <b>RD$${b.jugado}</b> de RD$${b.tope}. Le quedan <b>RD$${b.queda}</b> esta semana.\nCobrado: RD$${b.cobrado} · Neto: RD$${b.neto}`);
+    return;
+  }
+}
+app.get('/api/presupuesto', async (req, res) => { try { res.json(await presupuestoSemana(req.query.fecha)); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/presupuesto', async (req, res) => {
+  const tope = Math.max(0, Math.round(Number(req.body && req.body.tope) || 0));
+  try { await upsertJugadas([{ id: 'sys|config|presupuesto', origen: 'sistema', clave: 'sistema', fecha: fechaRD(), tipo: 'sistema', numeros: [], monto: tope, notificado: true, evaluado: true }]);
+    res.json({ ok: true, ...(await presupuestoSemana()) }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 🔍 DETECTOR DE BOLOS CARGADOS: ¿algún número o dígito sale MÁS de lo normal en alguna lotería?
+// Con tantas pruebas, solo cuenta si pasa Bonferroni (p < 0.05 / número de pruebas).
+function normCdf(z) { const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; }
+function chi2P(x2, df) { const z = (Math.pow(x2 / df, 1 / 3) - (1 - 2 / (9 * df))) / Math.sqrt(2 / (9 * df)); return 1 - normCdf(z); }
+async function detectorSesgo() {
+  histTeoria.fecha = null; await cargarHistTeoria();
+  const porFecha = {}; for (const d of histTeoria.filas) porFecha[d.fecha] = d; for (const d of estado.historico) porFecha[d.fecha] = { ...(porFecha[d.fecha] || {}), ...d };
+  const dias = Object.values(porFecha);
+  const series = {}; // clave → { nombre, nums:[...], bolos, rango:[min,max] }
+  for (const d of dias) {
+    for (const [k, s] of Object.entries(d.sorteos || {})) { if (!s || !Array.isArray(s.numeros) || s.numeros.length < 3) continue;
+      const x = series[k] = series[k] || { nombre: s.nombre || k, nums: [], sorteos: 0, por: 3, min: 0, max: 99 }; x.sorteos++; x.nums.push(...s.numeros.slice(0, 3).map(Number)); }
+    const kn = d.especiales && d.especiales.superkino;
+    if (kn && Array.isArray(kn.numeros) && kn.numeros.length >= 20 && d.fecha >= '2026-09-20') { const x = series.superkino = series.superkino || { nombre: 'Super Kino TV', nums: [], sorteos: 0, por: 20, min: 1, max: 84 }; x.sorteos++; x.nums.push(...kn.numeros.map(Number)); }
+  }
+  const pruebas = [];
+  for (const [k, x] of Object.entries(series)) {
+    if (x.sorteos < 30) continue;
+    const N = x.max - x.min + 1, cnt = {}; for (const n of x.nums) cnt[n] = (cnt[n] || 0) + 1;
+    const esp = x.nums.length / N, pBin = x.por / N; // probabilidad de que un número salga en un sorteo
+    let x2 = 0; for (let n = x.min; n <= x.max; n++) x2 += Math.pow((cnt[n] || 0) - esp, 2) / esp;
+    pruebas.push({ loteria: x.nombre, clave: k, prueba: 'todos los números parejos', sorteos: x.sorteos, p: chi2P(x2, N - 1) });
+    for (let n = x.min; n <= x.max; n++) { // cada número por separado (solo nos interesa si sale DE MÁS)
+      const o = cnt[n] || 0, mu = x.sorteos * pBin, sd = Math.sqrt(x.sorteos * pBin * (1 - pBin)), z = (o - 0.5 - mu) / sd;
+      pruebas.push({ loteria: x.nombre, clave: k, prueba: `número ${String(n).padStart(2, '0')}`, numero: n, sorteos: x.sorteos, salio: o, esperado: +mu.toFixed(1), p: 1 - normCdf(z) });
+    }
+    if (k !== 'superkino') for (const [nom, f] of [['1er dígito', n => Math.floor(n / 10)], ['terminación', n => n % 10]]) {
+      const c = {}; for (const n of x.nums) c[f(n)] = (c[f(n)] || 0) + 1; const e = x.nums.length / 10; let q = 0; for (let dgt = 0; dgt < 10; dgt++) q += Math.pow((c[dgt] || 0) - e, 2) / e;
+      pruebas.push({ loteria: x.nombre, clave: k, prueba: nom, sorteos: x.sorteos, p: chi2P(q, 9) });
+    }
+  }
+  const umbral = 0.05 / Math.max(1, pruebas.length);
+  pruebas.sort((a, b) => a.p - b.p);
+  const alarmas = pruebas.filter(t => t.p < umbral);
+  return { fecha: fechaRD(), loterias: Object.keys(series).length, pruebas: pruebas.length, umbral, alarmas,
+    top10: pruebas.slice(0, 10).map(t => ({ ...t, p: +t.p.toExponential(2) })),
+    veredicto: alarmas.length ? `🚨 ${alarmas.length} señal(es) de bolo cargado` : 'Todo parejo: ninguna lotería muestra bolos cargados' };
+}
+app.get('/api/sesgo', async (req, res) => { try { res.json(await detectorSesgo()); } catch (e) { res.status(500).json({ error: e.message }); } });
+let sesgoRevisado = null;
+async function detectorSemanal() { // los lunes desde las 8:00 AM, una vez por semana
+  if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
+  const hoy = fechaRD(); if (diaSemanaRD() !== 'Mon' || minutosActualesRD() < 8 * 60 || sesgoRevisado === hoy) return;
+  sesgoRevisado = hoy; if (yaEnviado('sesgo')) return;
+  const r = await detectorSesgo(); await marcarEnviado('sesgo');
+  const f = t => `• <b>${t.loteria}</b> — ${t.prueba}${t.salio !== undefined ? `: salió ${t.salio} veces (lo normal ~${t.esperado}) en ${t.sorteos} sorteos` : ` (${t.sorteos} sorteos)`}`;
+  await enviarTelegram(r.alarmas.length
+    ? `🚨 <b>DETECTOR DE BOLOS CARGADOS</b>\n\nEsto sale de más, más allá de lo que explica el azar:\n${r.alarmas.slice(0, 8).map(f).join('\n')}\n\n<i>${r.pruebas} pruebas en ${r.loterias} loterías. Hay que confirmarlo con más semanas antes de jugarle.</i>`
+    : `🔍 <b>DETECTOR DE BOLOS CARGADOS</b> — semanal\n\n✅ ${r.veredicto}.\n<i>${r.pruebas} pruebas en ${r.loterias} loterías. Lo más "raro" esta semana:</i>\n${r.top10.slice(0, 3).map(f).join('\n')}\n<i>(dentro de lo normal)</i>`);
+}
+
 app.post('/api/jugada', async (req, res) => {
   const j = req.body;
   if (!j || !j.clave || !j.numeros || !j.fecha) return res.status(400).json({ error: 'Faltan campos' });
   const jugada = { id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`, clave: j.clave, clave2: j.clave2 || null, fecha: j.fecha, tipo: j.tipo || 'especial', numeros: j.numeros, monto: j.monto || null, notificado: false, creado: new Date().toISOString() };
   const ok = await guardarJugadaSupabase(jugada);
   res.json({ ok, id: jugada.id });
+  if (ok && jugada.monto) presupuestoAvisar(jugada.fecha).catch(() => {});
 });
 
 
@@ -3094,7 +3194,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.22-AUDITORIA-COMPLETA en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.23-PRESUPUESTO-DETECTOR en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
