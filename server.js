@@ -1357,7 +1357,7 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.23-PRESUPUESTO-DETECTOR', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.24-EFEMERIDES', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2667,6 +2667,7 @@ const LAB_TIPOS = {
   frecuencia: { nombre: 'Calientes', desc: 'Los N que más han salido en esa lotería (últimos 90 sorteos)', params: ['n'] },
   atrasados:  { nombre: 'Atrasados', desc: 'Los N que más tiempo llevan sin salir en esa lotería', params: ['n'] },
   rodean:     { nombre: 'Números que rodean (video)', desc: 'Se le da la vuelta al 1er premio de la fuente (85 → 58) y se juegan los 4 que lo rodean: 57, 59, 48, 68', params: ['fuente'] },
+  efemerides: { nombre: 'Efemérides', desc: "Variante 'fecha': el día, el mes, el año, día+mes y el espejo del día. Variante 'mismo-dia': lo que salió en esa lotería el mismo día de los meses anteriores", params: ['variante'] },
   piramide:   { nombre: 'Pirámide de fechas (video)', desc: 'Pirámide de la fecha de AYER + la de HOY → número base, su equivalente (1=6…5=0), base ± el día y sus vueltas (6 números, los mismos en todas las loterías)', params: [] },
   fe:         { nombre: 'Mis números de fe', desc: 'Sus números fijos, todos los días', params: ['numeros'] },
 };
@@ -2674,6 +2675,8 @@ const LAB_FUENTES = { ayer: 'el mismo sorteo AYER', anterior: 'la lotería que s
 const LAB_NUEVAS = [
   { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
   { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
+  { id: 'efemerides-fecha', nombre: 'Efemérides · números de la fecha', tipo: 'efemerides', parametros: { variante: 'fecha' }, loterias: 'auto' },
+  { id: 'efemerides-mismo-dia', nombre: 'Efemérides · mismo día de meses anteriores', tipo: 'efemerides', parametros: { variante: 'mismo-dia' }, loterias: 'auto' },
 ];
 const LAB_DEFAULT = [
   { id: 'codigoq-real', nombre: 'Código Q 35.9 · Lotería Real', tipo: 'codigoq', parametros: { Q: 35.9 }, loterias: ['real_t'] },
@@ -2798,6 +2801,12 @@ function labCandidatos(est, dias, idxDia, clave) {
   if (est.tipo === 'codigoq') { const f = labFuente(dias, idxDia, clave, 'ayer'); c = f ? labCodigoQ(f[0], Number(p.Q) || 35.9) : null; }
   else if (est.tipo === 'fe') c = (p.numeros || []).map(Number);
   else if (est.tipo === 'piramide') c = labPiramide(dias[idxDia] && dias[idxDia].fecha);
+  else if (est.tipo === 'efemerides') {
+    const f = dias[idxDia] && dias[idxDia].fecha; if (!f) return null;
+    const [y, m, d] = f.split('-').map(Number);
+    if ((p.variante || 'fecha') === 'fecha') c = [d, m, y % 100, (d + m) % 100, (d % 10) * 10 + Math.floor(d / 10)];
+    else { c = []; for (let i = 0; i < idxDia; i++) { if (Number(dias[i].fecha.slice(8)) !== d) continue; const s = dias[i].sorteos && dias[i].sorteos[clave]; if (s && s.numeros && s.numeros.length >= 3) c.push(...s.numeros.slice(0, 3).map(Number)); } if (!c.length) return null; }
+  }
   else if (est.tipo === 'frecuencia' || est.tipo === 'atrasados') {
     const serie = labSerie(dias, idxDia, clave); if (serie.length < 10) return null;
     const n = Math.min(10, Math.max(1, Number(p.n) || 3));
@@ -3194,7 +3203,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.23-PRESUPUESTO-DETECTOR en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.24-EFEMERIDES en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
