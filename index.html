@@ -1426,6 +1426,7 @@
         🎯 Backtesting
       </button>
       <button class="tabbtn" onclick="irTab('cons',this)">📅 Consultas</button>
+      <button class="tabbtn" onclick="irTab('lab',this)">🧪 Laboratorio</button>
       <button class="tabbtn" onclick="irTab('jugadas',this)">
         🎟️ Mis Jugadas
       </button>
@@ -1476,6 +1477,12 @@
         </div>
         <div class="grid-loterias" id="cuarteta-body"></div>
 
+        <!-- ══ ANGUILA CADA HORA (solo consulta) ══ -->
+        <div style="margin-top: 22px; font-size: 13px; font-weight: 800; color: var(--gold); display: flex; align-items: center; gap: 6px;">
+          🐍 Anguila cada hora <span style="font-size:11px;color:var(--muted2);font-weight:600">· solo consulta, no entra en predicciones</span>
+        </div>
+        <div class="grid-loterias" id="anguila-horas-body"></div>
+
         <!-- ══ JUEGOS ESPECIALES ══ -->
         <div
           style="
@@ -1495,6 +1502,38 @@
           4)
         </div>
         <div class="grid-loterias" id="especiales-body"></div>
+
+        <!-- ══ GENERADOR KINO BASADO EN REPETIDOS DEL DÍA ══ -->
+        <div style="margin-top:22px;margin-bottom:10px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px">
+          🎯 Super Kino TV — Tickets basados en números que ya salieron hoy
+        </div>
+        <div class="card-lot" style="cursor:default">
+          <div class="cl-hdr">
+            <div class="cl-tit">🎯 Generador Kino por Repetidos del Día</div>
+            <span class="cl-live pend" id="kino-rep-estado">Cargando...</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+            Toma los números ⚡ que ya salieron en 2+ loterías hoy y genera tickets del Kino con ellos — la señal que más hemos visto repetirse en el sorteo de las 9PM.
+          </div>
+          <div id="kino-rep-nums" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <input id="kino-rep-cant" type="number" min="1" max="12" value="3" class="cons-input" style="flex:1;min-width:80px" placeholder="Tickets"/>
+            <button onclick="generarKinoRepetidos()" class="btn btn-neon" style="flex:2;min-width:160px">🎰 Generar Tickets Kino</button>
+          </div>
+          <div id="kino-rep-out" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+
+          <!-- Experimento: comparación de métodos -->
+          <div style="margin-top:18px;padding-top:14px;border-top:1px dashed var(--border2)">
+            <div style="font-size:10px;font-weight:800;color:var(--neon);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px">
+              🧪 Experimento — ¿Qué método acierta más en el Kino?
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+              Cada vez que generas tickets con los 4 métodos y los agregas a Mis Jugadas, el sistema registra cuántos números acertaste por método. Después de 20+ sorteos verás cuál realmente funciona mejor.
+            </div>
+            <div id="kino-exp-stats"></div>
+            <button onclick="renderKinoExperimento()" style="margin-top:10px;padding:6px 14px;border-radius:7px;background:var(--card2);color:var(--muted);border:1px solid var(--border);font-size:11px;cursor:pointer">↺ Actualizar estadísticas</button>
+          </div>
+        </div>
       </div>
 
       <!-- ══ PREDICCIONES ══ -->
@@ -2003,8 +2042,64 @@
       </div>
 
       <!-- ══ MIS JUGADAS ══ -->
+      <!-- ══ LABORATORIO DE ESTRATEGIAS ══ -->
+      <div class="sec" id="sec-lab">
+        <div class="cons-panel">
+          <div class="cons-tit">🧪 Laboratorio de Estrategias</div>
+          <p style="color: var(--muted); font-size: 12px; margin-bottom: 10px">
+            Cree sus estrategias y el sistema las juega <b>solo, en papel</b> (sin dinero) en las loterías normales que escoja.
+            Cada número sugerido cuenta como un <b>punto de RD$1</b> (paga 60 / 8 / 4). Al lado de cada una juega un
+            <b>control al azar</b> del mismo tamaño para comparar. También se prueba al instante sobre <b>todo el historial</b>.
+          </p>
+          <div id="lab-aviso"></div>
+          <div class="cons-panel" style="border: 1px solid var(--neon)">
+            <div class="cons-tit" style="font-size: 14px">➕ Nueva estrategia</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px">
+              <input id="lab-nombre" class="cons-input" placeholder="Nombre (ej: Jaladera de Gana Más)" style="flex: 2; min-width: 180px" />
+              <select id="lab-tipo" class="cons-select" style="flex: 2; min-width: 180px" onchange="labTipoCambio()"></select>
+            </div>
+            <div id="lab-desc" style="font-size: 11px; color: var(--muted); margin-bottom: 8px"></div>
+            <div id="lab-params" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px"></div>
+            <div style="font-size: 12px; font-weight: 700; margin: 6px 0">Loterías donde juega:</div>
+            <label style="font-size: 12px; display: block; margin-bottom: 6px"><input type="checkbox" id="lab-auto" checked onchange="labAutoCambio()" /> Las de siempre (las mismas de las jugadas automáticas)</label>
+            <div id="lab-lots" style="display: none; flex-wrap: wrap; gap: 6px; margin-bottom: 8px"></div>
+            <button class="btn btn-neon" onclick="labGuardar()">💾 Guardar y probar</button>
+            <span id="lab-msg" style="font-size: 12px; margin-left: 8px"></span>
+          </div>
+          <div class="cons-tit" style="font-size: 14px; margin-top: 10px">🎯 Números de hoy (sorteos que faltan)</div>
+          <div style="font-size: 11px; color: var(--muted); margin-bottom: 8px">El laboratorio juega estos números solo, en papel. Toque <b>➕ Jugar</b> únicamente si usted los juega con dinero: se guardan en <b>Mis Jugadas</b> como 🙋 suyos.</div>
+          <div id="lab-hoy" style="margin-bottom: 12px"><div class="empty"><p>Cargando…</p></div></div>
+          <div class="row" style="margin-top: 10px">
+            <div class="cons-tit" style="font-size: 14px; margin: 0">🏆 Tabla de posiciones</div>
+            <button class="btn btn-neon" onclick="cargarLabHoy(); cargarLab()">↺ Actualizar</button>
+          </div>
+          <div id="lab-tabla" style="margin-top: 10px"><div class="empty"><p>Cargando…</p></div></div>
+          <div class="row" style="margin-top: 18px">
+            <div class="cons-tit" style="font-size: 14px; margin: 0">🎰 Kino del Laboratorio</div>
+            <button class="btn btn-neon" onclick="cargarLabKino()">↺ Actualizar</button>
+          </div>
+          <div style="font-size: 11px; color: var(--muted); margin: 4px 0 8px">8 códigos propios, cada uno es un ticket de 10 números (RD$25) que se juega solo en papel antes del sorteo, con un ticket al azar al lado para comparar. Premios Leidsa: 0 aciertos RD$80 · 5 → RD$60 · 6 → RD$300 · 7 → RD$1,000. El azar da en promedio <b>2.38</b> aciertos.</div>
+          <div id="lab-kino"><div class="empty"><p>Cargando…</p></div></div>
+          <div class="row" style="margin-top: 18px">
+            <div class="cons-tit" style="font-size: 14px; margin: 0">🔍 Detector de bolos cargados</div>
+            <button class="btn btn-neon" onclick="cargarSesgo()">↺ Revisar ahora</button>
+          </div>
+          <div style="font-size: 11px; color: var(--muted); margin: 4px 0 8px">Revisa cada lotería: si algún número o dígito sale MÁS de lo que explica el azar (una tómbola con un bolo más pesado o gastado). Con tantas pruebas, solo suena la alarma si pasa el umbral estricto. Se revisa solo cada lunes y le avisa por Telegram.</div>
+          <div id="lab-sesgo"><div class="empty"><p>Toque "Revisar ahora" (tarda unos segundos).</p></div></div>
+          <div class="cons-tit" style="font-size: 14px; margin-top: 18px">🎟️ Loto inteligente (combinaciones poco populares)</div>
+          <div style="font-size: 11px; color: var(--muted); margin: 4px 0 8px">En el Loto y el Loto 5 el premio mayor se <b>reparte</b> entre los ganadores. Mucha gente juega fechas (1-31), números seguidos o patrones. Estas combinaciones tienen la <b>misma</b> probabilidad de salir, pero si pegan es más difícil que tenga que compartir el premio.</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-neon" onclick="lotoInteligente('loto')">🎲 Loto Leidsa (6 de 1-40)</button>
+            <button class="btn btn-neon" onclick="lotoInteligente('loto5')">🎲 Loto 5 La Primera (5 de 1-38)</button>
+          </div>
+          <div id="lab-loto"></div>
+        </div>
+      </div>
+
       <div class="sec" id="sec-jugadas">
         <div class="cons-panel">
+          <div class="cons-tit">💰 Presupuesto de la semana</div>
+          <div id="presu-box" class="cardX" style="margin-bottom: 14px"><div class="empty"><p>Cargando…</p></div></div>
           <div class="cons-tit">🎟️ Registro Personal de Jugadas</div>
           <p style="color: var(--muted); font-size: 12px; margin-bottom: 14px">
             Anote lo que jugó de verdad y el sistema le dice si acertó cuando
@@ -2042,10 +2137,11 @@
                 <option value="pega3mas">Pega 3 Más (LEIDSA)</option>
                 <option value="superkino">Super Kino TV (LEIDSA)</option>
                 <option value="loto">Loto (LEIDSA)</option>
-                <option value="lotomas">Loto Más (LEIDSA)</option>
                 <option value="quemaito">El Quemaito Mayor (LoteDom)</option>
                 <option value="megachance">Mega Chance (Loteka)</option>
-                <option value="pega4king">Pega 4 Real (REAL)</option>
+                <option value="loto5">Loto 5 (La Primera)</option>
+                <option value="lotopoolreal">Loto Pool Real</option>
+                <option value="lotopoolleidsa">Loto Pool Leidsa</option>
               </select>
               <input
                 id="gen-cant"
@@ -2092,7 +2188,11 @@
             </div>
             <div id="jg-tipo-wrap" style="display: none">
               <label class="cons-label">Tipo de jugada</label>
-              <select id="jg-tipo" class="cons-select"></select>
+              <select id="jg-tipo" class="cons-select" onchange="actualizarTipoJugada()"></select>
+            </div>
+            <div id="jg-lot2-wrap" style="display: none">
+              <label class="cons-label">2da lotería del Súper Palé</label>
+              <select id="jg-lot2" class="cons-select"></select>
             </div>
           </div>
           <div style="margin-top: 12px">
@@ -2125,6 +2225,38 @@
           >
             ➕ Agregar Jugada
           </button>
+        </div>
+
+        <div class="cons-panel" id="jg-auditoria-card" style="margin-top: 18px">
+          <div class="cons-tit">🤖 Auditoría — Sistema vs Azar</div>
+          <div style="font-size: 12px; color: var(--muted); margin: 6px 0 10px">
+            Cada día el servidor registra solo, antes del sorteo, las jugadas del sistema (🤖) y la misma
+            cantidad al azar (🎲 control). Si después de muchas semanas 🤖 no le gana a 🎲, el sistema no
+            está aportando. "Retorno" = lo que devolvió cada RD$1 (1.00 = quedó igual).
+          </div>
+          <div id="jg-auditoria" style="font-size: 12px; color: var(--muted2)">Cargando…</div>
+        </div>
+
+        <div class="cons-filtros" style="margin-top: 18px">
+          <div>
+            <label class="cons-label">Mostrar</label>
+            <select id="jg-f-origen" class="cons-select" onchange="renderJugadas()">
+              <option value="todas">Todas</option>
+              <option value="manual">🙋 Mías</option>
+              <option value="auto">🤖 Automáticas</option>
+              <option value="control">🎲 Control (azar)</option>
+              <option value="lab">🧪 Laboratorio (en papel)</option>
+            </select>
+          </div>
+          <div>
+            <label class="cons-label">Periodo</label>
+            <select id="jg-f-periodo" class="cons-select" onchange="renderJugadas()">
+              <option value="1">Hoy</option>
+              <option value="7">Últimos 7 días</option>
+              <option value="30">Últimos 30 días</option>
+              <option value="9999">Todo</option>
+            </select>
+          </div>
         </div>
 
         <div class="stats3" id="jg-stats3" style="margin: 18px 0"></div>
@@ -2172,9 +2304,9 @@
       };
 
       const LOTS18 = [
-        { k: "anguila_m", n: "Anguila Mañana", h: "9:00 AM" },
+        { k: "anguila_m", n: "Anguila Mañana", h: "10:00 AM" },
         { k: "laprimera", n: "La Primera Día", h: "10:30 AM" },
-        { k: "lotedom", n: "LoteDom", h: "11:30 AM" },
+        { k: "lotedom", n: "LoteDom", h: "12:00 PM" },
         { k: "suerte", n: "La Suerte 12:30", h: "12:30 PM" },
         { k: "king_t", n: "King Tarde", h: "12:30 PM" },
         { k: "real_t", n: "Lotería Real", h: "12:30 PM" },
@@ -2231,20 +2363,20 @@
         },
         {
           k: "lotomas",
-          n: "Loto Más",
+          n: "Loto Más · Súper Más",
           empresa: "LEIDSA",
           tipo: "lotomas",
           hora: "9:00 PM",
           h: "9:00 PM",
-          cant: 7,
+          cant: 2, // bolo azul (Más) + bolo rojo (Súper Más) del mismo sorteo del Loto
         },
         {
           k: "quemaito",
           n: "El Quemaito Mayor",
           empresa: "LoteDom",
           tipo: "quiniela",
-          hora: "1:55 PM",
-          h: "1:55 PM",
+          hora: "12:00 PM",
+          h: "12:00 PM",
           cant: 1,
         },
         {
@@ -2265,16 +2397,59 @@
           h: "12:55 PM",
           cant: 4,
         },
+        {
+          k: "loto5",
+          n: "Loto 5",
+          empresa: "La Primera",
+          tipo: "loto5",
+          hora: "8:00 PM",
+          h: "8:00 PM",
+          cant: 6, // 5 números (1-38) + bolo 5+ (1-10)
+        },
+        {
+          k: "lotopoolreal",
+          n: "Loto Pool Real",
+          empresa: "REAL",
+          tipo: "lotopool",
+          hora: "1:00 PM",
+          h: "1:00 PM",
+          cant: 4,
+        },
+        {
+          k: "lotopoolleidsa",
+          n: "Loto Pool Leidsa",
+          empresa: "LEIDSA",
+          tipo: "lotopool",
+          hora: "8:55 PM",
+          h: "8:55 PM",
+          cant: 5,
+        },
       ];
       const TIPO_PRED_CANT_FE = {
         kino: 10,
         loto: 6,
         lotomas: 7,
+        loto5: 5,
         pega3: 3,
         pega4: 4,
       };
 
+      // Anguila de cada hora: SOLO consulta (no entra en predicciones, ⚡ ni jugadas automáticas)
+      const ANGUILA_HORA = [
+        { k: "ang_08", n: "Anguila 8:00 AM", h: "8:00 AM" },
+        { k: "ang_09", n: "Anguila 9:00 AM", h: "9:00 AM" },
+        { k: "ang_11", n: "Anguila 11:00 AM", h: "11:00 AM" },
+        { k: "ang_12", n: "Anguila 12:00 PM", h: "12:00 PM" },
+        { k: "ang_14", n: "Anguila 2:00 PM", h: "2:00 PM" },
+        { k: "ang_15", n: "Anguila 3:00 PM", h: "3:00 PM" },
+        { k: "ang_16", n: "Anguila 4:00 PM", h: "4:00 PM" },
+        { k: "ang_17", n: "Anguila 5:00 PM", h: "5:00 PM" },
+        { k: "ang_19", n: "Anguila 7:00 PM", h: "7:00 PM" },
+        { k: "ang_20", n: "Anguila 8:00 PM", h: "8:00 PM" },
+        { k: "ang_22", n: "Anguila 10:00 PM", h: "10:00 PM" },
+      ];
       const INFO_LOOKUP = {};
+      for (const l of ANGUILA_HORA) INFO_LOOKUP[l.k] = { n: l.n, h: l.h };
       for (const l of LOTS18) INFO_LOOKUP[l.k] = { n: l.n, h: l.h };
       for (const l of CUARTETAS) INFO_LOOKUP[l.k] = { n: l.n, h: l.h };
       for (const l of ESPECIALES_PRED_LIST)
@@ -2304,13 +2479,18 @@
             if (!m[f]) m[f] = { f };
             for (const [k, s] of Object.entries(dia.sorteos || {})) {
               const n = s?.numeros || s;
-              if (Array.isArray(n) && n.length >= 3 && !m[f][k]) m[f][k] = n;
+              // El servidor manda: así se corrige la "Anguila Mañana" vieja (8 AM) guardada en el teléfono
+              if (Array.isArray(n) && n.length >= 3) m[f][k] = n;
               // Guardar predicción del servidor si existe
               if (s?.prediccion && !m[f][`pred_${k}`]) m[f][`pred_${k}`] = s.prediccion;
             }
             for (const [k, c] of Object.entries(dia.cuartetas || {})) {
               const n = c?.numeros || c;
               if (Array.isArray(n) && n.length >= 4 && !m[f][k]) m[f][k] = n;
+            }
+            for (const [k, a] of Object.entries(dia.anguilas || {})) {
+              const n = a?.numeros || a;
+              if (Array.isArray(n) && n.length >= 3) m[f][k] = n;
             }
             for (const [k, e] of Object.entries(dia.especiales || {})) {
               const n = e?.numeros || e;
@@ -2391,7 +2571,8 @@
             renderDashboardPrecision();
           });
         }
-        if (id === "jugadas") renderJugadas();
+        if (id === "jugadas") { renderJugadas(); cargarPresupuesto(); }
+        if (id === "lab") { cargarLabHoy(); cargarLab(); cargarLabKino(); }
       }
 
       let datosSorteosGlobal = {};
@@ -2425,10 +2606,12 @@
           document.getElementById(
             "sub-d"
           ).textContent = `${disp} de ${LOTS18.length} sorteos con resultados publicados`;
-          saveHist(d.fecha, { ...s, ...c, ...e });
+          const an = d.anguilas || {};
+          saveHist(d.fecha, { ...s, ...c, ...e, ...an });
           renderStats(disp);
           renderHoy(s);
           renderCuartetas(c);
+          renderAnguilasHora(an);
           renderEspeciales(e);
         } catch (e) {
           const to = e.name === "TimeoutError" || e.name === "AbortError";
@@ -2492,7 +2675,7 @@
       <div class="cl-hdr">
         <div class="cl-tit">${l.n}</div>
         <span class="cl-live ${ok ? "ok" : "pend"}">${
-            ok ? "✓ EN VIVO" : "⏳ " + l.h
+            ok ? "✓ EN VIVO" : "⏳ " + (sorteos[l.k]?.hora || l.h)
           }</span>
       </div>
       <div class="esferas">
@@ -2508,6 +2691,27 @@
     </div>`;
         }
         grid.innerHTML = html;
+      }
+
+      function renderAnguilasHora(anguilas) {
+        const grid = document.getElementById("anguila-horas-body");
+        if (!grid) return;
+        const hist = getHist();
+        const bolas = (n, cls) => [0, 1, 2].map((i) => `<span class="${cls}${i + 1}">${p2(n[i])}</span>`).join("");
+        grid.innerHTML = ANGUILA_HORA.map((l) => {
+          const nums = anguilas[l.k]?.numeros || [];
+          const ok = nums.length >= 3;
+          const prev = hist.filter((d) => d.f !== fechaHoyAPI && (d[l.k] || []).length >= 3).slice(0, 3);
+          const histHTML = prev.length
+            ? prev.map((d) => `<div class="hist-row"><span class="hist-fecha">${fmtFShort(d.f)}</span><div class="hist-bolas">${bolas(d[l.k], "mini-esf mini-e")}</div></div>`).join("")
+            : `<div style="font-size:11px;color:var(--muted2)">Sin historial aún.</div>`;
+          return `<div class="card-lot" id="card-${l.k}" onclick="verHistorial('${l.k}','${l.n}')" style="cursor:pointer">
+      <div class="cl-hdr"><div class="cl-tit">${l.n}</div>
+        <span class="cl-live ${ok ? "ok" : "pend"}">${ok ? "✓ EN VIVO" : "⏳ " + l.h}</span></div>
+      <div class="esferas">${ok ? bolas(nums, "esf e").replace(/<span/g, "<div").replace(/<\/span>/g, "</div>") : '<div class="esf wait">?</div><div class="esf wait">?</div><div class="esf wait">?</div>'}</div>
+      <div class="hist-block"><div class="hist-tit">📊 Sorteos Anteriores</div>${histHTML}</div>
+    </div>`;
+        }).join("");
       }
 
       function renderCuartetas(cuartetas) {
@@ -2570,7 +2774,9 @@
         pega4: { label: "Pega 4", cls: "pega4", min: 4 },
         kino: { label: "Kino", cls: "kino", min: 5 },
         loto: { label: "Loto", cls: "loto", min: 6 },
-        lotomas: { label: "Loto Más", cls: "loto", min: 7 },
+        lotomas: { label: "Más · Súper Más", cls: "loto", min: 2 },
+        loto5: { label: "Loto 5", cls: "loto", min: 6 },
+        lotopool: { label: "Loto Pool", cls: "kino", min: 4 },
         quiniela: { label: "Quiniela", cls: "pega3", min: 1 },
         chance: { label: "Chance", cls: "kino", min: 5 },
       };
@@ -2582,6 +2788,248 @@
       };
 
       const ESPECIALES_LIST = ESPECIALES_PRED_LIST;
+
+      // ═══════════════════════════════════════════════════════
+      // EXPERIMENTO KINO — 3 MÉTODOS CONTROLADOS
+      // Guarda aciertos por método en localStorage para comparar
+      // después de acumular 30+ sorteos cuál realmente funciona mejor.
+      // ═══════════════════════════════════════════════════════
+      const KINO_METODOS = {
+        'kino-repetidos': { label: 'Repetidos del día ⚡', color: 'var(--gold)' },
+        'kino-anguila':   { label: 'Señal Anguila 🐍',    color: 'var(--green)' },
+        'kino-historico': { label: 'Histórico Kino 📊',   color: 'var(--neon)' },
+        'kino-aleatorio': { label: 'Control aleatorio 🎲', color: 'var(--muted)' },
+      };
+
+      function getKinoStats() {
+        try { return JSON.parse(localStorage.getItem('kino_exp') || '{}'); } catch(e) { return {}; }
+      }
+      function saveKinoStats(stats) {
+        try { localStorage.setItem('kino_exp', JSON.stringify(stats)); } catch(e) {}
+      }
+      // Antes sumaba cada vez que se dibujaba "Mis Jugadas" (inflaba los conteos).
+      // Ahora no hace nada: renderKinoExperimento() recalcula desde las jugadas.
+      function registrarAciertoKino() {}
+      function statsKinoDesdeJugadas() {
+        const stats = {};
+        for (const j of getJugadas()) {
+          if (j.clave !== 'superkino' || !j.tipo || !j.tipo.startsWith('kino-')) continue;
+          const real = buscarResultadoReal('superkino', j.fecha);
+          if (!real) continue;
+          const ac = j.numeros.filter((n) => real.includes(n)).length;
+          if (!stats[j.tipo]) stats[j.tipo] = { tickets: 0, aciertos0: 0, aciertos5mas: 0, totalAciertos: 0 };
+          const s = stats[j.tipo];
+          s.tickets++; s.totalAciertos += ac;
+          if (ac === 0) s.aciertos0++;
+          if (ac >= 5) s.aciertos5mas++;
+        }
+        return stats;
+      }
+
+      function generarTicketKino(ranking, metodo, repsSet, angulaSet, t, cant) {
+        const TICKET_SIZE = 10;
+        let ticket;
+        // El control SIEMPRE es al azar (antes el ticket 1 copiaba el top histórico
+        // y el "control" salía idéntico al método Histórico).
+        if (metodo === 'kino-aleatorio') {
+          const pool = Array.from({length: 84}, (_, i) => i + 1);
+          ticket = [];
+          while (ticket.length < TICKET_SIZE) {
+            const idx = Math.floor(Math.random() * pool.length);
+            ticket.push(pool[idx]);
+            pool.splice(idx, 1);
+          }
+        } else if (t === 0) {
+          ticket = ranking.slice(0, TICKET_SIZE);
+        } else {
+          const pool = [...ranking];
+          ticket = [];
+          const ventana = Math.max(TICKET_SIZE * 2, 20);
+          while (ticket.length < TICKET_SIZE && pool.length) {
+            const idx = Math.floor(Math.random() * Math.min(pool.length, ventana));
+            ticket.push(pool[idx]);
+            pool.splice(idx, 1);
+          }
+        }
+        ticket.sort((a, b) => a - b);
+
+        const mInfo = KINO_METODOS[metodo];
+        const chips = ticket.map(n => {
+          const esRep = repsSet && repsSet.has(n);
+          const esAng = angulaSet && angulaSet.has(n);
+          const color = esRep ? 'var(--gold)' : esAng ? 'var(--green)' : 'var(--neon)';
+          const title = esRep ? '⚡ Repetido hoy' : esAng ? '🐍 Anguila' : '';
+          return `<span title="${title}" style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--bg);border:2px solid ${color};color:${color};font-weight:800;font-size:12px;margin:3px">${p2(n)}</span>`;
+        }).join('');
+
+        const repsCount = repsSet ? ticket.filter(n => repsSet.has(n)).length : 0;
+        const angCount  = angulaSet ? ticket.filter(n => angulaSet.has(n)).length : 0;
+        const detalle = metodo === 'kino-repetidos' ? `⚡ ${repsCount} repetidos del día` :
+                        metodo === 'kino-anguila'   ? `🐍 ${angCount} de Anguila hoy` :
+                        metodo === 'kino-historico' ? `📊 Top frecuencia histórica` :
+                                                      `🎲 Control aleatorio`;
+        return `<div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:${mInfo.color};margin-bottom:4px">${mInfo.label} · Ticket ${t+1}</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:8px">${detalle}</div>
+          <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;justify-content:center">${chips}</div>
+          <button onclick="registrarKinoMetodo('superkino','${ticket.join(',')}','${metodo}')" class="btn btn-neon" style="width:100%;font-size:11px;padding:8px">➕ Agregar a Mis Jugadas</button>
+        </div>`;
+      }
+
+      // Doble toque: el 1er toque pregunta "¿La compró en la banca?", el 2do (antes de 6 s) guarda la jugada como suya
+      function confirmarCompra() {
+        const btn = window.event && window.event.currentTarget;
+        if (!btn || !btn.dataset) return true;
+        if (btn.dataset.conf === "1") { delete btn.dataset.conf; btn.innerHTML = btn.dataset.txt; btn.style.background = btn.dataset.bg || ""; return true; }
+        btn.dataset.txt = btn.innerHTML; btn.dataset.bg = btn.style.background || ""; btn.dataset.conf = "1";
+        btn.innerHTML = "¿La compró en la banca? Toque otra vez = SÍ";
+        btn.style.background = "var(--gold)";
+        setTimeout(() => { if (btn.dataset.conf === "1") { delete btn.dataset.conf; btn.innerHTML = btn.dataset.txt; btn.style.background = btn.dataset.bg; } }, 6000);
+        return false;
+      }
+      function registrarKinoMetodo(clave, numsCSV, metodo) {
+        if (!confirmarCompra()) return;
+        const numeros = numsCSV.split(',').map(Number);
+        const fecha = typeof fechaHoyAPI !== 'undefined' && fechaHoyAPI
+          ? fechaHoyAPI : new Date().toISOString().slice(0, 10);
+        const jugada = {
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave, fecha, tipo: metodo, numeros, monto: null,
+          creado: new Date().toISOString(),
+        };
+        const jugadas = getJugadas();
+        jugadas.unshift(jugada);
+        setJugadas(jugadas);
+        enviarJugadaServidor(jugada);
+        renderJugadas();
+        toastRD(`Ticket ${KINO_METODOS[metodo]?.label || metodo} agregado`);
+      }
+
+      function renderKinoExperimento() {
+        const stats = statsKinoDesdeJugadas();
+        const cont = document.getElementById('kino-exp-stats');
+        if (!cont) return;
+        const metodos = Object.keys(KINO_METODOS);
+        const hayDatos = metodos.some(m => stats[m] && stats[m].tickets > 0);
+        if (!hayDatos) {
+          cont.innerHTML = `<div style="font-size:12px;color:var(--muted)">Aún no hay datos. Genera tickets con los 4 métodos y déjalos acumular — después de 10+ sorteos aparecerá la comparación.</div>`;
+          return;
+        }
+        const rows = metodos.map(m => {
+          const s = stats[m] || { tickets: 0, aciertos0: 0, aciertos5mas: 0, totalAciertos: 0 };
+          const prom = s.tickets ? (s.totalAciertos / s.tickets).toFixed(1) : '-';
+          const pct5 = s.tickets ? Math.round(s.aciertos5mas / s.tickets * 100) : 0;
+          const pct0 = s.tickets ? Math.round(s.aciertos0 / s.tickets * 100) : 0;
+          const mInfo = KINO_METODOS[m];
+          return `<div class="rank-row">
+            <span style="color:${mInfo.color};font-weight:800;font-size:11px">${mInfo.label}</span>
+            <span style="text-align:center;font-size:12px;font-weight:700">${s.tickets}</span>
+            <span style="text-align:center;color:var(--green);font-weight:700">${pct5}%</span>
+            <span style="text-align:center;color:var(--gold);font-weight:700">${pct0}%</span>
+            <span style="text-align:center;color:var(--muted);font-size:11px">${prom}</span>
+          </div>`;
+        }).join('');
+        cont.innerHTML = `<div style="display:grid;grid-template-columns:1fr 50px 50px 50px 50px;gap:6px;font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:6px">
+          <span>Método</span><span style="text-align:center">Tickets</span><span style="text-align:center">5+⭐</span><span style="text-align:center">0🎯</span><span style="text-align:center">Prom</span>
+        </div>${rows}`;
+      }
+
+      function generarKinoRepetidos() {
+        const cont = document.getElementById('kino-rep-out');
+        const est  = document.getElementById('kino-rep-estado');
+        const hist = getHist().filter(d => d.f !== fechaHoyAPI);
+        const histKino = hist.filter(d => (d.superkino || []).length >= 10).map(d => d.superkino);
+
+        // — Señal 1: repetidos del día (2+ loterías distintas) —
+        const conteoHoy = {};
+        for (const [k, s] of Object.entries(datosSorteosGlobal)) {
+          if (k === 'superkino') continue;
+          if (!s.numeros || s.numeros.length < 3) continue;
+          for (const n of s.numeros) {
+            if (!conteoHoy[n]) conteoHoy[n] = { veces: 0, loterias: [] };
+            conteoHoy[n].veces++;
+            conteoHoy[n].loterias.push(s.nombre);
+          }
+        }
+        const repetidosHoy = Object.entries(conteoHoy)
+          .filter(([n, d]) => d.veces >= 2 && +n >= 1 && +n <= 84)
+          .sort((a, b) => b[1].veces - a[1].veces)
+          .map(([n, d]) => ({ numero: +n, veces: d.veces, loterias: d.loterias }));
+        const repsSet = new Set(repetidosHoy.map(r => r.numero));
+
+        // — Señal 2: Anguila del día (las 4 Anguilas) —
+        const ANGUILAS = ['anguila_m','anguila_t','anguila_n','anguila_nn'];
+        const angulaHoy = {};
+        for (const k of ANGUILAS) {
+          const s = datosSorteosGlobal[k];
+          if (!s || !s.numeros || s.numeros.length < 3) continue;
+          for (const n of s.numeros) {
+            if (n >= 1 && n <= 84) {
+              if (!angulaHoy[n]) angulaHoy[n] = [];
+              angulaHoy[n].push(s.nombre);
+            }
+          }
+        }
+        const angulaSet = new Set(Object.keys(angulaHoy).map(Number));
+
+        // — Score histórico del Kino —
+        const scoreHist = {};
+        for (let n = 1; n <= 84; n++) scoreHist[n] = 0;
+        histKino.forEach((nums, j) => {
+          const w = Math.max(1, histKino.length - j);
+          for (const n of nums) if (n >= 1 && n <= 84) scoreHist[n] += w * 3;
+        });
+
+        // — Score método 1: repetidos —
+        const scoreRep = { ...scoreHist };
+        for (const r of repetidosHoy) scoreRep[r.numero] = (scoreRep[r.numero] || 0) + r.veces * 80;
+        const rankRep = Object.entries(scoreRep).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+
+        // — Score método 2: Anguila —
+        const scoreAng = { ...scoreHist };
+        for (const [n, lots] of Object.entries(angulaHoy)) scoreAng[+n] = (scoreAng[+n] || 0) + lots.length * 90;
+        const rankAng = Object.entries(scoreAng).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+
+        // — Score método 3: histórico puro —
+        const rankHist = Object.entries(scoreHist).sort((a, b) => b[1] - a[1]).map(([n]) => +n);
+
+        // UI: mostrar señales detectadas
+        const numsBox = document.getElementById('kino-rep-nums');
+        let numsHtml = '';
+        if (repetidosHoy.length) {
+          numsHtml += `<div style="width:100%;font-size:10px;color:var(--gold);font-weight:800;margin-bottom:6px">⚡ REPETIDOS HOY (2+ loterías)</div>`;
+          numsHtml += repetidosHoy.map(r =>
+            `<div style="background:rgba(255,183,3,0.12);border:1px solid var(--gold);border-radius:8px;padding:5px 8px;font-size:11px">
+              <b style="color:var(--gold)">${p2(r.numero)}</b>
+              <div style="color:var(--muted);font-size:9px">${r.loterias.slice(0,2).join(', ')}</div>
+            </div>`).join('');
+        }
+        if (angulaSet.size) {
+          numsHtml += `<div style="width:100%;font-size:10px;color:var(--green);font-weight:800;margin:8px 0 6px">🐍 ANGUILA DE HOY (en rango Kino)</div>`;
+          numsHtml += [...angulaSet].sort((a,b)=>a-b).map(n =>
+            `<div style="background:rgba(0,255,102,0.1);border:1px solid var(--green);border-radius:8px;padding:5px 8px;font-size:11px">
+              <b style="color:var(--green)">${p2(n)}</b>
+              <div style="color:var(--muted);font-size:9px">${(angulaHoy[n]||[]).join(', ')}</div>
+            </div>`).join('');
+        }
+        numsBox.innerHTML = numsHtml || `<div style="font-size:12px;color:var(--muted)">Aún no hay señales — vuelva cuando hayan salido más loterías del día.</div>`;
+
+        est.textContent = `${repetidosHoy.length} ⚡ · ${angulaSet.size} 🐍`;
+        est.className = 'cl-live ok';
+
+        let cant = parseInt(document.getElementById('kino-rep-cant').value, 10) || 1;
+        cant = Math.max(1, Math.min(6, cant));
+
+        let html = '';
+        for (let t = 0; t < cant; t++) {
+          html += generarTicketKino(rankRep,  'kino-repetidos', repsSet, angulaSet, t, cant);
+          html += generarTicketKino(rankAng,  'kino-anguila',   repsSet, angulaSet, t, cant);
+          html += generarTicketKino(rankHist, 'kino-historico', repsSet, angulaSet, t, cant);
+          html += generarTicketKino(rankHist, 'kino-aleatorio', null,    null,       t, cant);
+        }
+        cont.innerHTML = html;
+        renderKinoExperimento();
+      }
 
       function renderEspeciales(especiales) {
         const grid = document.getElementById("especiales-body");
@@ -2607,6 +3055,8 @@
                   )}</div>`
               )
               .join("");
+          } else if (l.k === "pega4king") {
+            bolasHTML = `<div style="font-size:11px;color:var(--muted2);text-align:center;padding:6px">⏸ Ninguna fuente publica resultados de Pega 4 Real desde abril 2026. Parece suspendido.</div>`;
           } else {
             bolasHTML = Array(cant)
               .fill(0)
@@ -2643,7 +3093,7 @@
                 <span class="tag-empresa ${empCls}">${l.empresa}</span>
               </div>
               <span class="cl-live ${ok ? "ok" : "pend"}">${
-            ok ? "✓ EN VIVO" : "⏳ " + l.hora
+            ok ? "✓ EN VIVO" : l.k === "pega4king" ? "⏸ SIN SORTEOS" : "⏳ " + l.hora
           }</span>
             </div>
             <div class="esp-nums">${bolasHTML}</div>
@@ -2745,7 +3195,8 @@
         const bloqueCons = `<option value="todas">Todas</option>
           <optgroup label="Quinielas (3 números)">${optsQuiniela}</optgroup>
           <optgroup label="La Cuarteta (4 números)">${optsCuarteta}</optgroup>
-          <optgroup label="Juegos Especiales">${optsEspeciales}</optgroup>`;
+          <optgroup label="Juegos Especiales">${optsEspeciales}</optgroup>
+          <optgroup label="Anguila cada hora">${ANGUILA_HORA.map((l) => `<option value="${l.k}">🐍 ${l.n}</option>`).join("")}</optgroup>`;
 
         const selBack = document.getElementById("sel-back");
         const selCons = document.getElementById("lot-cons");
@@ -3076,10 +3527,10 @@
         const datosDesc = hist
           .filter((d) => (d[lotActCuarteta] || []).length >= 4)
           .map((d) => d[lotActCuarteta]);
-        if (datosDesc.length < 8) {
+        if (datosDesc.length < 3) {
           document.getElementById(
             "pred-cuarteta-body"
-          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de La Cuarteta.</div>`;
+          ).innerHTML = `<div class="err">Necesito al menos 3 sorteos de La Cuarteta.</div>`;
           document.getElementById("spin-pred-cuarteta").style.display = "none";
           btn.disabled = false;
           btn.textContent = "Analizar";
@@ -3191,7 +3642,7 @@
       function renderEspecialPills() {
         const cont = document.getElementById("especial-sel-container");
         if (!cont) return;
-        cont.innerHTML = ESPECIALES_PRED_LIST.map(
+        cont.innerHTML = ESPECIALES_PRED_LIST.filter((l) => l.k !== "lotomas").map(
           (l) =>
             `<button class="lpill ${
               l.k === lotActEspecial ? "act" : ""
@@ -3243,10 +3694,10 @@
           .filter((d) => (d[lotActEspecial] || []).length > 0)
           .map((d) => d[lotActEspecial]);
 
-        if (datosDesc.length < 8) {
+        if (datosDesc.length < 3) {
           document.getElementById(
             "pred-especial-body"
-          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos de ${info.n}.</div>`;
+          ).innerHTML = `<div class="err">Necesito al menos 3 sorteos de ${info.n}.</div>`;
           document.getElementById("spin-pred-especial").style.display = "none";
           btn.disabled = false;
           btn.textContent = "Analizar";
@@ -3362,7 +3813,7 @@
             onclick="selLotAdyacente(this)"
           >${PILL_EMOJI[l.k] || "⚪"} ${l.n}</button>`
         ).join("");
-        const optsE = ESPECIALES_PRED_LIST.map(
+        const optsE = ESPECIALES_PRED_LIST.filter((l) => l.k !== "lotomas").map(
           (l) => `<button
             class="lpill ${l.k === lotActAdyacente ? "act" : ""}"
             data-lot="${l.k}"
@@ -3445,10 +3896,10 @@
         const datosDesc = hist
           .filter((d) => (d[lotActAdyacente] || []).length >= minLen)
           .map((d) => d[lotActAdyacente]);
-        if (datosDesc.length < 8) {
+        if (datosDesc.length < 3) {
           document.getElementById(
             "pred-adyacente-body"
-          ).innerHTML = `<div class="err">Necesito al menos 8 sorteos para esta lotería. Actualmente hay ${datosDesc.length}.</div>`;
+          ).innerHTML = `<div class="err">Necesito al menos 3 sorteos para esta lotería. Actualmente hay ${datosDesc.length}.</div>`;
           document.getElementById("spin-pred-adyacente").style.display = "none";
           btn.disabled = false;
           btn.textContent = "Analizar";
@@ -3533,7 +3984,18 @@
         document.getElementById("pred-adyacente-body").innerHTML = html;
       }
 
+      async function enviarJugadaServidor(jugada) {
+        try {
+          await fetch(`${API}/api/jugada`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jugada)
+          });
+        } catch(e) {}
+      }
+
       function agregarAdyacenteMisJugadas(clave, numsCSV, tipo) {
+        if (!confirmarCompra()) return;
         const numeros = numsCSV
           .split(",")
           .map((s) => parseInt(s, 10))
@@ -3542,8 +4004,7 @@
           typeof fechaHoyAPI !== "undefined" && fechaHoyAPI
             ? fechaHoyAPI
             : new Date().toISOString().slice(0, 10);
-        const jugadas = getJugadas();
-        jugadas.unshift({
+        const jugada = {
           id: Date.now() + Math.random().toString(36).slice(2, 6),
           clave: clave,
           fecha: fecha,
@@ -3551,8 +4012,11 @@
           numeros: numeros,
           monto: null,
           creado: new Date().toISOString(),
-        });
+        };
+        const jugadas = getJugadas();
+        jugadas.unshift(jugada);
         setJugadas(jugadas);
+        enviarJugadaServidor(jugada);
         renderJugadas();
         toastRD("Agregado a Mis Jugadas: " + numeros.map(p2).join("-"));
       }
@@ -3563,9 +4027,12 @@
       // números — por eso este mapa es independiente del "cant" usado para
       // verificar resultados.
       const TICKET_INFO_ADYACENTE = {
-        superkino: { min: 1, max: 80, ticket: 10 },
+        superkino: { min: 1, max: 84, ticket: 10 },
         loto: { min: 1, max: 40, ticket: 6 },
         lotomas: { min: 1, max: 40, ticket: 7 },
+        loto5: { min: 1, max: 38, ticket: 5 },
+        lotopoolreal: { min: 0, max: 99, ticket: 4 },
+        lotopoolleidsa: { min: 0, max: 31, ticket: 5 },
         megachance: { min: 0, max: 99, ticket: 5 },
         pega3mas: { min: 0, max: 50, ticket: 3 },
         quemaito: { min: 0, max: 99, ticket: 1 },
@@ -3639,8 +4106,8 @@
           .filter((d) => (d[lotActAdyacente] || []).length >= minLen)
           .map((d) => d[lotActAdyacente]);
         const out = document.getElementById("adyacente-tickets-out");
-        if (datosDesc.length < 8) {
-          out.innerHTML = `<div class="err">Necesito al menos 8 sorteos de esta lotería para generar tickets. Actualmente hay ${datosDesc.length}.</div>`;
+        if (datosDesc.length < 3) {
+          out.innerHTML = `<div class="err">Necesito al menos 3 sorteos de esta lotería para generar tickets. Actualmente hay ${datosDesc.length}.</div>`;
           return;
         }
         let cant = parseInt(
@@ -4274,6 +4741,7 @@
           ...LOTS18.map((l) => l.k),
           ...CUARTETAS.map((l) => l.k),
           ...ESPECIALES_PRED_LIST.map((l) => l.k),
+          ...ANGUILA_HORA.map((l) => l.k),
         ];
         const clavesEspeciales = new Set(ESPECIALES_PRED_LIST.map((l) => l.k));
         const res = [];
@@ -4349,13 +4817,14 @@
         const optsC = CUARTETAS.map(
           (l) => `<option value="${l.k}">🎲 ${l.n}</option>`
         ).join("");
-        const optsE = ESPECIALES_PRED_LIST.map(
+        const optsE = ESPECIALES_PRED_LIST.filter((l) => l.k !== "lotomas").map(
           (l) => `<option value="${l.k}">🎰 ${l.n} [${l.empresa}]</option>`
         ).join("");
         sel.innerHTML = `<option value="">Selecciona...</option>
           <optgroup label="Quinielas (3 números)">${optsQ}</optgroup>
           <optgroup label="La Cuarteta (4 números)">${optsC}</optgroup>
-          <optgroup label="Juegos Especiales">${optsE}</optgroup>`;
+          <optgroup label="Juegos Especiales">${optsE}</optgroup>
+          <optgroup label="Anguila cada hora">${ANGUILA_HORA.map((l) => `<option value="${l.k}">🐍 ${l.n}</option>`).join("")}</optgroup>`;
       }
 
       function actualizarFormJugada() {
@@ -4375,12 +4844,30 @@
           tipoSel.innerHTML = `
             <option value="punto">Punto (1 número)</option>
             <option value="pale">Pale (2 números)</option>
-            <option value="superpale">Súper Pale (3 números)</option>
+            <option value="superpale">Súper Palé (2 números · 2 loterías)</option>
             <option value="tripleta">Tripleta (3 números)</option>`;
           numsLabel.textContent = "Números jugados";
         } else {
           tipoWrap.style.display = "none";
           numsLabel.textContent = "Números jugados";
+        }
+        actualizarTipoJugada();
+      }
+
+      // Súper Palé: el 1er número va con el 1er premio de la lotería elegida
+      // arriba y el 2do con el 1er premio de esta 2da lotería (en cualquier orden).
+      function actualizarTipoJugada() {
+        const clave = document.getElementById("jg-lot").value;
+        const tipo = (document.getElementById("jg-tipo") || {}).value;
+        const wrap = document.getElementById("jg-lot2-wrap");
+        const sel2 = document.getElementById("jg-lot2");
+        if (!wrap || !sel2) return;
+        const es = clave && clasificarLoteria(clave) === "quiniela" && tipo === "superpale";
+        wrap.style.display = es ? "block" : "none";
+        if (es) {
+          sel2.innerHTML = LOTS18.filter((l) => l.k !== clave)
+            .map((l) => `<option value="${l.k}">${l.n}</option>`).join("");
+          document.getElementById("jg-nums-label").textContent = "2 números (1ro de cada lotería)";
         }
       }
 
@@ -4521,19 +5008,18 @@
       }
 
       function registrarBoletoEspecial(clave, numsCSV) {
+        if (!confirmarCompra()) return;
         const numeros = numsCSV.split(",").map((s) => parseInt(s, 10));
         const fecha =
           typeof fechaHoyAPI !== "undefined" && fechaHoyAPI
             ? fechaHoyAPI
             : new Date().toISOString().slice(0, 10);
-        const jugadas = getJugadas();
         const info = ESPECIALES_PRED_LIST.find((e) => e.k === clave);
         const tipo =
           info && (info.tipo === "pega3" || info.tipo === "pega4")
             ? "especial-digitos"
             : "especial-numeros";
-
-        jugadas.unshift({
+        const jugada = {
           id: Date.now() + Math.random().toString(36).slice(2, 6),
           clave: clave,
           fecha: fecha,
@@ -4541,8 +5027,11 @@
           numeros: numeros,
           monto: null,
           creado: new Date().toISOString(),
-        });
+        };
+        const jugadas = getJugadas();
+        jugadas.unshift(jugada);
         setJugadas(jugadas);
+        enviarJugadaServidor(jugada);
         renderJugadas();
         toastRD("✅ Registrado en tu lista de jugadas");
       }
@@ -4614,18 +5103,27 @@
 
         const grupo = clasificarLoteria(clave);
         const tipo = grupo === "quiniela" ? tipoSel.value : grupo;
+        let clave2 = null;
+        if (tipo === "superpale") {
+          clave2 = document.getElementById("jg-lot2").value;
+          if (!clave2) return alert("Elige la 2da lotería del Súper Palé.");
+          if (numeros.length !== 2) return alert("El Súper Palé lleva exactamente 2 números.");
+        }
 
-        const jugadas = getJugadas();
-        jugadas.unshift({
+        const jugada = {
           id: Date.now() + Math.random().toString(36).slice(2, 6),
           clave,
+          clave2,
           fecha,
           tipo,
           numeros,
           monto: monto ? parseFloat(monto) : null,
           creado: new Date().toISOString(),
-        });
+        };
+        const jugadas = getJugadas();
+        jugadas.unshift(jugada);
         setJugadas(jugadas);
+        enviarJugadaServidor(jugada);
         document.getElementById("jg-nums").value = "";
         document.getElementById("jg-monto").value = "";
         renderJugadas();
@@ -4633,6 +5131,9 @@
 
       function eliminarJugada(id) {
         if (!confirm("¿Eliminar esta jugada?")) return;
+        const j = getJugadas().find((x) => x.id === id);
+        if (j) fetch(`${API}/api/jugada/borrar`, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clave: j.clave, clave2: j.clave2 || null, fecha: j.fecha, numeros: j.numeros }) }).catch(() => {});
         setJugadas(getJugadas().filter((j) => j.id !== id));
         renderJugadas();
       }
@@ -4645,19 +5146,78 @@
       }
 
       function evaluarJugada(j) {
+        if (j.tipo === "superpale" && j.clave2) {
+          const r1 = buscarResultadoReal(j.clave, j.fecha);
+          const r2 = buscarResultadoReal(j.clave2, j.fecha);
+          if (!r1 || !r2) return { estado: "pendiente" };
+          const primeros = [r1[0], r2[0]];
+          const resto = [...primeros];
+          let ac = 0;
+          for (const n of j.numeros) { const i = resto.indexOf(n); if (i >= 0) { ac++; resto.splice(i, 1); } }
+          return { estado: ac === 2 ? "ganada" : "perdida", aciertos: ac, real: primeros,
+                   detalle: `1ros premios ${p2(r1[0])} y ${p2(r2[0])} · ${ac} de 2${ac === 2 ? " 🎯" : ""}` };
+        }
         const real = buscarResultadoReal(j.clave, j.fecha);
         if (!real) return { estado: "pendiente" };
 
         const grupo = clasificarLoteria(j.clave);
-        let aciertos = 0,
-          gano = false,
-          detalle = "";
+        let aciertos = 0, gano = false, detalle = "";
 
         if (grupo === "quiniela") {
           aciertos = j.numeros.filter((n) => real.includes(n)).length;
           const minimo = { punto: 1, pale: 2, superpale: 3, tripleta: 3 }[j.tipo] || 1;
           gano = aciertos >= minimo;
           detalle = `${aciertos} de ${j.numeros.length} número(s) aparecieron`;
+        } else if (j.clave === "superkino") {
+          // Super Kino TV: ticket de 10 números, gana con 0, 5, 6, 7, 8, 9 o 10 aciertos
+          // 1, 2, 3, 4 aciertos NO ganan nada
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos === 0 || aciertos >= 5;
+          const premio = aciertos === 0 ? "Premio 0 aciertos 🎯" :
+                         aciertos === 10 ? "JACKPOT 10 aciertos 🏆" :
+                         aciertos >= 5 ? `Premio ${aciertos} aciertos 🎯` :
+                         `${aciertos} aciertos (sin premio)`;
+          detalle = premio;
+          // Registrar en el experimento si es un método etiquetado
+          const metodoKino = j.tipo;
+          if (metodoKino && metodoKino.startsWith("kino-")) {
+            registrarAciertoKino(metodoKino, aciertos, real.length);
+          }
+        } else if (j.clave === "loto" || j.clave === "lotomas") {
+          // Loto: gana con 3+ de 6 / Loto Más: gana con 3+ de 7
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos >= 3;
+          detalle = `${aciertos} de ${j.numeros.length} coincidieron${gano ? " 🎯" : " (sin premio)"}`;
+        } else if (j.clave === "pega3mas") {
+          // Pega 3 Más: gana con los 3 dígitos exactos
+          aciertos = j.numeros.filter((n, i) => real[i] === n).length;
+          gano = aciertos === 3;
+          detalle = `${aciertos} de 3 en posición exacta${gano ? " 🎯" : ""}`;
+        } else if (j.clave === "pega4king") {
+          // Pega 4 Real: gana con los 4 dígitos exactos o variantes
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos >= 3;
+          detalle = `${aciertos} de 4 coincidieron${gano ? " 🎯" : " (sin premio)"}`;
+        } else if (j.clave === "loto5" || j.clave === "lotopoolleidsa") {
+          // Loto 5 / Loto Pool Leidsa: 5 números, gana con 3+
+          aciertos = j.numeros.filter((n) => real.slice(0, 5).includes(n)).length;
+          gano = aciertos >= 3;
+          detalle = `${aciertos} de 5 coincidieron${gano ? " 🎯" : " (sin premio)"}`;
+        } else if (j.clave === "lotopoolreal") {
+          // Loto Pool Real: 4 números, gana con 2+ (1 solo devuelve lo jugado)
+          aciertos = j.numeros.filter((n) => real.slice(0, 4).includes(n)).length;
+          gano = aciertos >= 2;
+          detalle = `${aciertos} de 4 coincidieron${gano ? " 🎯" : aciertos === 1 ? " (devuelve lo jugado)" : " (sin premio)"}`;
+        } else if (j.clave === "megachance") {
+          // Mega Chance: gana con 2+ de 5
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos >= 2;
+          detalle = `${aciertos} de 5 coincidieron${gano ? " 🎯" : " (sin premio)"}`;
+        } else if (j.clave === "quemaito") {
+          // El Quemaito Mayor: gana con 1 número exacto
+          aciertos = j.numeros.filter((n) => real.includes(n)).length;
+          gano = aciertos >= 1;
+          detalle = `${aciertos === 1 ? "¡Acertó! 🎯" : "No acertó"}`;
         } else {
           aciertos = j.numeros.filter((n) => real.includes(n)).length;
           gano = aciertos >= Math.min(2, j.numeros.length);
@@ -4673,81 +5233,147 @@
         tripleta: "Tripleta",
         adyacente: "Adyacente",
         repetitivo: "Repetitivo",
+        "kino-repetidos": "Kino ⚡ Repetidos",
+        "kino-anguila":   "Kino 🐍 Anguila",
+        "kino-historico": "Kino 📊 Histórico",
+        "kino-aleatorio": "Kino 🎲 Control",
         cuarteta: "Cuarteta",
+        especial: "Especial",
       };
 
+      // ── Jugadas automáticas (servidor) + auditoría ─────────────────────
+      let JG_SERVIDOR = [];
+      async function cargarJugadasServidor() {
+        try {
+          const r = await fetch(`${API}/api/jugadas?dias=120`);
+          const d = await r.json();
+          JG_SERVIDOR = Array.isArray(d.jugadas) ? d.jugadas : [];
+        } catch (e) {}
+        renderJugadas();
+        cargarAuditoria();
+      }
+      async function cargarAuditoria() {
+        const box = document.getElementById("jg-auditoria");
+        if (!box) return;
+        try {
+          const r = await fetch(`${API}/api/auditoria?dias=365`);
+          const d = await r.json();
+          if (d.error) {
+            box.innerHTML = `<span style="color:var(--red)">Aún no disponible: ${d.error}</span>`;
+            return;
+          }
+          if (!d.resumen || !d.resumen.length) {
+            box.innerHTML = "Todavía no hay jugadas automáticas registradas. Empiezan solas 75 minutos antes de cada sorteo.";
+            return;
+          }
+          const NOM = { punto: "Punto", pale: "Palé", tripleta: "Tripleta", superpale: "Súper Palé", cuarteta: "Cuarteta", superkino: "Super Kino", pega3mas: "Pega 3 Más", megachance: "Mega Chance", quemaito: "Quemaito", loto: "Loto", lotomas: "Loto Más", loto5: "Loto 5", lotopoolreal: "Loto Pool Real", lotopoolleidsa: "Loto Pool Leidsa" };
+          const celda = (x) => {
+            if (!x || !x.evaluadas) return `<span style="color:var(--muted)">${x ? x.jugadas + " (sin evaluar)" : "—"}</span>`;
+            return `<b>${x.ganadas}</b>/${x.evaluadas} · ${x.tasa}%` +
+              (x.retorno_por_peso !== null ? `<br><span style="color:var(--muted)">retorno ${x.retorno_por_peso.toFixed(2)}</span>` : `<br><span style="color:var(--muted)">prom. ${x.aciertos_prom} aciertos</span>`);
+          };
+          let html = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr style="color:var(--muted);text-align:left"><th style="padding:6px">Juego</th><th style="padding:6px">🤖 Sistema</th><th style="padding:6px">🎲 Azar</th><th style="padding:6px">Teórico</th></tr>`;
+          for (const f of d.resumen) {
+            const t = f.teorico ? `${f.teorico.prob_pct}%<br><span style="color:var(--muted)">ret. ${f.teorico.retorno.toFixed(2)}</span>` : "—";
+            html += `<tr style="border-top:1px solid var(--border)"><td style="padding:6px;color:var(--txt);font-weight:700">${NOM[f.tipo] || f.tipo}</td>
+              <td style="padding:6px;color:var(--neon)">${celda(f.auto)}</td><td style="padding:6px;color:var(--gold)">${celda(f.control)}</td><td style="padding:6px">${t}</td></tr>`;
+          }
+          html += `</table></div><div style="margin-top:8px;color:var(--muted)">${d.total} jugadas registradas desde ${fmtF(d.desde)}. Con pocas semanas de datos las diferencias todavía son suerte; hacen falta cientos de jugadas evaluadas para concluir algo.</div>`;
+          box.innerHTML = html;
+        } catch (e) {
+          box.innerHTML = `<span style="color:var(--red)">No se pudo cargar la auditoría.</span>`;
+        }
+      }
+      function evaluarJugadaAuto(j) {
+        if (j.origen === "lab") {
+          if (!j.evaluado) return { estado: "pendiente" };
+          return { estado: j.premio > 0 ? "ganada" : "perdida", aciertos: j.aciertos, real: j.resultado || [],
+                   detalle: `${j.aciertos} acierto(s) · ${j.premio > 0 ? `cobraría RD$${j.premio} 🎯` : "no cobró"} (jugado RD$${j.clave === "superkino" ? 25 : (j.numeros || []).length})` };
+        }
+        if (!j.evaluado) {
+          if (j.tipo === "superpale" || j.tipo === "cuarteta" || j.tipo === "especial") return { estado: "pendiente" };
+          return evaluarJugada({ ...j, tipo: j.tipo });
+        }
+        const real = j.tipo === "superpale" && j.resultado2
+          ? [j.resultado[0], j.resultado2[0]]
+          : j.resultado || [];
+        let detalle = `${j.aciertos} acierto(s)`;
+        if (j.premio !== null && j.premio !== undefined) detalle += j.premio > 0 ? ` · paga ${j.premio}x 🎯` : " · sin premio";
+        return { estado: j.gano ? "ganada" : "perdida", aciertos: j.aciertos, real, detalle };
+      }
+
       function renderJugadas() {
-        const jugadas = getJugadas();
+        const fOrigen = (document.getElementById("jg-f-origen") || {}).value || "todas";
+        const fDias = parseInt((document.getElementById("jg-f-periodo") || {}).value || "1", 10);
+        const hoyRef = (typeof fechaHoyAPI !== "undefined" && fechaHoyAPI) || new Date().toISOString().slice(0, 10);
+        const limite = new Date(new Date(hoyRef + "T12:00:00").getTime() - (fDias - 1) * 86400000).toISOString().slice(0, 10);
+
+        const propias = getJugadas().map((j) => ({ ...j, origen: "manual" }));
+        const todas = [...propias, ...JG_SERVIDOR]
+          .filter((j) => fOrigen === "todas" || j.origen === fOrigen)
+          .filter((j) => fDias >= 9999 || (j.fecha || "") >= limite)
+          .sort((a, b) => ((a.creado || "") < (b.creado || "") ? 1 : -1));
+
         const cont = document.getElementById("jg-lista");
         const statsBox = document.getElementById("jg-stats3");
+        let pend = 0, gan = 0, perd = 0;
 
-        let pend = 0,
-          gan = 0,
-          perd = 0;
-
-        if (jugadas.length === 0) {
-          cont.innerHTML = `<div class="empty"><div class="eico">🎟️</div><p>Sin jugadas registradas.</p></div>`;
+        if (todas.length === 0) {
+          cont.innerHTML = `<div class="empty"><div class="eico">🎟️</div><p>Sin jugadas en este filtro.</p></div>`;
           statsBox.innerHTML = "";
           return;
         }
 
+        const nombre = (k) => (INFO_LOOKUP[k] && INFO_LOOKUP[k].n) || (ESPECIALES_PRED_LIST.find((x) => x.k === k) || {}).n || k;
         let html = "";
-        for (const j of jugadas) {
-          const info = INFO_LOOKUP[j.clave] || { n: j.clave };
-          const r = evaluarJugada(j);
+        for (const j of todas.slice(0, 400)) {
+          const esServidor = j.origen === "auto" || j.origen === "control" || j.origen === "lab";
+          const r = esServidor ? evaluarJugadaAuto(j) : evaluarJugada(j);
           if (r.estado === "pendiente") pend++;
           else if (r.estado === "ganada") gan++;
           else perd++;
 
+          const realSet = r.real || [];
           const numsChips = j.numeros
-            .map((n) => {
-              const acerto = r.real && r.real.includes(n);
-              return `<div class="jg-chip ${acerto ? "acerto" : ""}">${p2(
-                n
-              )}</div>`;
-            })
+            .map((n) => `<div class="jg-chip ${realSet.includes(n) ? "acerto" : ""}">${p2(n)}</div>`)
             .join("");
-
-          const badgeTxt =
-            r.estado === "pendiente"
-              ? "⏳ Pendiente"
-              : r.estado === "ganada"
-              ? "✅ Ganaste"
-              : "❌ No acertaste";
+          const badgeTxt = r.estado === "pendiente" ? "⏳ Pendiente" : r.estado === "ganada" ? "✅ Ganó" : "❌ No acertó";
+          const etiqueta =
+            j.origen === "auto" ? `<span style="font-size:10px;font-weight:800;color:var(--neon);border:1px solid var(--neon);border-radius:6px;padding:1px 6px;margin-right:6px">🤖 AUTO</span>`
+            : j.origen === "control" ? `<span style="font-size:10px;font-weight:800;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:1px 6px;margin-right:6px">🎲 CONTROL</span>`
+            : j.origen === "lab" ? `<span style="font-size:10px;font-weight:800;color:#b388ff;border:1px solid #b388ff;border-radius:6px;padding:1px 6px;margin-right:6px">🧪 LAB</span>`
+            : "";
+          const titulo = j.clave2 ? `${nombre(j.clave)} + ${nombre(j.clave2)}` : nombre(j.clave);
+          const tipoTxt = j.origen === "lab" ? `🧪 ${j.estrategia || j.metodo} · puntos de RD$1`
+            : (TIPO_LABEL_JG[j.tipo] || j.tipo) + (j.metodo && j.tipo === "especial" ? ` · ${j.metodo}` : "");
 
           html += `<div class="jg-card ${r.estado}">
             <div class="jg-hdr">
               <div>
-                <div class="jg-tit">${info.n}</div>
-                <div class="jg-fecha">${fmtF(j.fecha)} · ${
-            TIPO_LABEL_JG[j.tipo] || j.tipo
-          }</div>
+                <div class="jg-tit">${etiqueta}${titulo}</div>
+                <div class="jg-fecha">${fmtF(j.fecha)} · ${tipoTxt}${j.generado_rd ? ` · registrada ${j.generado_rd}` : ""}</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px">
                 <span class="jg-badge ${r.estado}">${badgeTxt}</span>
-                <button class="jg-del" onclick="eliminarJugada('${
-                  j.id
-                }')">🗑️</button>
+                ${esServidor ? "" : `<button class="jg-del" onclick="eliminarJugada('${j.id}')">🗑️</button>`}
               </div>
             </div>
             <div class="jg-nums-row">${numsChips}</div>
-            ${
-              r.estado !== "pendiente"
-                ? `<div class="jg-detail">Resultado: ${r.real
-                    .map((n) => p2(n))
-                    .join(" - ")} · ${r.detalle}</div>`
-                : `<div class="jg-detail">Aún sin resultado para esta fecha.</div>`
-            }
+            ${r.estado !== "pendiente"
+              ? `<div class="jg-detail">Resultado: ${realSet.map((n) => p2(n)).join(" - ")} · ${r.detalle}</div>`
+              : `<div class="jg-detail">Aún sin resultado.</div>`}
           </div>`;
         }
+        if (todas.length > 400) html += `<div class="jg-detail" style="text-align:center">Mostrando 400 de ${todas.length}. Usa los filtros para ver el resto.</div>`;
         cont.innerHTML = html;
 
         const totalEval = gan + perd;
         const pct = totalEval > 0 ? Math.round((gan / totalEval) * 100) : 0;
         statsBox.innerHTML = `
           <div class="schip"><div class="schip-n" style="color:var(--gold)">${pend}</div><div class="schip-l">Pendientes</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--green)">${gan}</div><div class="schip-l">Ganadas</div></div>
-          <div class="schip"><div class="schip-n" style="color:var(--red)">${perd}</div><div class="schip-l">Perdidas (${pct}%)</div></div>`;
+          <div class="schip"><div class="schip-n" style="color:var(--green)">${gan}</div><div class="schip-l">Ganadas (${pct}%)</div></div>
+          <div class="schip"><div class="schip-n" style="color:var(--red)">${perd}</div><div class="schip-l">Perdidas</div></div>`;        renderKinoExperimento();
       }
 
       function p2(n) {
@@ -4806,6 +5432,8 @@
         renderSelectores();
         poblarSelectorJugadas();
         renderJugadas();
+        cargarJugadasServidor();
+        renderKinoExperimento();
         sincronizarHistorialServidor().then(() => {
           cargarBack();
           cargarHoy();
@@ -4813,8 +5441,292 @@
         cargarBack();
         setTimeout(cargarHoy, 300);
         setInterval(cargarHoy, 20 * 60 * 1000);
+        setInterval(cargarJugadasServidor, 20 * 60 * 1000);
         setInterval(sincronizarHistorialServidor, 30 * 60 * 1000);
       });
+
+      // ══ LABORATORIO DE ESTRATEGIAS ══
+      let LAB_INFO = null;
+      async function labInfo() {
+        if (LAB_INFO) return LAB_INFO;
+        const r = await fetch(`${API}/api/lab/tipos`); LAB_INFO = await r.json();
+        const sel = document.getElementById("lab-tipo");
+        sel.innerHTML = Object.entries(LAB_INFO.tipos).map(([k, t]) => `<option value="${k}">${t.nombre}</option>`).join("");
+        document.getElementById("lab-lots").innerHTML = Object.entries(LAB_INFO.loterias).map(([k, n]) =>
+          `<label style="font-size:11px;border:1px solid var(--muted2);border-radius:8px;padding:3px 7px"><input type="checkbox" class="lab-lot" value="${k}"> ${n}</label>`).join("");
+        labTipoCambio();
+        return LAB_INFO;
+      }
+      function labTipoCambio() {
+        if (!LAB_INFO) return;
+        const t = LAB_INFO.tipos[document.getElementById("lab-tipo").value];
+        document.getElementById("lab-desc").textContent = t.desc;
+        const fu = Object.entries(LAB_INFO.fuentes).map(([k, n]) => `<option value="${k}">Fuente: ${n}</option>`).join("");
+        document.getElementById("lab-params").innerHTML = t.params.map((p) =>
+          p === "Q" ? `<input id="lab-p-Q" class="cons-input" type="number" step="0.1" placeholder="Código Q (ej: 35.9)" style="width:170px">`
+          : p === "fuente" ? `<select id="lab-p-fuente" class="cons-select" style="min-width:260px">${fu}</select>`
+          : p === "n" ? `<input id="lab-p-n" class="cons-input" type="number" min="1" max="10" value="3" style="width:120px" title="Cuántos números">`
+          : `<input id="lab-p-numeros" class="cons-input" placeholder="Sus números, ej: 7, 18, 81" style="min-width:220px">`).join("");
+      }
+      function labAutoCambio() {
+        document.getElementById("lab-lots").style.display = document.getElementById("lab-auto").checked ? "none" : "flex";
+      }
+      async function labGuardar() {
+        const msg = document.getElementById("lab-msg");
+        const nombre = document.getElementById("lab-nombre").value.trim();
+        const tipo = document.getElementById("lab-tipo").value;
+        if (!nombre) { msg.textContent = "⚠️ Póngale un nombre"; return; }
+        const parametros = {};
+        const q = document.getElementById("lab-p-Q"); if (q) parametros.Q = Number(q.value) || 35.9;
+        const f = document.getElementById("lab-p-fuente"); if (f) parametros.fuente = f.value;
+        const n = document.getElementById("lab-p-n"); if (n) parametros.n = Number(n.value) || 3;
+        const nu = document.getElementById("lab-p-numeros");
+        if (nu) { parametros.numeros = nu.value.split(/[^0-9]+/).filter(Boolean).map(Number).filter((x) => x <= 99); if (!parametros.numeros.length) { msg.textContent = "⚠️ Escriba sus números"; return; } }
+        const loterias = document.getElementById("lab-auto").checked ? "auto" : [...document.querySelectorAll(".lab-lot:checked")].map((c) => c.value);
+        if (Array.isArray(loterias) && !loterias.length) { msg.textContent = "⚠️ Escoja al menos una lotería"; return; }
+        msg.textContent = "Guardando y probando sobre el historial…";
+        try {
+          const r = await fetch(`${API}/api/lab/estrategias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre, tipo, parametros, loterias }) });
+          const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status);
+          msg.textContent = "✅ Guardada"; document.getElementById("lab-nombre").value = ""; cargarLab();
+        } catch (e) { msg.textContent = "❌ " + e.message; }
+      }
+      async function labAccion(accion, id, activa) {
+        if (accion === "borrar" && !confirm("¿Borrar esta estrategia? (sus jugadas en papel ya guardadas se quedan)")) return;
+        if (accion === "borrar") await fetch(`${API}/api/lab/borrar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+        else {
+          const e = (window._labUltimo || []).find((x) => x.id === id); if (!e) return;
+          await fetch(`${API}/api/lab/estrategias`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: e.id, nombre: e.nombre, tipo: e.tipo, parametros: e.parametros, loterias: e.loterias, activa }) });
+        }
+        cargarLab();
+      }
+      function labColor(ret, ctl) {
+        if (ret == null) return "var(--muted)";
+        return ret >= 1 ? "var(--green)" : ret >= (ctl ?? 0.72) ? "var(--gold)" : "var(--red)";
+      }
+      function labYaJugada(j) {
+        const set = [...j.numeros].map(Number).sort((x, y) => x - y).join(",");
+        const hoy = fechaHoyAPI || new Date().toISOString().slice(0, 10);
+        return getJugadas().some((x) => x.clave === j.clave && x.fecha === hoy && [...(x.numeros || [])].map(Number).sort((p, q) => p - q).join(",") === set);
+      }
+      async function cargarLabHoy() {
+        const cont = document.getElementById("lab-hoy");
+        try {
+          const r = await fetch(`${API}/api/lab/hoy`); const d = await r.json();
+          const atajo = `<div style="font-size:12px;margin-bottom:8px">🎰 Los tickets del <b>Kino</b> están más abajo: <a href="#lab-kino" onclick="document.getElementById('lab-kino').scrollIntoView({behavior:'smooth'});return false" style="color:var(--neon);font-weight:800">ir al Kino ↓</a></div>`;
+          if (!d.jugadas || !d.jugadas.length) { cont.innerHTML = atajo + `<div class="empty"><p>No quedan sorteos de quinielas pendientes hoy.</p></div>`; return; }
+          window._labHoy = d.jugadas;
+          // una tarjeta por lotería, en orden de hora
+          const grupos = []; const idx = {};
+          d.jugadas.forEach((j, i) => { if (idx[j.clave] === undefined) { idx[j.clave] = grupos.length; grupos.push({ loteria: j.loteria, hora: j.hora, filas: [] }); } grupos[idx[j.clave]].filas.push({ j, i }); });
+          const bola = (n) => `<span class="mini-esf mini-e1" style="width:24px;height:24px;line-height:24px;font-size:.68rem">${p2(n)}</span>`;
+          cont.innerHTML = atajo + `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">✅ = ya registrado (ya no cambia) · ⏳ = se registra solo ~75 min antes y puede cambiar hasta entonces.</div>` +
+            grupos.map((g) => `<div class="cardX" style="margin-bottom:8px">
+              <div style="font-weight:800;font-size:14px;margin-bottom:4px">${g.loteria} <span style="color:var(--muted);font-weight:600">· ${g.hora}</span></div>
+              ${g.filas.map(({ j, i }) => {
+                const est = j.registrado ? `<span title="Registrado${j.registrado_a ? " " + j.registrado_a : ""}" style="color:var(--green)">✅</span>` : `<span title="Puede cambiar" style="color:var(--gold)">⏳</span>`;
+                const largo = j.numeros.length > 6;
+                const nums = largo
+                  ? `<details style="margin-top:3px"><summary style="cursor:pointer;font-size:12px;color:var(--neon)">${j.numeros.length} números · ver</summary><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${j.numeros.map(bola).join("")}</div></details>`
+                  : `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px">${j.numeros.map(bola).join("")}</div>`;
+                const accion = labYaJugada(j) ? `<span style="font-size:11px;font-weight:800;color:var(--green)">🙋 Jugada</span>`
+                  : `<div style="display:flex;gap:4px;align-items:center"><input id="lab-monto-${i}" type="number" min="0" inputmode="decimal" placeholder="RD$" style="width:64px;padding:5px;font-size:12px"><button class="btn btn-neon" style="padding:6px 10px;font-size:11px" onclick="labJugar(${i})">➕ Jugar</button></div>`;
+                return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid #1f2a3d">
+                  <div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:700">${est} ${j.nombre}</div>${nums}</div>${accion}</div>`;
+              }).join("")}</div>`).join("");
+        } catch (e) { cont.innerHTML = `<div class="err">⚠️ ${e.message}</div>`; }
+      }
+      // ➕ Jugar: la guarda directo en Mis Jugadas como 🙋 suya (dinero real), sin cambiar de pestaña
+      function labJugar(i) {
+        if (!confirmarCompra()) return;
+        const j = (window._labHoy || [])[i]; if (!j) return;
+        if (labYaJugada(j)) return cargarLabHoy();
+        const m = document.getElementById(`lab-monto-${i}`);
+        const monto = m && m.value ? parseFloat(m.value) : null;
+        const jugada = {
+          id: Date.now() + Math.random().toString(36).slice(2, 6),
+          clave: j.clave, clave2: null,
+          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10),
+          tipo: "punto", numeros: j.numeros.map(Number), monto,
+          creado: new Date().toISOString(),
+        };
+        const lista = getJugadas(); lista.unshift(jugada); setJugadas(lista);
+        enviarJugadaServidor(jugada);
+        if (typeof renderJugadas === "function") renderJugadas();
+        cargarLabHoy();
+      }
+      // ══ 🎰 KINO DEL LABORATORIO ══
+      async function cargarLabKino() {
+        const cont = document.getElementById("lab-kino"); if (!cont) return;
+        try {
+          const r = await fetch(`${API}/api/lab/kino`); const d = await r.json();
+          window._labKino = d;
+          const bola = (n, on) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem;${on ? "outline:2px solid var(--green);background:var(--green);color:#000" : ""}">${p2(n)}</span>`;
+          const res = new Set(d.resultado_hoy || []);
+          let h = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Hoy ${d.hora || ""} · historial de ${d.sorteos_historial} sorteos (${d.rango})${d.resultado_hoy ? " · <b style='color:var(--green)'>ya salió: los verdes pegaron</b>" : ""}</div>`;
+          h += d.hoy.map((t, i) => {
+            const est = t.evaluado ? `<span style="font-size:10px;font-weight:800;color:${t.premio > 0 ? "var(--green)" : "var(--muted)"}">${t.aciertos} ACIERTOS${t.premio > 0 ? " · COBRA RD$" + t.premio : ""}</span>`
+              : t.registrado ? `<span style="font-size:10px;font-weight:800;color:var(--green)">✅ REGISTRADO${t.registrado_a ? " · " + t.registrado_a : ""}</span>`
+              : `<span style="font-size:10px;font-weight:800;color:var(--gold)">⏳ PUEDE CAMBIAR</span>`;
+            const ya = labYaJugada({ clave: "superkino", numeros: t.numeros || [] });
+            const acc = !t.numeros ? "" : ya ? `<span style="font-size:12px;font-weight:800;color:var(--green)">🙋 Ya la jugó</span>` : d.resultado_hoy ? "" : `<button class="btn btn-neon" onclick="labKinoJugar(${i})">➕ Jugar RD$25</button>`;
+            return `<div class="cardX" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <div style="min-width:0"><div style="font-weight:800;font-size:13px">${t.nombre.replace("Kino · ", "")} · ${est}</div>
+                <div style="font-size:11px;color:var(--muted)">${t.desc}</div>
+                <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${(t.numeros || []).map((n) => bola(n, res.has(n))).join("") || "<i>sin historial suficiente</i>"}</div></div>${acc}</div>`;
+          }).join("");
+          // acumulado en vivo
+          const v = (d.vivo || []).filter((x) => x.sorteos);
+          h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">📈 Kino en vivo</div>`;
+          h += v.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:var(--muted)"><td>Código</td><td>Sorteos</td><td>Prom. aciertos</td><td>Azar al lado</td><td>Cobró / jugó</td></tr>` +
+              v.map((x) => `<tr style="border-top:1px solid #1f2a3d"><td style="padding:4px 4px">${x.nombre.replace("Kino · ", "")}</td><td>${x.sorteos}</td><td style="color:${x.prom_aciertos > 2.38 ? "var(--green)" : "var(--red)"}">${x.prom_aciertos} <span style="color:var(--muted)">(2.38)</span></td><td>${x.ctl_prom ?? "—"}</td><td>RD$${x.cobro} / RD$${x.jugado}</td></tr>`).join("") + `</table></div>`
+            : `<div class="empty"><p>Todavía no hay sorteos jugados. El primero se registra solo antes del Kino de hoy.</p></div>`;
+          // tabla de dígitos
+          const dg = d.digitos;
+          const filaDig = (arr, tit) => `<div style="font-size:12px;font-weight:800;margin:8px 0 4px">${tit}</div><div style="overflow-x:auto"><table style="font-size:12px;border-collapse:collapse;min-width:100%"><tr style="color:var(--muted)"><td style="padding:3px 6px">Dígito</td>${arr.map((x) => `<td style="text-align:center;padding:3px 6px"><b style="color:var(--fg,#fff)">${x.digito}</b></td>`).join("")}</tr>
+            <tr><td style="padding:3px 6px;color:var(--muted)">Salió (${dg.sorteos} sorteos)</td>${arr.map((x) => `<td style="text-align:center;color:${x.diferencia > 0 ? "var(--green)" : "var(--red)"}">${x.veces}</td>`).join("")}</tr>
+            <tr><td style="padding:3px 6px;color:var(--muted)">Esperado</td>${arr.map((x) => `<td style="text-align:center;color:var(--muted)">${x.esperado}</td>`).join("")}</tr>
+            <tr><td style="padding:3px 6px;color:var(--muted)">Ayer</td>${arr.map((x) => `<td style="text-align:center">${x.ayer}</td>`).join("")}</tr></table></div>`;
+          h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">🔢 Tabla de dígitos del Kino</div>
+            <div style="font-size:11px;color:var(--muted)">Terminación = último dígito (el 7 del 47). Decena = primer dígito (el 4 del 47). Verde = salió más de lo esperado.</div>` +
+            filaDig(dg.terminaciones, "Terminaciones") + filaDig(dg.decenas, "Decenas");
+          // tabla jaladora
+          h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">🧲 Nuestra Tabla Jaladora del Kino</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Escriba un número y vea cuáles han salido más veces AL DÍA SIGUIENTE de que salió él.</div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input id="kj-num" type="number" min="1" max="84" inputmode="numeric" placeholder="1-84" style="width:90px;padding:6px">
+            <button class="btn btn-neon" onclick="labKinoJala()">🧲 Ver qué jala</button>
+            <button class="btn" onclick="labKinoJalaAyer()">Ver los de ayer</button></div>
+            <div id="kj-res" style="margin-top:6px"></div>`;
+          cont.innerHTML = h;
+        } catch (e) { cont.innerHTML = `<div class="err">⚠️ ${e.message}</div>`; }
+      }
+      function labKinoJalaFila(n) {
+        const d = window._labKino; const l = (d && d.jaladora && d.jaladora[n]) || [];
+        return `<div style="font-size:12px;margin:3px 0"><b style="color:var(--neon)">${p2(n)}</b> jala → ${l.length ? l.map((x) => `<b>${p2(x.numero)}</b> <span style="color:var(--muted)">(${x.veces})</span>`).join(" · ") : "<i>sin datos</i>"}</div>`;
+      }
+      function labKinoJala() {
+        const n = parseInt(document.getElementById("kj-num").value, 10);
+        document.getElementById("kj-res").innerHTML = n >= 1 && n <= 84 ? labKinoJalaFila(n) : `<div class="err">Escriba un número del 1 al 84.</div>`;
+      }
+      function labKinoJalaAyer() {
+        const d = window._labKino; const a = (d && d.ayer && d.ayer.nums) || [];
+        document.getElementById("kj-res").innerHTML = a.length ? `<div style="font-size:11px;color:var(--muted)">Kino del ${d.ayer.fecha}:</div>` + a.map(labKinoJalaFila).join("") : "";
+      }
+      function labKinoJugar(i) {
+        if (!confirmarCompra()) return;
+        const d = window._labKino; const t = d && d.hoy[i]; if (!t || !t.numeros) return;
+        if (labYaJugada({ clave: "superkino", numeros: t.numeros })) return cargarLabKino();
+        const jugada = { id: Date.now() + Math.random().toString(36).slice(2, 6), clave: "superkino", clave2: null,
+          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10), tipo: clasificarLoteria("superkino"),
+          numeros: t.numeros.map(Number), monto: 25, creado: new Date().toISOString() };
+        const lista = getJugadas(); lista.unshift(jugada); setJugadas(lista);
+        enviarJugadaServidor(jugada);
+        if (typeof renderJugadas === "function") renderJugadas();
+        cargarLabKino();
+      }
+      // ══ 💰 PRESUPUESTO ══
+      async function cargarPresupuesto() {
+        const box = document.getElementById("presu-box"); if (!box) return;
+        try {
+          const d = await (await fetch(`${API}/api/presupuesto`)).json();
+          if (d.error) { box.innerHTML = `<div class="err">⚠️ ${d.error}</div>`; return; }
+          const pct = d.tope ? Math.min(100, d.usado_pct) : 0;
+          const color = !d.tope ? "var(--muted)" : d.usado_pct >= 100 ? "var(--red)" : d.usado_pct >= 80 ? "var(--gold)" : "var(--green)";
+          box.innerHTML = `<div style="font-size:11px;color:var(--muted)">Semana ${d.semana}</div>
+            ${d.tope ? `<div style="font-size:15px;font-weight:800;margin:4px 0">Jugó <span style="color:${color}">RD$${d.jugado}</span> de RD$${d.tope} · le quedan <b>RD$${d.queda}</b></div>
+            <div style="height:10px;border-radius:5px;background:var(--card3,#111827);overflow:hidden"><div style="height:100%;width:${pct}%;background:${color}"></div></div>`
+              : `<div style="font-size:13px;margin:4px 0">Todavía no tiene tope. Jugado esta semana: <b>RD$${d.jugado}</b></div>`}
+            <div style="font-size:12px;margin-top:6px">Cobrado: <b>RD$${d.cobrado}</b> · Neto: <b style="color:${d.neto >= 0 ? "var(--green)" : "var(--red)"}">RD$${d.neto}</b> · ${d.jugadas} jugada(s)${d.sin_monto ? ` · <span style="color:var(--gold)">${d.sin_monto} sin monto (no cuentan)</span>` : ""}</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><label for="presu-tope" style="font-size:12px">Tope semanal RD$</label>
+              <input id="presu-tope" type="number" min="0" inputmode="numeric" value="${d.tope || ""}" placeholder="ej: 300" style="width:90px;padding:6px">
+              <button class="btn btn-neon" style="padding:6px 10px;font-size:11px" onclick="guardarTope()">💾 Guardar</button></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Telegram le avisa al llegar al 80% y al 100%. Se reinicia cada lunes. Solo cuentan las jugadas suyas (🙋) con monto.</div>`;
+        } catch (e) { box.innerHTML = `<div class="err">⚠️ ${e.message}</div>`; }
+      }
+      async function guardarTope() {
+        const v = parseInt(document.getElementById("presu-tope").value, 10) || 0;
+        try { await fetch(`${API}/api/presupuesto`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tope: v }) }); } catch (e) {}
+        cargarPresupuesto();
+      }
+      // ══ 🔍 DETECTOR DE BOLOS CARGADOS ══
+      async function cargarSesgo() {
+        const box = document.getElementById("lab-sesgo"); if (!box) return;
+        box.innerHTML = `<div class="empty"><p>⏳ Revisando todas las loterías…</p></div>`;
+        try {
+          const d = await (await fetch(`${API}/api/sesgo`)).json();
+          if (d.error) { box.innerHTML = `<div class="err">⚠️ ${d.error}</div>`; return; }
+          const fila = (t) => { const lejos = t.p / d.umbral; const tono = lejos <= 1 ? "var(--red)" : lejos <= 10 ? "var(--gold)" : "var(--muted)";
+            return `<tr style="border-top:1px solid #1f2a3d"><td style="padding:4px">${t.loteria}</td><td>${t.prueba}</td><td>${t.salio !== undefined ? `${t.salio} <span style="color:var(--muted)">(~${t.esperado})</span>` : "—"}</td><td style="color:${tono};font-weight:700">${lejos <= 1 ? "🚨 alarma" : lejos <= 10 ? "👀 vigilar" : "normal"}</td></tr>`; };
+          box.innerHTML = `<div class="cardX"><div style="font-weight:800;font-size:13px;color:${d.alarmas.length ? "var(--red)" : "var(--green)"}">${d.alarmas.length ? "🚨" : "✅"} ${d.veredicto}</div>
+            <div style="font-size:11px;color:var(--muted);margin:4px 0 6px">${d.pruebas} pruebas en ${d.loterias} loterías. Lo más "raro" (👀 = cerca del umbral, todavía puede ser suerte):</div>
+            <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:var(--muted)"><td>Lotería</td><td>Prueba</td><td>Salió (normal)</td><td>Estado</td></tr>${d.top10.map(fila).join("")}</table></div></div>`;
+        } catch (e) { box.innerHTML = `<div class="err">⚠️ ${e.message}</div>`; }
+      }
+      // ══ 🎟️ LOTO INTELIGENTE (combinaciones poco populares) ══
+      function lotoInteligente(juego) {
+        const cfg = juego === "loto" ? { n: 6, max: 40, nombre: "Loto Leidsa", extra: "Los bolos del Loto Más / Súper Más se escogen aparte (no cambian esto)." }
+                                     : { n: 5, max: 38, nombre: "Loto 5 La Primera", extra: "", bolo: 10 };
+        const buena = (c) => {
+          const a = [...c].sort((x, y) => x - y);
+          if (a.filter((x) => x > 31).length < 2) return false;                 // no todo "fechas" (1-31)
+          for (let i = 2; i < a.length; i++) if (a[i] - a[i - 1] === 1 && a[i - 1] - a[i - 2] === 1) return false; // no 3 seguidos
+          const dif = a.slice(1).map((x, i) => x - a[i]); if (dif.every((d) => d === dif[0])) return false;        // no saltos iguales
+          const dec = {}; a.forEach((x) => (dec[Math.floor(x / 10)] = (dec[Math.floor(x / 10)] || 0) + 1)); if (Object.values(dec).some((v) => v >= 3)) return false; // no 3 en la misma decena
+          const imp = a.filter((x) => x % 2).length; if (imp === 0 || imp === a.length) return false;               // no todos pares / impares
+          if (a.every((x) => x % 5 === 0) || a.every((x) => x % 7 === 0)) return false;
+          const term = {}; a.forEach((x) => (term[x % 10] = (term[x % 10] || 0) + 1)); if (Object.values(term).some((v) => v >= 3)) return false;
+          return true;
+        };
+        const combos = [];
+        while (combos.length < 5) { const s = new Set(); while (s.size < cfg.n) s.add(1 + Math.floor(Math.random() * cfg.max)); const c = [...s].sort((x, y) => x - y); if (buena(c) && !combos.some((k) => k.join() === c.join())) combos.push(c); }
+        document.getElementById("lab-loto").innerHTML = `<div class="cardX"><div style="font-weight:800;font-size:13px;margin-bottom:6px">${cfg.nombre} · 5 combinaciones</div>` +
+          combos.map((c, i) => `<div style="display:flex;gap:3px;align-items:center;flex-wrap:wrap;margin:4px 0"><span style="font-size:11px;color:var(--muted);width:18px">${i + 1}.</span>${c.map((n) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem">${p2(n)}</span>`).join("")}${cfg.bolo ? `<span style="font-size:11px;color:var(--muted);margin-left:4px">bolo ${1 + Math.floor(Math.random() * cfg.bolo)}</span>` : ""}</div>`).join("") +
+          `<div style="font-size:10px;color:var(--muted);margin-top:6px">Sin fechas puras, sin seguidos, sin patrones ni todos pares/impares. ${cfg.extra} Toque otra vez para otras 5.</div></div>`;
+      }
+      async function cargarLab() {
+        const cont = document.getElementById("lab-tabla");
+        try {
+          await labInfo();
+          cont.innerHTML = `<div class="empty"><p>⏳ Probando las estrategias sobre todo el historial…</p></div>`;
+          const r = await fetch(`${API}/api/lab/ranking`); const d = await r.json();
+          document.getElementById("lab-aviso").innerHTML = d.tabla_ok ? "" :
+            `<div class="err">⚠️ Falta crear la tabla <b>estrategias</b> en Supabase (archivo supabase_estrategias.sql).</div>`;
+          window._labUltimo = d.estrategias;
+          if (!d.estrategias.length) { cont.innerHTML = `<div class="empty"><p>Todavía no hay estrategias.</p></div>`; return; }
+          const lista = [...d.estrategias].sort((a, b) => ((b.historial?.retorno ?? -1) - (a.historial?.retorno ?? -1)));
+          const fmt = (x) => (x == null ? "—" : x.toFixed(2));
+          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">📚 Historial: ${d.dias_historial} días · 🔴 En vivo desde que se creó cada estrategia.<br>
+            <b>Retorno</b> = lo que devuelve cada RD$1 jugado (1.00 = quedó igual). Jugando al azar se espera ≈0.72. <b>z</b>: de 2.8 para arriba sería algo real; entre -2 y 2 es suerte.</div>` +
+            lista.map((e, i) => {
+              const h = e.historial || {}; const v = e.vivo;
+              const lots = e.loterias === "todas" ? "Todas las quinielas" : e.loterias === "auto" ? "Las de siempre" : (e.loterias_usadas || []).map((k) => LAB_INFO.loterias[k] || k).join(", ");
+              return `<div class="cardX" style="margin-bottom:10px;opacity:${e.activa === false ? 0.55 : 1}">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
+                  <div><div style="font-weight:800;font-size:14px">${i + 1}. ${e.nombre} ${e.activa === false ? "⏸" : ""}</div>
+                    <div style="font-size:11px;color:var(--muted)">${e.tipo_nombre || e.tipo} · ${lots}</div></div>
+                  <div style="display:flex;gap:6px">
+                    <button class="hp-btn" onclick="labAccion('activa','${e.id}',${e.activa === false})">${e.activa === false ? "▶️ Activar" : "⏸ Pausar"}</button>
+                    <button class="hp-btn" onclick="labAccion('borrar','${e.id}')">🗑</button></div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:8px;font-size:12px">
+                  <div><div style="color:var(--muted);font-size:10px">📚 HISTORIAL · RETORNO</div>
+                    <div style="font-size:18px;font-weight:800;color:${labColor(h.retorno, h.control_retorno)}">${fmt(h.retorno)}</div>
+                    <div style="font-size:10px;color:var(--muted)">azar: ${fmt(h.control_retorno)}</div></div>
+                  <div><div style="color:var(--muted);font-size:10px">JUGADO / COBRADO</div>
+                    <div style="font-weight:700">RD$${h.costo ?? 0} / RD$${h.cobro ?? 0}</div>
+                    <div style="font-size:10px;color:var(--muted)">${h.ganadas ?? 0} de ${h.jugadas ?? 0} sorteos con premio</div></div>
+                  <div><div style="color:var(--muted);font-size:10px">VS AZAR</div>
+                    <div style="font-weight:700">${h.pct_vs_azar ?? "—"}% · z ${h.z ?? "—"}</div></div>
+                  <div><div style="color:var(--muted);font-size:10px">🔴 EN VIVO · RETORNO</div>
+                    <div style="font-size:18px;font-weight:800;color:${labColor(v?.retorno, v?.control_retorno)}">${v ? fmt(v.retorno) : "—"}</div>
+                    <div style="font-size:10px;color:var(--muted)">${v ? `RD$${v.costo} → RD$${v.cobro} · azar ${fmt(v.control_retorno)}` : "empieza con el próximo sorteo"}</div></div>
+                </div></div>`;
+            }).join("");
+        } catch (e) {
+          cont.innerHTML = `<div class="err">⚠️ No se pudo cargar el laboratorio: ${e.message}</div>`;
+        }
+      }
     </script>
   </body>
 </html>

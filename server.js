@@ -1357,7 +1357,13 @@ app.get('/api/debug-scrapers', async (req, res) => {
   const r = await diagnosticarFuentes();
   res.json(r);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.24-EFEMERIDES', status: 'ok', fecha_rd: fechaRD() }));
+// v9.25: la app (index.html) también se sirve desde aquí → https://reydis-bot-service.onrender.com/app (sin cuenta de nadie)
+app.get(['/app', '/app/'], (req, res) => {
+  const f = path.join(__dirname, 'index.html');
+  if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
+  res.set('Cache-Control', 'no-cache'); res.sendFile(f);
+});
+app.get('/', (req, res) => res.json({ version: 'v9.25-APP', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3203,7 +3209,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.24-EFEMERIDES en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.25-APP en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
