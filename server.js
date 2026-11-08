@@ -1362,7 +1362,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.29-QUEMAITO-AYER', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.30-BOLO-28', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2682,6 +2682,7 @@ const LAB_FUENTES = { ayer: 'el mismo sorteo AYER', anterior: 'la lotería que s
 const LAB_NUEVAS = [
   { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
   { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
+  { id: 'bolo-28-florida', nombre: 'Bolo cargado · 28 en Florida Día', tipo: 'fe', parametros: { numeros: [28] }, loterias: ['florida_d'] }, // v9.30: alarma del detector (15 veces vs ~4.9)
   { id: 'quemaito-eq-lotedom-ayer', nombre: 'Quemaito · equivalente de LoteDom de ayer', tipo: 'equivde', parametros: { desde: 'lotedom', ayer: true }, loterias: ['quemaito'] },
   { id: 'deldia-top5', nombre: 'Los 5 más salidos hoy', tipo: 'deldia', parametros: {}, loterias: 'auto' },
   { id: 'efemerides-fecha', nombre: 'Efemérides · números de la fecha', tipo: 'efemerides', parametros: { variante: 'fecha' }, loterias: 'auto' },
@@ -3259,7 +3260,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.29-QUEMAITO-AYER en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.30-BOLO-28 en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
