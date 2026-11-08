@@ -69,7 +69,10 @@ async function notificarNuevosSorteos() {
   const todosHoy = Object.keys(conteoHoy).map(Number).sort((a, b) => a - b);
   const repetidosHoy = todosHoy.filter(n => conteoHoy[n].length >= 2);
 
-  const listaRepetidos = repetidosHoy.length
+  if (repAnunciados.fecha !== estado.fecha) { repAnunciados.fecha = estado.fecha; repAnunciados.set = new Set(); }
+  const hayNuevo = repetidosHoy.some(n => !repAnunciados.set.has(n));
+  repetidosHoy.forEach(n => repAnunciados.set.add(n));
+  const listaRepetidos = repetidosHoy.length && hayNuevo
     ? `\n🔁 <b>Repetidos en varias loterías:</b>\n` +
       repetidosHoy.map(n =>
         `⚡ <b>${f2(n)}</b> → ${conteoHoy[n].join(', ')}`
@@ -1049,10 +1052,10 @@ async function cazarAciertos({ enviar = true } = {}) {
     }
   }
 
-  if (enviar && avisos.length && TG_ACTIVO) await enviarTelegram(
-    `🎯 <b>RADAR PUNTO</b> — ${fechaRD()} ${horaRD()}\n` +
-    (totalSorteos > 1 ? `📊 ${totalAciertos} aciertos en estos ${totalSorteos} sorteos\n\n` : '') +
-    avisos.join('\n\n') +
+  // v9.28: solo se avisa cuando ACIERTA (el ❌ ya sale en el mensaje de resultados); el total llega en la noche
+  const aciertosRadar = avisos.filter(a => a.startsWith('✅'));
+  if (enviar && aciertosRadar.length && TG_ACTIVO) await enviarTelegram(
+    `🎯 <b>RADAR PUNTO ¡ACERTÓ!</b> — ${fechaRD()} ${horaRD()}\n\n` + aciertosRadar.join('\n\n') +
     `\n\n<i>El total del día llega en la noche.</i>`
   );
   return avisos;
@@ -1265,12 +1268,10 @@ async function revisarYEnviarPredicciones() {
       .filter(([, lots]) => lots.length >= 2)
       .sort((a, b) => b[1].length - a[1].length);
 
-    const ctxTxt = repsActuales.length
-      ? `\n     🔁 <b>Repetidos hoy:</b>\n` +
-        repsActuales.map(([n, lots]) => `     ⚡ <b>${f2(+n)}</b> → ${lots.join(', ')}`).join('\n')
-      : '\n     🔁 Repetidos hoy: ninguno aún';
+    const ctxTxt = repsActuales.length ? `\n     ⚡ Repetidos hoy: ${repsActuales.map(([n]) => f2(+n)).join(' · ')}` : '';
 
-    avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${ctxTxt}`);
+    const auto = AUTO.loterias.includes(clave) ? `\n     🤖 se registra: Punto ${f2(pred.top1)} · Palé ${pred.top3.slice(0, 2).map(f2).join('-')} · Tripleta ${pred.top3.map(f2).join('-')}` : '';
+    avisos.push(`🔮 <b>${s.nombre}</b> — cierra ${s.hora}\n     Punto: <b>${f2(pred.top1)}</b> · Top-3: <b>${pred.top3.map(f2).join('-')}</b>${auto}${ctxTxt}`);
   }
 
   if (avisos.length) {
@@ -1361,7 +1362,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.27-QUEMAITO-LAB', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.29-QUEMAITO-AYER', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2096,7 +2097,7 @@ async function generarJugadasAutomaticas() {
     const js = generarQuinielaAuto(clave, hoy, hora);
     grupos.push(g); nuevas.push(...js);
     const a = js.filter(j => j.origen === 'auto');
-    if (a.length) avisos.push(`🎯 <b>${s.nombre}</b> (${hora})\n     Punto <b>${f2(a[0].numeros[0])}</b> · Palé <b>${a[1].numeros.map(f2).join('-')}</b> · Tripleta <b>${a[2].numeros.map(f2).join('-')}</b>`);
+    // v9.28: no se repite aquí: Predicciones del momento ya trae el mismo punto · palé · tripleta (marcado con 🤖)
   }
   for (const [c1, c2] of AUTO.superpales) {
     const s1 = estado.sorteos[c1], s2 = estado.sorteos[c2]; const g = `sp|${c1}+${c2}`;
@@ -2673,7 +2674,7 @@ const LAB_TIPOS = {
   rodean:     { nombre: 'Números que rodean (video)', desc: 'Se le da la vuelta al 1er premio de la fuente (85 → 58) y se juegan los 4 que lo rodean: 57, 59, 48, 68', params: ['fuente'] },
   efemerides: { nombre: 'Efemérides', desc: "Variante 'fecha': el día, el mes, el año, día+mes y el espejo del día. Variante 'mismo-dia': lo que salió en esa lotería el mismo día de los meses anteriores", params: ['variante'] },
   deldia:     { nombre: 'Los más salidos hoy', desc: 'Los 5 números que más han salido HOY en todas las loterías antes de este sorteo (mínimo 2 loterías ya salidas)', params: [] },
-  equivde:    { nombre: 'Equivalente de una quiniela del día', desc: 'Los 3 números de esa quiniela HOY pasados a su equivalente (0↔5 · 1↔6 · 2↔7 · 3↔8 · 4↔9): 28 → 73', params: ['desde'] },
+  equivde:    { nombre: 'Equivalente de una quiniela del día', desc: 'Los 3 números de esa quiniela (de hoy o de ayer) pasados a su equivalente (0↔5 · 1↔6 · 2↔7 · 3↔8 · 4↔9): 28 → 73', params: ['desde', 'ayer'] },
   piramide:   { nombre: 'Pirámide de fechas (video)', desc: 'Pirámide de la fecha de AYER + la de HOY → número base, su equivalente (1=6…5=0), base ± el día y sus vueltas (6 números, los mismos en todas las loterías)', params: [] },
   fe:         { nombre: 'Mis números de fe', desc: 'Sus números fijos, todos los días', params: ['numeros'] },
 };
@@ -2681,7 +2682,7 @@ const LAB_FUENTES = { ayer: 'el mismo sorteo AYER', anterior: 'la lotería que s
 const LAB_NUEVAS = [
   { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
   { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
-  { id: 'quemaito-eq-lotedom', nombre: 'Quemaito · equivalente de LoteDom', tipo: 'equivde', parametros: { desde: 'lotedom' }, loterias: ['quemaito'] },
+  { id: 'quemaito-eq-lotedom-ayer', nombre: 'Quemaito · equivalente de LoteDom de ayer', tipo: 'equivde', parametros: { desde: 'lotedom', ayer: true }, loterias: ['quemaito'] },
   { id: 'deldia-top5', nombre: 'Los 5 más salidos hoy', tipo: 'deldia', parametros: {}, loterias: 'auto' },
   { id: 'efemerides-fecha', nombre: 'Efemérides · números de la fecha', tipo: 'efemerides', parametros: { variante: 'fecha' }, loterias: 'auto' },
   { id: 'efemerides-mismo-dia', nombre: 'Efemérides · mismo día de meses anteriores', tipo: 'efemerides', parametros: { variante: 'mismo-dia' }, loterias: 'auto' },
@@ -2725,6 +2726,10 @@ async function labCargar(forzar) {
         await upsertJugadas([{ id: 'sys|lab-todas|rodean-anterior', origen: 'sistema', clave: 'sistema', fecha: fechaRD(), tipo: 'sistema', numeros: [], notificado: true, evaluado: true }]);
         rod.loterias = 'todas';
       } catch (er) {}
+    }
+    // v9.29: la de 'LoteDom de hoy' no se puede jugar (sale junto con el Quemaito) → se quita
+    if (r.data.some(x => x.id === 'quemaito-eq-lotedom')) {
+      try { await axios.delete(`${SUPABASE_URL}/rest/v1/estrategias?id=eq.quemaito-eq-lotedom`, { headers: SB_HEADERS(), timeout: 15000 }); r.data = r.data.filter(x => x.id !== 'quemaito-eq-lotedom'); } catch (er) {}
     }
     // v9.15: estrategias nuevas que se agregan solas una vez (si se borran, no vuelven: queda la marca 'sys|lab-sembrada|id')
     for (const e of LAB_NUEVAS) {
@@ -2809,6 +2814,7 @@ function labPiramide(fecha) {
   return [...new Set([base, eq(base), suma, vuelta(suma), resta, vuelta(resta)])];
 }
 // Texto con los números del laboratorio para la próxima lotería que falta hoy (en papel)
+const repAnunciados = { fecha: null, set: new Set() }; // v9.28: repetidos ya avisados hoy
 async function labProximaTexto() {
   const ests = (await labCargar()).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
   if (!ests.length) return '';
@@ -2838,7 +2844,8 @@ function labCandidatos(est, dias, idxDia, clave) {
   else if (est.tipo === 'fe') c = (p.numeros || []).map(Number);
   else if (est.tipo === 'piramide') c = labPiramide(dias[idxDia] && dias[idxDia].fecha);
   else if (est.tipo === 'equivde') {
-    const src = dias[idxDia] && dias[idxDia].sorteos && dias[idxDia].sorteos[p.desde || 'lotedom'];
+    const dOrigen = p.ayer ? dias[idxDia - 1] : dias[idxDia]; // v9.29: 'ayer' = la quiniela de origen del día anterior (se puede jugar)
+    const src = dOrigen && dOrigen.sorteos && dOrigen.sorteos[p.desde || 'lotedom'];
     if (!src || !src.numeros || src.numeros.length < 3) return null;
     const eq = d => (d + 5) % 10; c = src.numeros.slice(0, 3).map(Number).map(n => eq(Math.floor(n / 10)) * 10 + eq(n % 10));
   }
@@ -3025,7 +3032,7 @@ async function labGenerar() {
     const s = labSorteoHoy(clave); const g = `lab|${est.id}|${clave}`;
     if (!s || (s.numeros && s.numeros.length >= labMin(clave))) continue;
     // 'equivde' se registra apenas sale su quiniela de origen (el sorteo especial es después)
-    if (est.tipo !== 'equivde' && !enVentana(horaDeHoy(clave, s.hora))) continue;
+    if ((est.tipo !== 'equivde' || (est.parametros || {}).ayer) && !enVentana(horaDeHoy(clave, s.hora))) continue;
     // v9.18: las que usan 'la lotería anterior' se actualizan si sale otra lotería antes del sorteo (hasta 2 min antes),
     // así en vivo se mide igual que en la prueba con el historial
     const usaAnterior = (LAB_TIPOS[est.tipo].params || []).includes('fuente') && ((est.parametros || {}).fuente || 'anterior') === 'anterior';
@@ -3252,7 +3259,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.27-QUEMAITO-LAB en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.29-QUEMAITO-AYER en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
