@@ -1362,7 +1362,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.30-BOLO-28', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.31-ATENCION', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1758,16 +1758,48 @@ async function detectorSesgo() {
 }
 app.get('/api/sesgo', async (req, res) => { try { res.json(await detectorSesgo()); } catch (e) { res.status(500).json({ error: e.message }); } });
 let sesgoRevisado = null;
-async function detectorSemanal() { // los lunes desde las 8:00 AM, una vez por semana
-  if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
-  const hoy = fechaRD(); if (diaSemanaRD() !== 'Mon' || minutosActualesRD() < 8 * 60 || sesgoRevisado === hoy) return;
-  sesgoRevisado = hoy; if (yaEnviado('sesgo')) return;
-  const r = await detectorSesgo(); await marcarEnviado('sesgo');
-  const f = t => `• <b>${t.loteria}</b> — ${t.prueba}${t.salio !== undefined ? `: salió ${t.salio} veces (lo normal ~${t.esperado}) en ${t.sorteos} sorteos` : ` (${t.sorteos} sorteos)`}`;
-  await enviarTelegram(r.alarmas.length
-    ? `🚨 <b>DETECTOR DE BOLOS CARGADOS</b>\n\nEsto sale de más, más allá de lo que explica el azar:\n${r.alarmas.slice(0, 8).map(f).join('\n')}\n\n<i>${r.pruebas} pruebas en ${r.loterias} loterías. Hay que confirmarlo con más semanas antes de jugarle.</i>`
-    : `🔍 <b>DETECTOR DE BOLOS CARGADOS</b> — semanal\n\n✅ ${r.veredicto}.\n<i>${r.pruebas} pruebas en ${r.loterias} loterías. Lo más "raro" esta semana:</i>\n${r.top10.slice(0, 3).map(f).join('\n')}\n<i>(dentro de lo normal)</i>`);
+// v9.31: 👀 PARA PONER ATENCIÓN — informe diario (8:00 AM) con lo que de verdad merece mirarse:
+// detector de bolos cargados, estrategias del laboratorio que se separan del azar en vivo, y el Kino.
+async function informeAtencion() {
+  const f2 = n => String(n).padStart(2, '0'); const partes = [];
+  // 1) detector de bolos cargados
+  const r = await detectorSesgo();
+  const vig = r.top10.filter(t => t.p / r.umbral <= 10);
+  const fx = t => `${t.p < r.umbral ? '🚨' : '👀'} <b>${t.loteria}</b> — ${t.prueba}${t.salio !== undefined ? `: ${t.salio} veces (lo normal ~${t.esperado})` : ''}`;
+  if (vig.length) partes.push(`🔍 <b>Bolos cargados</b>\n${vig.slice(0, 5).map(fx).join('\n')}`);
+  // 2) laboratorio en vivo: lo que se separa del azar (para bien o para mal)
+  let filas = []; try { filas = await leerJugadasTodas(`origen=eq.lab&evaluado=eq.true&select=id,metodo,numeros,premio,aciertos,fecha,clave`); } catch (e) {}
+  const por = {}; for (const f of filas) (por[f.metodo] = por[f.metodo] || []).push(f);
+  const ests = (await labCargar(true)).filter(e => e.activa !== false);
+  const lab = [];
+  for (const e of ests) {
+    const v = labVivo(por[e.id] || [], e.creado ? String(e.creado).slice(0, 10) : null); if (!v.sorteos) continue;
+    if (v.z >= 1.5 && v.ret > 0.72) lab.push({ t: `📈 <b>${e.nombre}</b>: ${v.aciertos} aciertos (azar ~${v.esperados}) en ${v.sorteos} sorteos · ret ${v.ret.toFixed(2)}${v.sorteos < LAB_MIN_SORTEOS ? ' · <i>pocos sorteos</i>' : ''}`, z: v.z });
+    else if (v.sorteos >= LAB_MIN_SORTEOS && v.z <= -1.5) lab.push({ t: `📉 <b>${e.nombre}</b>: ${v.aciertos} aciertos (azar ~${v.esperados}) en ${v.sorteos} sorteos · ret ${v.ret.toFixed(2)}`, z: v.z });
+  }
+  // las de "bolo cargado" siempre se muestran, aunque vayan normales
+  for (const e of ests.filter(x => String(x.id).startsWith('bolo-'))) {
+    const v = labVivo(por[e.id] || [], e.creado ? String(e.creado).slice(0, 10) : null);
+    if (!lab.some(x => x.t.includes(e.nombre))) lab.push({ t: `🎯 <b>${e.nombre}</b>: ${v.sorteos ? `${v.aciertos} vez/veces en ${v.sorteos} sorteos (azar ~${v.esperados})` : 'empieza hoy'}`, z: 99 });
+  }
+  if (lab.length) partes.push(`🧪 <b>Laboratorio en vivo</b>\n${lab.sort((a, b) => b.z - a.z).slice(0, 6).map(x => x.t).join('\n')}`);
+  // 3) Kino: códigos con 20+ sorteos claramente arriba
+  const kv = (await kinoVivo()) || [];
+  const kz = kv.filter(x => x.sorteos >= 20 && x.prom_aciertos != null).map(x => ({ ...x, z: (x.prom_aciertos - 2.38) / (1.33 / Math.sqrt(x.sorteos)) })).filter(x => x.z >= 1.5);
+  if (kz.length) partes.push(`🎰 <b>Kino</b>\n${kz.map(x => `📈 <b>${x.nombre.replace('Kino · ', '')}</b>: prom ${x.prom_aciertos} aciertos (azar 2.38) en ${x.sorteos} sorteos`).join('\n')}`);
+  return { texto: partes.length
+    ? `👀 <b>PARA PONER ATENCIÓN</b> — ${fechaRD()}\n\n${partes.join('\n\n')}\n\n<i>🚨 = pasa la prueba estricta · 👀 = cerca, puede ser suerte · 📈/📉 = en vivo, separándose del azar. Nada de esto es garantía.</i>`
+    : `👀 <b>PARA PONER ATENCIÓN</b> — ${fechaRD()}\n\n✅ Nada fuera de lo normal hoy.`, partes: partes.length };
 }
+let atencionRevisada = null;
+async function detectorSemanal() { // v9.31: ahora es diario, a las 8:00 AM
+  if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
+  const hoy = fechaRD(); if (minutosActualesRD() < 8 * 60 || atencionRevisada === hoy) return;
+  atencionRevisada = hoy; if (yaEnviado('atencion')) return;
+  const r = await informeAtencion(); await marcarEnviado('atencion');
+  await enviarTelegram(r.texto);
+}
+app.get('/api/atencion', async (req, res) => { try { res.json(await informeAtencion()); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 app.post('/api/jugada', async (req, res) => {
   const j = req.body;
@@ -3260,7 +3292,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.30-BOLO-28 en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.31-ATENCION en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
