@@ -111,7 +111,7 @@ async function notificarNuevosSorteos() {
       const top1 = pred.top1;
       const top3 = pred.top3;
       const acertoPunto = top1 !== null && n.numeros.includes(top1);
-      const acertosTop3 = n.numeros.filter(x => top3.includes(x)).length;
+      const acertosTop3 = [...new Set(top3)].filter(x => n.numeros.includes(x)).length; // v9.32: un número repetido en el resultado (95-95) cuenta una vez
       const predStr = top3.map(f2).join('-');
       if (acertoPunto) {
         lineaPred = `\n     🎯 <b>¡PUNTO!</b> Predije ${f2(top1)} · salió ${nums}`;
@@ -1362,7 +1362,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.31-ATENCION', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.32-PALE-FIX', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3292,7 +3292,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.31-ATENCION en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.32-PALE-FIX en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
