@@ -1362,7 +1362,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.32-PALE-FIX', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.33-HISTORIAL-VIEJO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2573,6 +2573,8 @@ app.get('/api/backfill-loto-mas', async (req, res) => {
 // La página general "resultados-loterias-FECHA" no trae todas; las páginas de cada
 // lotería sí (así se completó la Anguila). Solo rellena lo que falta, nunca sobrescribe.
 // Uso: /api/backfill-quinielas?desde=2026-08-05&hasta=2026-08-19&guardar=1  (máx. 15 días por llamada)
+// v9.33: mientras corre un backfill, el servidor se visita a sí mismo cada 4 min para que Render no lo duerma
+setInterval(() => { if (estadoBackfill && estadoBackfill.activo && process.env.RENDER_EXTERNAL_URL) axios.get(process.env.RENDER_EXTERNAL_URL + '/?keepalive=1', { timeout: 10000 }).catch(() => {}); }, 4 * 60 * 1000);
 app.get('/api/backfill-quinielas', async (req, res) => {
   if (estadoBackfill.activo) return res.status(409).json({ error: 'Ya hay un backfill corriendo' });
   const { desde, hasta } = req.query; const guardar = req.query.guardar === '1';
@@ -2583,7 +2585,10 @@ app.get('/api/backfill-quinielas', async (req, res) => {
   const pausa = ms => new Promise(r => setTimeout(r, ms));
   let totalNuevos = 0, diasGuardados = 0;
   try {
-    const fechas = listaFechas(desde, hasta).filter(f => f < fechaRD());
+    // v9.33: hasta 120 días por vuelta (antes 15)
+    const fechas = []; for (let d = new Date(desde + 'T12:00:00Z'), fin = new Date(hasta + 'T12:00:00Z'); d <= fin && fechas.length < 120; d.setUTCDate(d.getUTCDate() + 1)) fechas.push(d.toISOString().slice(0, 10));
+    fechas.splice(0, fechas.length, ...fechas.filter(f => f < fechaRD()));
+    logBF(`${fechas.length} días por revisar (~${Math.ceil(fechas.length * 20 * 0.9 / 60)} min)`);
     const existentes = {};
     if (SUPABASE_ACTIVO && fechas.length) {
       try {
@@ -3292,7 +3297,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.32-PALE-FIX en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.33-HISTORIAL-VIEJO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
