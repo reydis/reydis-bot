@@ -1331,6 +1331,7 @@ async function sincronizar() {
     await paso('teoria-repetidos', enviarAnalisisRepetidos);
     await paso('lab-resumen', labResumenNoche);
     await paso('detector-sesgo', detectorSemanal);
+    await paso('explorador', exploradorSemanal);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1362,7 +1363,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.33-HISTORIAL-VIEJO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.34-EXPLORADOR', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -1791,6 +1792,69 @@ async function informeAtencion() {
     ? `👀 <b>PARA PONER ATENCIÓN</b> — ${fechaRD()}\n\n${partes.join('\n\n')}\n\n<i>🚨 = pasa la prueba estricta · 👀 = cerca, puede ser suerte · 📈/📉 = en vivo, separándose del azar. Nada de esto es garantía.</i>`
     : `👀 <b>PARA PONER ATENCIÓN</b> — ${fechaRD()}\n\n✅ Nada fuera de lo normal hoy.`, partes: partes.length };
 }
+// 🔎 EXPLORADOR (v9.34): cada domingo prueba miles de ideas "lotería A → transformación → lotería B" (mismo día o de ayer).
+// BUSCA en el 60% viejo del historial (z ≥ 3) y CONFIRMA en el 40% nuevo (z ≥ umbral Bonferroni). Solo avisa lo que pasa las dos.
+let exploradorUltimo = null;
+async function explorador() {
+  histTeoria.fecha = null; await cargarHistTeoria();
+  const hoy = fechaRD(); const porFecha = {};
+  for (const d of histTeoria.filas) porFecha[d.fecha] = d; for (const d of estado.historico) porFecha[d.fecha] = { ...(porFecha[d.fecha] || {}), ...d };
+  const D = Object.values(porFecha).filter(d => d.fecha < hoy).sort((a, b) => (a.fecha < b.fecha ? -1 : 1)).map(d => {
+    const o = {}; for (const [k, v] of Object.entries(d.sorteos || {})) if (LAB_HORA[k] !== undefined && v && Array.isArray(v.numeros) && v.numeros.length >= 3) o[k] = v.numeros.slice(0, 3).map(Number);
+    return { fecha: d.fecha, s: o };
+  });
+  if (D.length < 60) return { error: 'historial corto', dias: D.length };
+  const corte = Math.floor(D.length * 0.6), L = Object.keys(LAB_HORA), TR = Object.keys(EXP_T);
+  const stats = (a0, a1, src, lag, tn, dst) => {
+    let h = 0, ex = 0, v = 0;
+    for (let i = Math.max(a0, lag); i < a1; i++) {
+      const a = D[i - lag].s[src], b = D[i].s[dst]; if (!a || !b) continue;
+      const c = new Set(a.flatMap(EXP_T[tn])), B = new Set(b), p = B.size / 100;
+      for (const x of c) if (B.has(x)) h++; ex += c.size * p; v += c.size * p * (1 - p);
+    }
+    return v ? { h, ex: +ex.toFixed(1), z: +((h - ex) / Math.sqrt(v)).toFixed(2) } : null;
+  };
+  const cands = []; let n = 0;
+  for (const src of L) for (const dst of L) for (const lag of [0, 1]) {
+    if (lag === 0 && LAB_HORA[src] >= LAB_HORA[dst]) continue;
+    for (const tn of TR) { const r = stats(0, corte, src, lag, tn, dst); if (!r) continue; n++; if (r.z >= 3) cands.push({ src, lag, tn, dst, busqueda: r }); }
+  }
+  const umbral = cands.length ? -normInv(0.05 / cands.length) : 2;
+  for (const c of cands) { c.confirmacion = stats(corte, D.length, c.src, c.lag, c.tn, c.dst); c.ok = !!c.confirmacion && c.confirmacion.z >= umbral; }
+  const nom = k => (crearSorteos()[k] || {}).nombre || k;
+  const r = { fecha: hoy, dias: D.length, busqueda: `${D[0].fecha} → ${D[corte - 1].fecha}`, confirmacion: `${D[corte].fecha} → ${D[D.length - 1].fecha}`,
+    ideas: n, candidatas: cands.length, umbral: +umbral.toFixed(2),
+    confirmadas: cands.filter(c => c.ok).map(c => ({ ...c, texto: `${nom(c.src)}${c.lag ? ' (ayer)' : ''} → ${c.tn} → ${nom(c.dst)}` })),
+    no_confirmadas: cands.filter(c => !c.ok).sort((a, b) => b.busqueda.z - a.busqueda.z).slice(0, 10).map(c => ({ texto: `${nom(c.src)}${c.lag ? ' (ayer)' : ''} → ${c.tn} → ${nom(c.dst)}`, busqueda: c.busqueda, confirmacion: c.confirmacion })) };
+  exploradorUltimo = r; return r;
+}
+function normInv(p) { // inversa de la normal (Acklam)
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572], c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q = p < 0.5 ? Math.sqrt(-2 * Math.log(p)) : Math.sqrt(-2 * Math.log(1 - p));
+  const x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  return p < 0.5 ? x : -x;
+}
+let exploradorRevisado = null;
+async function exploradorSemanal() { // domingos desde las 9:00 AM
+  if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
+  const hoy = fechaRD(); if (diaSemanaRD() !== 'Sun' || minutosActualesRD() < 9 * 60 || exploradorRevisado === hoy) return;
+  exploradorRevisado = hoy; if (yaEnviado('explorador')) return;
+  const r = await explorador(); await marcarEnviado('explorador'); if (r.error) return;
+  if (!r.confirmadas.length) {
+    await enviarTelegram(`🔎 <b>EXPLORADOR</b> — ${r.fecha}\n\n${r.ideas.toLocaleString('en-US')} ideas probadas con ${r.dias} días · ${r.candidatas} brillaron en la búsqueda · <b>ninguna se confirmó</b>.\n<i>Todo sigue comportándose como azar.</i>`);
+    return;
+  }
+  const nuevas = [];
+  for (const c of r.confirmadas) {
+    const id = `exp-${c.src}-${c.lag ? 'ayer' : 'hoy'}-${c.tn.replace(/[^a-z0-9]+/gi, '')}-${c.dst}`.toLowerCase();
+    nuevas.push({ id, nombre: `🔎 ${c.texto}`, tipo: 'explorador', parametros: { desde: c.src, ayer: !!c.lag, trans: c.tn }, loterias: [c.dst], activa: true });
+  }
+  try { await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, nuevas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 }); await labCargar(true); } catch (e) {}
+  await enviarTelegram(`🔎🌟 <b>EXPLORADOR — ¡ALGO PASÓ LAS DOS PRUEBAS!</b> — ${r.fecha}\n\n` +
+    r.confirmadas.map(c => `• <b>${c.texto}</b>\n   búsqueda: ${c.busqueda.h} aciertos (azar ~${c.busqueda.ex}) · confirmación: ${c.confirmacion.h} (azar ~${c.confirmacion.ex}, z ${c.confirmacion.z})`).join('\n') +
+    `\n\n<i>Se agregó al 🧪 laboratorio para medirla en vivo. Antes de jugarle dinero, que aguante unas semanas en vivo.</i>`);
+}
+app.get('/api/explorador', async (req, res) => { try { res.json(req.query.ultimo === '1' && exploradorUltimo ? exploradorUltimo : await explorador()); } catch (e) { res.status(500).json({ error: e.message }); } });
 let atencionRevisada = null;
 async function detectorSemanal() { // v9.31: ahora es diario, a las 8:00 AM
   if (!TG_ACTIVO || !SUPABASE_ACTIVO) return;
@@ -2712,6 +2776,7 @@ const LAB_TIPOS = {
   efemerides: { nombre: 'Efemérides', desc: "Variante 'fecha': el día, el mes, el año, día+mes y el espejo del día. Variante 'mismo-dia': lo que salió en esa lotería el mismo día de los meses anteriores", params: ['variante'] },
   deldia:     { nombre: 'Los más salidos hoy', desc: 'Los 5 números que más han salido HOY en todas las loterías antes de este sorteo (mínimo 2 loterías ya salidas)', params: [] },
   equivde:    { nombre: 'Equivalente de una quiniela del día', desc: 'Los 3 números de esa quiniela (de hoy o de ayer) pasados a su equivalente (0↔5 · 1↔6 · 2↔7 · 3↔8 · 4↔9): 28 → 73', params: ['desde', 'ayer'] },
+  explorador: { nombre: 'Hallazgo del Explorador', desc: 'Una relación entre dos loterías que el 🔎 Explorador encontró en la parte vieja del historial y confirmó en la nueva', params: ['desde', 'ayer', 'trans'] },
   piramide:   { nombre: 'Pirámide de fechas (video)', desc: 'Pirámide de la fecha de AYER + la de HOY → número base, su equivalente (1=6…5=0), base ± el día y sus vueltas (6 números, los mismos en todas las loterías)', params: [] },
   fe:         { nombre: 'Mis números de fe', desc: 'Sus números fijos, todos los días', params: ['numeros'] },
 };
@@ -2742,6 +2807,13 @@ const LAB_ESPECIALES = { quemaito: 1 };
 function labMin(clave) { return LAB_ESPECIALES[clave] || 3; }
 function labSorteoDe(d, clave) { return LAB_ESPECIALES[clave] ? ((d && d.especiales) || {})[clave] : ((d && d.sorteos) || {})[clave]; }
 function labSorteoHoy(clave) { return LAB_ESPECIALES[clave] ? (estado.especiales || {})[clave] : estado.sorteos[clave]; }
+// v9.34: 🔎 EXPLORADOR — transformaciones de un número
+const EXP_E = d => (d + 5) % 10;
+const EXP_T = {
+  'igual': n => [n], 'equivalente': n => [EXP_E(Math.floor(n / 10)) * 10 + EXP_E(n % 10)], 'espejo': n => [(n % 10) * 10 + Math.floor(n / 10)],
+  'vecinos ±1': n => [(n + 1) % 100, (n + 99) % 100], '+25': n => [(n + 25) % 100], '+75': n => [(n + 75) % 100],
+  'equiv. decena': n => [EXP_E(Math.floor(n / 10)) * 10 + n % 10], 'equiv. terminación': n => [Math.floor(n / 10) * 10 + EXP_E(n % 10)],
+};
 function labLoterias(est) { if (est.loterias === 'todas') return Object.keys(LAB_HORA); return est.loterias === 'auto' || !Array.isArray(est.loterias) || !est.loterias.length ? AUTO.loterias : est.loterias; }
 
 async function labCargar(forzar) {
@@ -2881,6 +2953,11 @@ function labCandidatos(est, dias, idxDia, clave) {
   if (est.tipo === 'codigoq') { const f = labFuente(dias, idxDia, clave, 'ayer'); c = f ? labCodigoQ(f[0], Number(p.Q) || 35.9) : null; }
   else if (est.tipo === 'fe') c = (p.numeros || []).map(Number);
   else if (est.tipo === 'piramide') c = labPiramide(dias[idxDia] && dias[idxDia].fecha);
+  else if (est.tipo === 'explorador') {
+    const dO = p.ayer ? dias[idxDia - 1] : dias[idxDia]; const src = dO && dO.sorteos && dO.sorteos[p.desde];
+    if (!src || !src.numeros || src.numeros.length < 3 || !EXP_T[p.trans]) return null;
+    c = [...new Set(src.numeros.slice(0, 3).map(Number).flatMap(EXP_T[p.trans]))];
+  }
   else if (est.tipo === 'equivde') {
     const dOrigen = p.ayer ? dias[idxDia - 1] : dias[idxDia]; // v9.29: 'ayer' = la quiniela de origen del día anterior (se puede jugar)
     const src = dOrigen && dOrigen.sorteos && dOrigen.sorteos[p.desde || 'lotedom'];
@@ -3070,7 +3147,7 @@ async function labGenerar() {
     const s = labSorteoHoy(clave); const g = `lab|${est.id}|${clave}`;
     if (!s || (s.numeros && s.numeros.length >= labMin(clave))) continue;
     // 'equivde' se registra apenas sale su quiniela de origen (el sorteo especial es después)
-    if ((est.tipo !== 'equivde' || (est.parametros || {}).ayer) && !enVentana(horaDeHoy(clave, s.hora))) continue;
+    if ((!['equivde', 'explorador'].includes(est.tipo) || (est.parametros || {}).ayer) && !enVentana(horaDeHoy(clave, s.hora))) continue;
     // v9.18: las que usan 'la lotería anterior' se actualizan si sale otra lotería antes del sorteo (hasta 2 min antes),
     // así en vivo se mide igual que en la prueba con el historial
     const usaAnterior = (LAB_TIPOS[est.tipo].params || []).includes('fuente') && ((est.parametros || {}).fuente || 'anterior') === 'anterior';
@@ -3297,7 +3374,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.33-HISTORIAL-VIEJO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.34-EXPLORADOR en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
