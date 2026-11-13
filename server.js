@@ -1088,7 +1088,12 @@ async function enviarResumenRadarDelDia() {
   }
   if (!ev) return;
   const esperado = (ev * 0.0297).toFixed(1);
-  await enviarTelegram(`📊 <b>RADAR PUNTO — RESUMEN DEL DÍA</b> ${hoy}\n<b>${ac} de ${ev}</b> sorteos acertados (por azar se esperaban ~${esperado})\n\n${lineas.join('\n')}`);
+  // v9.35: lo normal del día y el acumulado, para ver si el día fue raro o normal
+  const pAc = (k) => { let c = 1; for (let i = 0; i < k; i++) c = c * (ev - i) / (i + 1); return c * Math.pow(0.0297, k) * Math.pow(1 - 0.0297, ev - k); };
+  const pctDia = Math.round(100 * pAc(ac));
+  let tAc = 0, tEv = 0; for (const k of Object.keys(estado.sorteos)) { try { const w = radarPuntoWF(k); tAc += w.ac; tEv += w.ev; } catch (e) {} }
+  const acum = tEv ? `\nAcumulado: <b>${tAc} de ${tEv.toLocaleString('en-US')}</b> (${(100 * tAc / tEv).toFixed(1)}%) · el azar da 3.0%` : '';
+  await enviarTelegram(`📊 <b>RADAR PUNTO — RESUMEN DEL DÍA</b> ${hoy}\nHoy: <b>${ac} de ${ev}</b> (por azar ~${esperado}; un día así pasa el ${pctDia}% de las veces)${acum}\n\n${lineas.join('\n')}`);
 }
 
 // ── PREDICCIÓN ANTICIPADA — SCORE COMBINADO DE 3 SEÑALES ──────────────────
@@ -1363,7 +1368,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.34-EXPLORADOR', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.35-RADAR-CLARO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -2786,6 +2791,7 @@ const LAB_NUEVAS = [
   { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
   { id: 'bolo-28-florida', nombre: 'Bolo cargado · 28 en Florida Día', tipo: 'fe', parametros: { numeros: [28] }, loterias: ['florida_d'] }, // v9.30: alarma del detector (15 veces vs ~4.9)
   { id: 'quemaito-eq-lotedom-ayer', nombre: 'Quemaito · equivalente de LoteDom de ayer', tipo: 'equivde', parametros: { desde: 'lotedom', ayer: true }, loterias: ['quemaito'] },
+  { id: 'caliente30-laprimera', nombre: 'Caliente 30 días · La Primera Día', tipo: 'frecuencia', parametros: { n: 1, ventana: 30 }, loterias: ['laprimera'] }, // v9.35: mejor de su lotería en la búsqueda y en la confirmación
   { id: 'deldia-top5', nombre: 'Los 5 más salidos hoy', tipo: 'deldia', parametros: {}, loterias: 'auto' },
   { id: 'efemerides-fecha', nombre: 'Efemérides · números de la fecha', tipo: 'efemerides', parametros: { variante: 'fecha' }, loterias: 'auto' },
   { id: 'efemerides-mismo-dia', nombre: 'Efemérides · mismo día de meses anteriores', tipo: 'efemerides', parametros: { variante: 'mismo-dia' }, loterias: 'auto' },
@@ -2978,7 +2984,8 @@ function labCandidatos(est, dias, idxDia, clave) {
     else { c = []; for (let i = 0; i < idxDia; i++) { if (Number(dias[i].fecha.slice(8)) !== d) continue; const s = dias[i].sorteos && dias[i].sorteos[clave]; if (s && s.numeros && s.numeros.length >= 3) c.push(...s.numeros.slice(0, 3).map(Number)); } if (!c.length) return null; }
   }
   else if (est.tipo === 'frecuencia' || est.tipo === 'atrasados') {
-    const serie = labSerie(dias, idxDia, clave); if (serie.length < 10) return null;
+    let serie = labSerie(dias, idxDia, clave); if (serie.length < 10) return null;
+    if (Number(p.ventana) > 0) serie = serie.slice(-Number(p.ventana)); // v9.35: solo los últimos N sorteos
     const n = Math.min(10, Math.max(1, Number(p.n) || 3));
     if (est.tipo === 'frecuencia') { const cnt = {}; serie.forEach(s => s.forEach(x => (cnt[x] = (cnt[x] || 0) + 1))); c = [...Array(100).keys()].sort((a, b) => (cnt[b] || 0) - (cnt[a] || 0) || a - b).slice(0, n); }
     else { const ult = {}; serie.forEach((s, i) => s.forEach(x => (ult[x] = i))); c = [...Array(100).keys()].sort((a, b) => (ult[a] ?? -1) - (ult[b] ?? -1) || a - b).slice(0, n); }
@@ -3374,7 +3381,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.34-EXPLORADOR en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.35-RADAR-CLARO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
