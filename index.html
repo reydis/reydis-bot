@@ -2081,6 +2081,12 @@
           <div style="font-size: 11px; color: var(--muted); margin: 4px 0 8px">8 códigos propios, cada uno es un ticket de 10 números (RD$25) que se juega solo en papel antes del sorteo, con un ticket al azar al lado para comparar. Premios Leidsa: 0 aciertos RD$80 · 5 → RD$60 · 6 → RD$300 · 7 → RD$1,000. El azar da en promedio <b>2.38</b> aciertos.</div>
           <div id="lab-kino"><div class="empty"><p>Cargando…</p></div></div>
           <div class="row" style="margin-top: 18px">
+            <div class="cons-tit" style="font-size: 14px; margin: 0">🎱 Loto 5 La Primera del Laboratorio</div>
+            <button class="btn btn-neon" onclick="cargarLabLoto5()">↺ Actualizar</button>
+          </div>
+          <div style="font-size: 11px; color: var(--muted); margin: 4px 0 8px">5 números del 1 al 38 (RD$20; RD$30 con el bolo Más del 1 al 10). Cada código se juega solo en papel antes del sorteo de las 8:00 PM, con un ticket al azar al lado. El azar da en promedio <b>0.66</b> aciertos por ticket.</div>
+          <div id="lab-loto5"><div class="empty"><p>Cargando…</p></div></div>
+          <div class="row" style="margin-top: 18px">
             <div class="cons-tit" style="font-size: 14px; margin: 0">🔍 Detector de bolos cargados</div>
             <button class="btn btn-neon" onclick="cargarSesgo()">↺ Revisar ahora</button>
           </div>
@@ -2572,7 +2578,7 @@
           });
         }
         if (id === "jugadas") { renderJugadas(); cargarPresupuesto(); }
-        if (id === "lab") { cargarLabHoy(); cargarLab(); cargarLabKino(); }
+        if (id === "lab") { cargarLabHoy(); cargarLab(); cargarLabKino(); cargarLabLoto5(); }
       }
 
       let datosSorteosGlobal = {};
@@ -5589,6 +5595,7 @@
           h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">🧬 Bot evolutivo del Kino</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Las mejores recetas que el bot ha encontrado, aplicadas al Kino de hoy. "Evolucionar otra vez" prueba ~2,400 estrategias más (tarda unos segundos) y lo que aprende se queda guardado.</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap"><select id="kevo-n" style="padding:6px">${[1,2,3,4,5,6,8,10,15,20].map((n) => `<option value="${n}"${n === 5 ? " selected" : ""}>${n} ticket${n > 1 ? "s" : ""}</option>`).join("")}</select>
+<select id="kevo-max" style="padding:6px"><option value="3">Muy variados</option><option value="5" selected>Variados</option><option value="9">Parecidos (los más fuertes)</option></select>
             <button class="btn btn-neon" onclick="kevoTickets(false)">🧬 Generar tickets</button>
             <button class="btn" onclick="kevoTickets(true)">🔄 Evolucionar otra vez</button></div><div id="kevo-res" style="margin-top:6px"></div>`;
           // acumulado en vivo
@@ -5628,39 +5635,91 @@
         const d = window._labKino; const a = (d && d.ayer && d.ayer.nums) || [];
         document.getElementById("kj-res").innerHTML = a.length ? `<div style="font-size:11px;color:var(--muted)">Kino del ${d.ayer.fecha}:</div>` + a.map(labKinoJalaFila).join("") : "";
       }
-      async function kevoTickets(nuevo) {
-        const cont = document.getElementById("kevo-res"); if (!cont) return;
+      const EVO_UI = { kino: { pre: "kevo", api: "kino-evo", clave: "superkino", costo: 25, hist: "Kinos" }, loto5: { pre: "l5evo", api: "loto5-evo", clave: "loto5", costo: 20, hist: "sorteos del Loto 5" } };
+      async function kevoTickets(nuevo, juego = "kino") {
+        const U = EVO_UI[juego];
+        const cont = document.getElementById(`${U.pre}-res`); if (!cont) return;
         cont.innerHTML = `<div style="font-size:12px;color:var(--gold)">🧬 ${nuevo ? "Evolucionando… probando miles de estrategias" : "Buscando las mejores recetas…"}</div>`;
         try {
-          const nSel = (document.getElementById("kevo-n") || {}).value || 5;
-          const d = await (await fetch(`${API}/api/kino-evo/tickets?n=${nSel}${nuevo ? "&nuevo=1" : ""}`)).json();
-          if (d.error) { cont.innerHTML = `<div class="empty"><p>${d.error}</p></div>`; return; }
-          window._kevo = d;
+          const nSel = (document.getElementById(`${U.pre}-n`) || {}).value || 5;
+          const d = await (await fetch(`${API}/api/${U.api}/tickets?n=${nSel}&max=${(document.getElementById(`${U.pre}-max`) || {}).value || 5}${nuevo ? "&nuevo=1" : ""}`)).json();
+          if (d.error) { cont.innerHTML = `<div class="empty"><p>${d.error === "historial corto" ? "Todavía no hay suficientes sorteos para que el bot aprenda (" + d.sorteos + ")." : d.error}</p></div>`; return; }
+          window._evoT = window._evoT || {}; window._evoT[juego] = d;
           const bola = (n) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem">${p2(n)}</span>`;
-          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Corrida #${d.corridas} · ${Number(d.probadas_total).toLocaleString()} estrategias probadas en total · ${d.sorteos} Kinos de historial · ${d.tickets.length} tickets · costo RD$${d.tickets.length * 25}</div>` +
+          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Corrida #${d.corridas} · ${Number(d.probadas_total).toLocaleString()} estrategias probadas en total · ${d.sorteos} ${U.hist} · ${d.tickets.length} tickets · costo RD$${d.tickets.length * U.costo}${d.mas ? ` · bolo Más sugerido: <b>${d.mas}</b> (+RD$10 c/u)` : ""}</div>` +
             d.tickets.map((t, i) => {
-              const ya = labYaJugada({ clave: "superkino", numeros: t.numeros });
+              const ya = labYaJugada({ clave: U.clave, numeros: t.numeros });
               const col = t.confirmada ? "var(--green)" : t.confirmacion.prom > t.confirmacion.azar ? "var(--gold)" : "var(--red)";
               return `<div class="cardX" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
                 <div style="min-width:0"><div style="font-weight:800;font-size:13px">🧬 Ticket ${i + 1} · <span style="font-size:10px;color:${col}">${t.confirmada ? "✅ CONFIRMADA" : "⚠️ SIN CONFIRMAR"}</span></div>
                   <div style="font-size:11px;color:var(--muted)">${t.receta}</div>
                   <div style="font-size:11px;margin-top:2px">Donde buscó: <b>${t.busqueda.prom}</b> aciertos · En ${t.confirmacion.sorteos} sorteos que nunca vio: <b style="color:${col}">${t.confirmacion.prom}</b> <span style="color:var(--muted)">· Por azar: ${t.confirmacion.azar}</span></div>
                   <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${t.numeros.map(bola).join("")}</div></div>
-                ${ya ? `<span style="font-size:12px;font-weight:800;color:var(--green)">🙋 Ya la jugó</span>` : `<button class="btn btn-neon" onclick="kevoJugar(${i})">➕ Jugar RD$25</button>`}</div>`;
+                ${ya ? `<span style="font-size:12px;font-weight:800;color:var(--green)">🙋 Ya la jugó</span>` : `<button class="btn btn-neon" onclick="kevoJugar(${i}, '${juego}')">➕ Jugar RD$${U.costo}</button>`}</div>`;
             }).join("") + `<div style="font-size:11px;color:var(--muted)">Verde = pasó la prueba en sorteos que no vio. Amarillo/rojo = todavía es azar; juéguelo solo por diversión.</div>`;
         } catch (e) { cont.innerHTML = `<div class="empty"><p>No se pudo conectar. Intente de nuevo.</p></div>`; }
       }
-      function kevoJugar(i) {
+      function kevoJugar(i, juego = "kino") {
         if (!confirmarCompra()) return;
-        const t = window._kevo && window._kevo.tickets[i]; if (!t) return;
-        if (labYaJugada({ clave: "superkino", numeros: t.numeros })) return kevoTickets(false);
-        const jugada = { id: Date.now() + Math.random().toString(36).slice(2, 6), clave: "superkino", clave2: null,
-          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10), tipo: clasificarLoteria("superkino"),
-          numeros: t.numeros.map(Number), monto: 25, creado: new Date().toISOString() };
+        const U = EVO_UI[juego]; const t = window._evoT && window._evoT[juego] && window._evoT[juego].tickets[i]; if (!t) return;
+        if (labYaJugada({ clave: U.clave, numeros: t.numeros })) return kevoTickets(false, juego);
+        const jugada = { id: Date.now() + Math.random().toString(36).slice(2, 6), clave: U.clave, clave2: null,
+          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10), tipo: clasificarLoteria(U.clave),
+          numeros: t.numeros.map(Number), monto: U.costo, creado: new Date().toISOString() };
         const lista = getJugadas(); lista.unshift(jugada); setJugadas(lista);
         enviarJugadaServidor(jugada);
         if (typeof renderJugadas === "function") renderJugadas();
-        kevoTickets(false);
+        kevoTickets(false, juego);
+      }
+      // ══ 🎱 LOTO 5 DEL LABORATORIO (v9.40) ══
+      function evoBloque(juego, titulo) {
+        const U = EVO_UI[juego];
+        return `<div class="cons-tit" style="font-size:13px;margin-top:12px">🧬 Bot evolutivo del ${titulo}</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Las mejores recetas que el bot ha encontrado, aplicadas al sorteo de hoy. "Evolucionar otra vez" prueba ~2,400 estrategias más y lo que aprende se queda guardado.</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><select id="${U.pre}-n" style="padding:6px">${[1,2,3,4,5,6,8,10,15,20].map((n) => `<option value="${n}"${n === 5 ? " selected" : ""}>${n} ticket${n > 1 ? "s" : ""}</option>`).join("")}</select>
+          <select id="${U.pre}-max" style="padding:6px"><option value="3">Muy variados</option><option value="5" selected>Variados</option><option value="9">Parecidos (los más fuertes)</option></select>
+          <button class="btn btn-neon" onclick="kevoTickets(false, '${juego}')">🧬 Generar tickets</button>
+          <button class="btn" onclick="kevoTickets(true, '${juego}')">🔄 Evolucionar otra vez</button></div><div id="${U.pre}-res" style="margin-top:6px"></div>`;
+      }
+      async function cargarLabLoto5() {
+        const cont = document.getElementById("lab-loto5"); if (!cont) return;
+        try {
+          const d = await (await fetch(`${API}/api/lab/loto5`)).json(); window._labL5 = d;
+          if (d.error) { cont.innerHTML = `<div class="empty"><p>${d.error}</p></div>`; return; }
+          const res = new Set((d.resultado_hoy || []).slice(0, 5));
+          const bola = (n, on) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem;${on ? "outline:2px solid var(--green);background:var(--green);color:#000" : ""}">${p2(n)}</span>`;
+          let h = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Hoy ${d.hora || ""} · historial de ${d.sorteos_historial} sorteos${d.ayer ? ` · ayer: ${d.ayer.nums.map(p2).join("-")}${d.ayer.mas ? " + Más " + d.ayer.mas : ""}` : ""}${d.resultado_hoy ? " · <b style='color:var(--green)'>ya salió: los verdes pegaron</b>" : ""}</div>`;
+          h += d.hoy.map((t, i) => {
+            const est = t.evaluado ? `<span style="font-size:10px;font-weight:800;color:${t.aciertos >= 3 ? "var(--green)" : "var(--muted)"}">${t.aciertos} DE 5</span>`
+              : t.registrado ? `<span style="font-size:10px;font-weight:800;color:var(--green)">✅ REGISTRADO${t.registrado_a ? " · " + t.registrado_a : ""}</span>`
+              : `<span style="font-size:10px;font-weight:800;color:var(--gold)">⏳ PUEDE CAMBIAR</span>`;
+            const ya = t.numeros && labYaJugada({ clave: "loto5", numeros: t.numeros });
+            const acc = !t.numeros ? "" : ya ? `<span style="font-size:12px;font-weight:800;color:var(--green)">🙋 Ya la jugó</span>` : d.resultado_hoy ? "" : `<button class="btn btn-neon" onclick="labLoto5Jugar(${i})">➕ Jugar RD$20</button>`;
+            return `<div class="cardX" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <div style="min-width:0"><div style="font-weight:800;font-size:13px">${t.nombre.replace("Loto 5 · ", "")} · ${est}</div>
+                <div style="font-size:11px;color:var(--muted)">${t.desc}</div>
+                <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px;align-items:center">${(t.numeros || []).map((n) => bola(n, res.has(n))).join("") || "<i>sin historial suficiente</i>"}${t.mas ? ` <span style="font-size:11px;color:var(--muted);margin-left:4px">Más: <b>${t.mas}</b></span>` : ""}</div></div>${acc}</div>`;
+          }).join("");
+          h += evoBloque("loto5", "Loto 5");
+          const v = (d.vivo || []).filter((x) => x.sorteos);
+          h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">📈 Loto 5 en vivo</div>`;
+          h += v.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse"><tr style="color:var(--muted)"><td>Código</td><td>Sorteos</td><td>Prom. aciertos</td><td>Azar al lado</td><td>3+ aciertos</td><td>Más pegó</td></tr>` +
+              v.map((x) => `<tr style="border-top:1px solid #1f2a3d"><td style="padding:4px 4px">${x.nombre.replace("Loto 5 · ", "")}</td><td>${x.sorteos}</td><td style="color:${x.prom_aciertos > 0.66 ? "var(--green)" : "var(--red)"}">${x.prom_aciertos} <span style="color:var(--muted)">(0.66)</span></td><td>${x.ctl_prom ?? "—"}</td><td>${x.tres_o_mas}</td><td>${x.mas_pego}</td></tr>`).join("") + `</table></div>`
+            : `<div class="empty"><p>Todavía no hay sorteos medidos. El primero se registra solo antes del Loto 5 de hoy.</p></div>`;
+          cont.innerHTML = h;
+        } catch (e) { cont.innerHTML = `<div class="empty"><p>No se pudo cargar el Loto 5.</p></div>`; }
+      }
+      function labLoto5Jugar(i) {
+        if (!confirmarCompra()) return;
+        const d = window._labL5; const t = d && d.hoy[i]; if (!t || !t.numeros) return;
+        if (labYaJugada({ clave: "loto5", numeros: t.numeros })) return cargarLabLoto5();
+        const jugada = { id: Date.now() + Math.random().toString(36).slice(2, 6), clave: "loto5", clave2: null,
+          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10), tipo: clasificarLoteria("loto5"),
+          numeros: t.numeros.map(Number), monto: 20, creado: new Date().toISOString() };
+        const lista = getJugadas(); lista.unshift(jugada); setJugadas(lista);
+        enviarJugadaServidor(jugada);
+        if (typeof renderJugadas === "function") renderJugadas();
+        cargarLabLoto5();
       }
       function labKinoJugar(i) {
         if (!confirmarCompra()) return;

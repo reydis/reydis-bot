@@ -1369,7 +1369,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.38-KINO-TICKETS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.40-LOTO5-EVO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3118,17 +3118,19 @@ function kxFeatures(series, i, R) { // usa solo series[0..i-1]; devuelve matriz 
     const v = F[k].slice(1, R + 1); const m = v.reduce((a, b) => a + b, 0) / R; const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / R) || 1;
     F[k] = F[k].map((x, n) => (n === 0 ? 0 : (x - m) / sd));
   }
+  // v9.40: desempate neutral (seudoazar fijo por sorteo) — antes los empates favorecían a los números bajos y eso engañaba las pruebas
+  F._tb = Array.from({ length: R + 1 }, (_, n) => ((n * 2654435761 + i * 40503) >>> 0) % 100003);
   return F;
 }
 const KX_FEATS = ['f10', 'f30', 'fall', 'gap', 'ayer', 'vecino', 'espejo', 'equiv', 'jala', 'term', 'decena'];
 const KX_NOMBRE = { f10: 'caliente 10', f30: 'caliente 30', fall: 'frecuencia total', gap: 'atrasado', ayer: 'repite ayer', vecino: 'vecino ±1 de ayer', espejo: 'espejo de ayer', equiv: 'equivalente de ayer', jala: 'tabla jaladora', term: 'terminación de ayer', decena: 'decena de ayer' };
-function kxTicket(F, w, R) {
-  const sc = []; for (let n = 1; n <= R; n++) { let s = 0; for (const k of KX_FEATS) if (w[k]) s += w[k] * F[k][n]; sc.push([n, s]); }
-  return sc.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 10).map(x => x[0]);
+function kxTicket(F, w, R, P = 10) {
+  const sc = []; for (let n = 1; n <= R; n++) { let s = 0; for (const k of KX_FEATS) if (w[k]) s += w[k] * F[k][n]; sc.push([n, Math.round(s * 1e6) / 1e6]); }
+  const tb = F._tb || []; return sc.sort((a, b) => b[1] - a[1] || (tb[b[0]] || 0) - (tb[a[0]] || 0)).slice(0, P).map(x => x[0]);
 }
 function kxEval(cache, w, a0, a1) { let h = 0, n = 0, ex = 0, v = 0, a5 = 0; const dist = {};
-  for (let i = a0; i < a1; i++) { const c = cache[i]; if (!c) continue; const t = kxTicket(c.F, w, c.R); const real = c.real; let k = 0; for (const x of t) if (real.has(x)) k++;
-    h += k; n++; const p = 20 / c.R; ex += 10 * p; v += 10 * p * (1 - p) * (c.R - 10) / (c.R - 1); dist[k] = (dist[k] || 0) + 1; if (k >= 5) a5++; }
+  for (let i = a0; i < a1; i++) { const c = cache[i]; if (!c) continue; const P = c.P || 10, D = c.D || 20; const t = kxTicket(c.F, w, c.R, P); const real = c.real; let k = 0; for (const x of t) if (real.has(x)) k++;
+    h += k; n++; const p = D / c.R; ex += P * p; v += P * p * (1 - p) * (c.R - P) / (c.R - 1); dist[k] = (dist[k] || 0) + 1; if (k >= Math.ceil(P / 2)) a5++; }
   return { prom: n ? +(h / n).toFixed(2) : 0, z: v ? +((h - ex) / Math.sqrt(v)).toFixed(2) : 0, n, dist, azar: n ? +(ex / n).toFixed(2) : 0, cinco_mas: a5 };
 }
 function kxRandW(rnd) { const w = {}; for (const k of KX_FEATS) { const r = rnd(); w[k] = r < 0.55 ? 0 : Math.round((rnd() * 4 - 2) * 2) / 2; } return w; }
@@ -3138,7 +3140,7 @@ function kxDesc(w) { return KX_FEATS.filter(k => w[k]).map(k => `${w[k] > 0 ? '+
 async function kxEvolucionar(series, Rs, opts = {}) { // series: [[20 nums]], Rs: rango por sorteo
   let seed = opts.seed || Date.now() % 2147483647; const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
   const N = series.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6);
-  const cache = []; for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(series, i, Rs[i]), R: Rs[i], real: new Set(series[i]) };
+  const cache = []; for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(series, i, Rs[i]), R: Rs[i], real: new Set(series[i]), D: opts.D, P: opts.P };
   const POP = opts.pop || 60, GEN = opts.gen || 40; let pop = Array.from({ length: POP }, () => kxRandW(rnd));
   (opts.semillas || []).slice(0, Math.floor(POP / 2)).forEach((w, i) => { pop[i] = { ...w }; }); // lo que aprendió antes sigue evolucionando
   let probadas = 0;
@@ -3160,89 +3162,172 @@ async function kxEvolucionar(series, Rs, opts = {}) { // series: [[20 nums]], Rs
 }
 
 const KX_MAX_ACTIVAS = 5;
-let kinoEvoUltimo = null, kinoEvoRevisado = null;
-async function kinoEvoMemoria() { const l = await labCargar(); const m = l.find(e => e.id === 'kinoevo-memoria'); return (m && m.parametros) || { semillas: [], corridas: 0, probadas_total: 0 }; }
+// ══ v9.40: el mismo motor 🧬 sirve para varios juegos ══
+const EVO = {
+  kino: { clave: 'superkino', etiqueta: 'Kino', D: 20, P: 10, costo: 25, mem: 'kinoevo-memoria', tipo: 'kino-evo', pref: 'kevo', nombre: 'Kino',
+    serie: h => kinoSerie(h), Rs: s => s.map(x => (x.fecha >= '2026-09-20' ? 84 : 80)), Rhoy: s => kinoMax(s), vivo: () => kinoVivo(), lab: '🎰 Kino' },
+  loto5: { clave: 'loto5', etiqueta: 'Loto 5', D: 5, P: 5, costo: 20, mem: 'l5evo-memoria', tipo: 'loto5-evo', pref: 'l5evo', nombre: 'Loto 5',
+    serie: h => loto5Serie(h), Rs: s => s.map(() => 38), Rhoy: () => 38, vivo: () => loto5Vivo(), lab: '🎱 Loto 5' },
+};
+const evoUltimo = {}, evoRevisado = {};
+async function evoMemoria(j) { const l = await labCargar(); const m = l.find(e => e.id === EVO[j].mem); return (m && m.parametros) || { semillas: [], corridas: 0, probadas_total: 0 }; }
 async function kinoEvoGuardar(filas) { await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, filas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 }); await labCargar(true); }
-async function kinoExplorador(opts = {}) {
-  await cargarHistTeoria(); const hoy = fechaRD(); const serie = kinoSerie(hoy);
+async function evoExplorar(j, opts = {}) {
+  const G = EVO[j]; await cargarHistTeoria(); const hoy = fechaRD(); const serie = G.serie(hoy);
   if (serie.length < 40) return { error: 'historial corto', sorteos: serie.length };
-  const mem = await kinoEvoMemoria(); const activas = (await labCargar()).filter(e => e.tipo === 'kino-evo');
+  const mem = await evoMemoria(j); const activas = (await labCargar()).filter(e => e.tipo === G.tipo);
   const semillas = [...activas.map(e => e.parametros.w), ...(mem.semillas || [])].filter(Boolean);
   const seed = opts.seed || (Date.now() % 2147483646) + 1;
-  const r = await kxEvolucionar(serie.map(x => x.nums), serie.map(x => (x.fecha >= '2026-09-20' ? 84 : 80)), { seed, semillas });
+  const r = await kxEvolucionar(serie.map(x => x.nums), G.Rs(serie), { seed, semillas, D: G.D, P: G.P });
   const firmas = new Set(activas.map(e => kxDesc(e.parametros.w || {})));
   r.mejores.forEach(m => { m.ya_estaba = firmas.has(m.receta); });
-  const out = { fecha: hoy, seed, sorteos: r.sorteos, busqueda: `${serie[15].fecha} → ${serie[15 + r.busqueda - 1].fecha}`, confirmacion: `${serie[serie.length - r.confirmacion].fecha} → ${serie[serie.length - 1].fecha}`,
+  const out = { juego: j, fecha: hoy, seed, sorteos: r.sorteos, busqueda: `${serie[15].fecha} → ${serie[15 + r.busqueda - 1].fecha}`, confirmacion: `${serie[serie.length - r.confirmacion].fecha} → ${serie[serie.length - 1].fecha}`,
     probadas: r.probadas, umbral: r.umbral, corridas: (mem.corridas || 0) + 1, probadas_total: (mem.probadas_total || 0) + r.probadas, mejores: r.mejores };
   if (opts.guardar !== false && SUPABASE_ACTIVO) { // aprende: las mejores de hoy son semillas de mañana
     const sem = [...r.mejores.map(m => m.w), ...(mem.semillas || [])].filter((w, i, a) => a.findIndex(x => kxDesc(x) === kxDesc(w)) === i).slice(0, 15);
-    try { await kinoEvoGuardar([{ id: 'kinoevo-memoria', nombre: '🧬 memoria del explorador Kino', tipo: 'kino-evo-memoria', activa: false, loterias: ['superkino'],
+    try { await kinoEvoGuardar([{ id: G.mem, nombre: `🧬 memoria del explorador ${G.nombre}`, tipo: `${G.tipo}-memoria`, activa: false, loterias: [G.clave],
       parametros: { semillas: sem, corridas: out.corridas, probadas_total: out.probadas_total, ultima: hoy } }]); } catch (e) {}
   }
-  kinoEvoUltimo = out; return out;
+  evoUltimo[j] = out; return out;
 }
-async function kinoEvoVigilar() { // en vivo: si después de 40 sorteos no supera al azar, se pausa (sus pesos siguen como semilla)
-  const vivo = await kinoVivo() || []; const pausadas = [];
-  for (const e of (await labCargar()).filter(x => x.tipo === 'kino-evo' && x.activa !== false)) {
+async function evoVigilar(j) { // en vivo: si después de 40 sorteos no supera al azar, se pausa (sus pesos siguen como semilla)
+  const G = EVO[j]; const vivo = await G.vivo() || []; const pausadas = [];
+  for (const e of (await labCargar()).filter(x => x.tipo === G.tipo && x.activa !== false)) {
     const v = vivo.find(x => x.id === e.id); if (!v || v.sorteos < 40) continue;
-    const z = (v.prom_aciertos - 2.38) * v.sorteos / Math.sqrt(v.sorteos * 1.8);
-    if (z <= 0) { pausadas.push({ ...e, activa: false }); }
+    if (v.prom_aciertos <= v.azar_esperado) pausadas.push({ ...e, activa: false });
   }
   if (pausadas.length) try { await kinoEvoGuardar(pausadas); } catch (e) {}
   return pausadas;
 }
-async function kinoExploradorDiario() { // todos los días desde las 7:00 AM — no se cansa
-  if (!SUPABASE_ACTIVO) return;
-  const hoy = fechaRD(); if (minutosActualesRD() < 7 * 60 || kinoEvoRevisado === hoy) return;
-  kinoEvoRevisado = hoy; if (yaEnviado('kino-evo')) return;
-  const r = await kinoExplorador(); await marcarEnviado('kino-evo'); if (r.error) return;
-  const pausadas = await kinoEvoVigilar();
+async function evoDiario(j) { // todos los días desde las 7:00 AM — no se cansa
+  if (!SUPABASE_ACTIVO) return; const G = EVO[j];
+  const hoy = fechaRD(); if (minutosActualesRD() < 7 * 60 || evoRevisado[j] === hoy) return;
+  evoRevisado[j] = hoy; if (yaEnviado(`${j}-evo`)) return;
+  const r = await evoExplorar(j); await marcarEnviado(`${j}-evo`); if (r.error) return;
+  const pausadas = await evoVigilar(j);
   const nuevas = r.mejores.filter(m => m.ok && !m.ya_estaba);
-  const activas = (await labCargar()).filter(e => e.tipo === 'kino-evo' && e.activa !== false).length;
-  const agregar = nuevas.slice(0, Math.max(0, KX_MAX_ACTIVAS - activas)).map((m, i) => ({ id: `kevo-${hoy}-${i + 1}`, nombre: `Kino · 🧬 Evolutiva ${hoy.slice(5)}${nuevas.length > 1 ? ` #${i + 1}` : ''}`,
-    tipo: 'kino-evo', activa: true, loterias: ['superkino'], parametros: { w: m.w, receta: m.receta, confirmacion: m.confirmacion, nacio: hoy } }));
+  const activas = (await labCargar()).filter(e => e.tipo === G.tipo && e.activa !== false).length;
+  const agregar = nuevas.slice(0, Math.max(0, KX_MAX_ACTIVAS - activas)).map((m, i) => ({ id: `${G.pref}-${hoy}-${i + 1}`, nombre: `${G.etiqueta} · 🧬 Evolutiva ${hoy.slice(5)}${nuevas.length > 1 ? ` #${i + 1}` : ''}`,
+    tipo: G.tipo, activa: true, loterias: [G.clave], parametros: { w: m.w, receta: m.receta, confirmacion: m.confirmacion, nacio: hoy } }));
   if (agregar.length) try { await kinoEvoGuardar(agregar); } catch (e) {}
   if (!TG_ACTIVO) return;
-  const top = r.mejores[0];
-  if (agregar.length) await enviarTelegram(`🧬🌟 <b>EXPLORADOR KINO — ¡UNA ESTRATEGIA PASÓ LAS DOS PRUEBAS!</b> — ${hoy}\n\n` +
+  const top = r.mejores[0]; const T = G.etiqueta.toUpperCase();
+  if (agregar.length) await enviarTelegram(`🧬🌟 <b>EXPLORADOR ${T} — ¡UNA ESTRATEGIA PASÓ LAS DOS PRUEBAS!</b> — ${hoy}\n\n` +
     agregar.map(a => `• <b>${a.nombre}</b>\n   ${a.parametros.receta}\n   en sorteos que nunca vio: prom ${a.parametros.confirmacion.prom} aciertos (azar ${a.parametros.confirmacion.azar}, z ${a.parametros.confirmacion.z})`).join('\n') +
-    `\n\n<i>Entró al 🎰 Kino del laboratorio y se mide en vivo con su control al azar. Si en 40 sorteos no supera al azar, se pausa sola.</i>`);
-  else if (diaSemanaRD() === 'Sun' || pausadas.length) await enviarTelegram(`🧬 <b>EXPLORADOR KINO</b> — resumen ${hoy}\n\n` +
-    `Corrida #${r.corridas} · ${r.probadas_total.toLocaleString('en-US')} estrategias probadas en total · ${r.sorteos} Kinos de historial.\n` +
+    `\n\n<i>Entró al ${G.lab} del laboratorio y se mide en vivo con su control al azar. Si en 40 sorteos no supera al azar, se pausa sola.</i>`);
+  else if (diaSemanaRD() === 'Sun' || pausadas.length) await enviarTelegram(`🧬 <b>EXPLORADOR ${T}</b> — resumen ${hoy}\n\n` +
+    `Corrida #${r.corridas} · ${r.probadas_total.toLocaleString('en-US')} estrategias probadas en total · ${r.sorteos} sorteos de historial.\n` +
     `Mejor de hoy: <b>${top.receta}</b>\nbuscando ${top.busqueda.prom} aciertos · confirmando <b>${top.confirmacion.prom}</b> (azar ${top.confirmacion.azar}) ${top.ok ? '✅' : '❌'}\n` +
     (pausadas.length ? `\n⏸ Pausadas por no aguantar en vivo: ${pausadas.map(p => p.nombre).join(', ')}\n` : '') + `\n<i>Sigue buscando todos los días; solo avisa cuando algo se confirma.</i>`);
 }
-app.get('/api/kino-explorador', async (req, res) => { try { res.json(req.query.ultimo === '1' && kinoEvoUltimo ? kinoEvoUltimo : await kinoExplorador({ guardar: req.query.guardar === '1' })); } catch (e) { res.status(500).json({ error: e.message }); } });
-async function kinoLista() { // las 8 fijas + las evolutivas confirmadas y activas
-  let evo = []; try { evo = (await labCargar()).filter(e => e.tipo === 'kino-evo' && e.activa !== false)
-    .map(e => ({ id: e.id, nombre: e.nombre, desc: `🧬 ${e.parametros.receta} · confirmada con ${e.parametros.confirmacion ? e.parametros.confirmacion.prom : '?'} aciertos (azar ${e.parametros.confirmacion ? e.parametros.confirmacion.azar : '2.38'})`, w: e.parametros.w })); } catch (e) {}
-  try { const mem = await kinoEvoMemoria(); if (mem.semillas && mem.semillas[0]) evo.unshift({ id: 'kevo-mejor', nombre: 'Kino · 🧬 Mejor del explorador (en prueba)',
+const kinoExplorador = o => evoExplorar('kino', o), kinoEvoMemoria = () => evoMemoria('kino');
+async function kinoExploradorDiario() { await evoDiario('kino'); await evoDiario('loto5'); }
+app.get('/api/kino-explorador', async (req, res) => { try { res.json(req.query.ultimo === '1' && evoUltimo.kino ? evoUltimo.kino : await evoExplorar('kino', { guardar: req.query.guardar === '1' })); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.get('/api/loto5-explorador', async (req, res) => { try { res.json(req.query.ultimo === '1' && evoUltimo.loto5 ? evoUltimo.loto5 : await evoExplorar('loto5', { guardar: req.query.guardar === '1' })); } catch (e) { res.status(500).json({ error: e.message }); } });
+async function evoListaDe(j) { // las evolutivas confirmadas + la 'mejor del explorador' en prueba
+  const G = EVO[j]; let evo = [];
+  try { evo = (await labCargar()).filter(e => e.tipo === G.tipo && e.activa !== false)
+    .map(e => ({ id: e.id, nombre: e.nombre, desc: `🧬 ${e.parametros.receta} · confirmada con ${e.parametros.confirmacion ? e.parametros.confirmacion.prom : '?'} aciertos (azar ${e.parametros.confirmacion ? e.parametros.confirmacion.azar : '?'})`, w: e.parametros.w })); } catch (e) {}
+  try { const mem = await evoMemoria(j); if (mem.semillas && mem.semillas[0]) evo.unshift({ id: `${G.pref}-mejor`, nombre: `${G.etiqueta} · 🧬 Mejor del explorador (en prueba)`,
     desc: `🧬 La receta #1 del bot evolutivo (cambia mientras aprende): ${kxDesc(mem.semillas[0])}. Todavía NO confirmada — se mide aquí en vivo contra el azar.`, w: mem.semillas[0] }); } catch (e) {}
-  return [...KINO_LAB, ...evo];
+  return evo;
 }
-// v9.37: tickets del bot evolutivo — las 5 mejores recetas aplicadas al Kino de hoy, con su prueba honesta
-app.get('/api/kino-evo/tickets', async (req, res) => {
+async function kinoLista() { return [...KINO_LAB, ...(await evoListaDe('kino'))]; }
+// v9.37–9.40: tickets del bot evolutivo — recetas aprendidas + variantes, aplicadas al sorteo de hoy, con su prueba honesta
+async function evoTickets(j, q) {
+  const G = EVO[j]; await cargarHistTeoria(); let mem = await evoMemoria(j); let corrida = null;
+  if (q.nuevo === '1' || !(mem.semillas || []).length) { corrida = await evoExplorar(j, { guardar: true }); if (corrida.error) return corrida; mem = await evoMemoria(j);
+    if (!(mem.semillas || []).length) mem = { ...mem, semillas: corrida.mejores.map(m => m.w), corridas: corrida.corridas, probadas_total: corrida.probadas_total }; }
+  const hoy = fechaRD(), serie = G.serie(hoy), sr = serie.map(x => x.nums), Rs = G.Rs(serie);
+  const N = sr.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6), cache = [];
+  for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(sr, i, Rs[i]), R: Rs[i], real: new Set(sr[i]), D: G.D, P: G.P };
+  const R = G.Rhoy(serie), Fhoy = kxFeatures(sr, N, R), vistos = new Set(), recetas = new Set(), tickets = [];
+  const cuantos = Math.max(1, Math.min(20, Number(q.n) || 5));
+  let sd = 12345 + N; const rnd = () => ((sd = (sd * 48271) % 2147483647) / 2147483647);
+  const base = (mem.semillas || []).filter(Boolean), cands = [...base];
+  for (let i = 0; i < 300 && base.length; i++) { let w = base[i % base.length]; const m = 1 + Math.floor(rnd() * 3); for (let k = 0; k < m; k++) w = kxMutate(w, rnd); cands.push(w); }
+  const evals = cands.filter(w => KX_FEATS.some(k => w[k])).map(w => ({ w, b: kxEval(cache, w, desde, corte) })).sort((a, b) => b.b.z - a.b.z);
+  // tickets variados — 'max' viene en escala de 10 (3 = muy variados, 5 = variados, 9 = parecidos) y se ajusta al tamaño del ticket
+  const tope = G.P - 1; const maxComp = Math.max(0, Math.min(tope, q.max !== undefined ? Math.round(Number(q.max) * G.P / 10) : Math.round(G.P / 2)));
+  const prep = evals.map(({ w, b }) => ({ w, b, rec: kxDesc(w), numeros: kxTicket(Fhoy, w, R, G.P).sort((a, b) => a - b) }));
+  for (let lim = maxComp; lim <= tope && tickets.length < cuantos; lim++) for (const x of prep) {
+    if (tickets.length >= cuantos) break;
+    const k = x.numeros.join('-'); if (vistos.has(k) || recetas.has(x.rec)) continue;
+    if (tickets.some(t => t.numeros.filter(n => x.numeros.includes(n)).length > lim)) continue;
+    vistos.add(k); recetas.add(x.rec); const c = kxEval(cache, x.w, corte, N);
+    tickets.push({ receta: x.rec, numeros: x.numeros, comparte_max: lim, busqueda: { prom: x.b.prom, azar: x.b.azar }, confirmacion: { prom: c.prom, azar: c.azar, z: c.z, sorteos: c.n, cinco_mas: c.cinco_mas }, confirmada: c.z >= 2.33 });
+  }
+  const out = { juego: j, fecha: hoy, corridas: mem.corridas || 0, probadas_total: mem.probadas_total || 0, sorteos: N, evoluciono_ahora: !!corrida, costo: G.costo, tickets };
+  if (j === 'loto5') out.mas = loto5Mas(serie); // bolo Más sugerido (frío de 10)
+  return out;
+}
+app.get('/api/kino-evo/tickets', async (req, res) => { try { res.json(await evoTickets('kino', req.query)); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.get('/api/loto5-evo/tickets', async (req, res) => { try { res.json(await evoTickets('loto5', req.query)); } catch (e) { res.status(500).json({ error: e.message }); } });
+
+// ══════════ 🎱 LOTO 5 DE LA PRIMERA EN EL LABORATORIO (v9.40) ══════════
+// 5 números del 1 al 38 (RD$20) + bolo Más del 1 al 10 (RD$30 con Más). Se mide por aciertos (falta la tabla de premios).
+const L5_COSTO = 20;
+const LOTO5_LAB = [
+  { id: 'l5-frios10', nombre: 'Loto 5 · Fríos de 10 sorteos', desc: 'Los 5 que MENOS han salido en los últimos 10 sorteos', w: { f10: -1 } },
+  { id: 'l5-calientes10', nombre: 'Loto 5 · Calientes de 10 sorteos', desc: 'Los 5 que MÁS han salido en los últimos 10 sorteos', w: { f10: 1 } },
+  { id: 'l5-terminacion', nombre: 'Loto 5 · Terminación de ayer', desc: 'Números con la terminación (último dígito) que más salió ayer', w: { term: 1 } },
+  { id: 'l5-atrasados', nombre: 'Loto 5 · Atrasados', desc: 'Los 5 que más sorteos llevan sin salir', w: { gap: 1 } },
+];
+function loto5Serie(antesDe) {
+  const porFecha = {};
+  for (const d of histTeoria.filas) porFecha[d.fecha] = d;
+  for (const d of estado.historico) if (d.especiales && d.especiales.loto5 && (d.especiales.loto5.numeros || []).length >= 5) porFecha[d.fecha] = d;
+  return Object.values(porFecha).filter(d => d.fecha < antesDe).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+    .map(d => { const n = ((d.especiales && d.especiales.loto5 && d.especiales.loto5.numeros) || []).map(Number); return { fecha: d.fecha, nums: n.slice(0, 5), mas: n[5] || null }; })
+    .filter(x => x.nums.length >= 5 && new Set(x.nums).size === 5);
+}
+function loto5Mas(serie) { const c = {}; for (let m = 1; m <= 10; m++) c[m] = 0; serie.slice(-10).forEach(x => { if (x.mas) c[x.mas]++; });
+  const min = Math.min(...Object.values(c)); const fr = Object.keys(c).map(Number).filter(m => c[m] === min); return fr[(serie.length * 7) % fr.length]; }
+async function loto5Lista() { return [...LOTO5_LAB, ...(await evoListaDe('loto5'))]; }
+function loto5Ticket(w, serie) { if (serie.length < 15) return null; const sr = serie.map(x => x.nums); return kxTicket(kxFeatures(sr, sr.length, 38), w, 38, 5).sort((a, b) => a - b); }
+async function loto5Generar() {
+  if (!SUPABASE_ACTIVO) return;
+  const s = estado.especiales && estado.especiales.loto5; if (!s || (s.numeros && s.numeros.length >= 5)) return;
+  const hora = horaDeHoy('loto5', s.hora); if (!enVentana(hora)) return;
+  const hoy = fechaRD(); await cargarHistTeoria(); const serie = loto5Serie(hoy); if (serie.length < 15) return;
+  let hechos; try { hechos = new Set((await leerJugadas(`fecha=eq.${hoy}&clave=eq.loto5&origen=eq.lab&select=grupo`)).map(f => f.grupo)); } catch (e) { return; }
+  const mas = loto5Mas(serie); const nuevas = [];
+  for (const k of await loto5Lista()) {
+    const g = `lab5|${k.id}`; if (hechos.has(g)) continue;
+    const c = loto5Ticket(k.w, serie); if (!c) continue;
+    const base = { clave: 'loto5', fecha: hoy, tipo: 'lab', hora_sorteo: hora, generado_rd: horaRD(), grupo: g, metodo: k.id, notificado: true, evaluado: false };
+    const az = new Set(); while (az.size < 5) az.add(1 + Math.floor(Math.random() * 38));
+    nuevas.push({ ...base, id: `lab-${hoy}-${k.id}`, origen: 'lab', numeros: [...c, mas] });
+    nuevas.push({ ...base, id: `labctl-${hoy}-${k.id}`, origen: 'labctl', numeros: [...[...az].sort((a, b) => a - b), 1 + Math.floor(Math.random() * 10)], grupo: g + '|ctl' });
+  }
+  if (nuevas.length) await upsertJugadas(nuevas);
+}
+function loto5Cobro(nums, real) { const r5 = new Set(real.slice(0, 5).map(Number)); return { aciertos: nums.slice(0, 5).filter(n => r5.has(Number(n))).length, premio: 0 }; }
+async function loto5ResumenTexto(hoy) {
+  let filas; try { filas = await leerJugadas(`fecha=eq.${hoy}&clave=eq.loto5&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,aciertos`); } catch (e) { return ''; }
+  if (!filas.length) return '';
+  const l = (await loto5Lista()).map(k => { const m = filas.find(f => f.metodo === k.id && f.origen === 'lab'), c = filas.find(f => f.metodo === k.id && f.origen === 'labctl');
+    if (!m) return null; return `${m.aciertos >= 3 ? '🟢' : '⚪'} ${k.nombre.replace('Loto 5 · ', '')}: ${m.aciertos} de 5 · azar ${c ? c.aciertos : '?'}`; }).filter(Boolean);
+  return `\n\n🎱 <b>LOTO 5 DEL LABORATORIO</b> (azar ≈ 0.66 por ticket)\n${l.join('\n')}`;
+}
+async function loto5Vivo() {
+  let filas; try { filas = await leerJugadasTodas(`clave=eq.loto5&origen=in.(lab,labctl)&evaluado=eq.true&select=id,metodo,origen,numeros,aciertos,resultado,fecha`); } catch (e) { return null; }
+  const v = {}; for (const f of filas) { const a = v[f.metodo] = v[f.metodo] || { sorteos: 0, aciertos: 0, mas: 0, ctl_aciertos: 0, ctl_sorteos: 0, tres: 0 };
+    if (f.origen === 'labctl') { a.ctl_sorteos++; a.ctl_aciertos += +f.aciertos || 0; } else { a.sorteos++; a.aciertos += +f.aciertos || 0; if ((+f.aciertos || 0) >= 3) a.tres++;
+      if (f.resultado && f.numeros && Number(f.resultado[5]) === Number(f.numeros[5])) a.mas++; } }
+  return (await loto5Lista()).map(k => { const a = v[k.id] || { sorteos: 0, aciertos: 0, mas: 0, ctl_aciertos: 0, ctl_sorteos: 0, tres: 0 };
+    return { id: k.id, nombre: k.nombre, desc: k.desc, sorteos: a.sorteos, prom_aciertos: a.sorteos ? +(a.aciertos / a.sorteos).toFixed(2) : null, azar_esperado: 0.66,
+      tres_o_mas: a.tres, mas_pego: a.mas, ctl_prom: a.ctl_sorteos ? +(a.ctl_aciertos / a.ctl_sorteos).toFixed(2) : null }; });
+}
+app.get('/api/lab/loto5', async (req, res) => {
   try {
-    await cargarHistTeoria(); let mem = await kinoEvoMemoria(); let corrida = null;
-    if (req.query.nuevo === '1' || !(mem.semillas || []).length) { corrida = await kinoExplorador({ guardar: true }); if (corrida.error) return res.json(corrida); mem = await kinoEvoMemoria(); }
-    const hoy = fechaRD(), serie = kinoSerie(hoy), sr = serie.map(x => x.nums), Rs = serie.map(x => (x.fecha >= '2026-09-20' ? 84 : 80));
-    const N = sr.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6), cache = [];
-    for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(sr, i, Rs[i]), R: Rs[i], real: new Set(sr[i]) };
-    const R = kinoMax(serie), Fhoy = kxFeatures(sr, N, R), vistos = new Set(), recetas = new Set(), tickets = [];
-    const cuantos = Math.max(1, Math.min(20, Number(req.query.n) || 5));
-    // v9.38: las recetas aprendidas + variantes cercanas (mutaciones), ordenadas por cómo les fue donde buscaron; un ticket distinto por receta
-    let sd = 12345 + N; const rnd = () => ((sd = (sd * 48271) % 2147483647) / 2147483647);
-    const base = (mem.semillas || []).filter(Boolean), cands = [...base];
-    for (let i = 0; i < 300 && base.length; i++) { let w = base[i % base.length]; const m = 1 + Math.floor(rnd() * 3); for (let j = 0; j < m; j++) w = kxMutate(w, rnd); cands.push(w); }
-    const evals = cands.filter(w => KX_FEATS.some(k => w[k])).map(w => ({ w, b: kxEval(cache, w, desde, corte) })).sort((a, b) => b.b.z - a.b.z);
-    for (const { w, b } of evals) {
-      const rec = kxDesc(w); if (recetas.has(rec)) continue; recetas.add(rec);
-      const numeros = kxTicket(Fhoy, w, R).sort((a, b) => a - b), k = numeros.join('-'); if (vistos.has(k)) continue; vistos.add(k);
-      const c = kxEval(cache, w, corte, N);
-      tickets.push({ receta: rec, numeros, busqueda: { prom: b.prom, azar: b.azar }, confirmacion: { prom: c.prom, azar: c.azar, z: c.z, sorteos: c.n, cinco_mas: c.cinco_mas }, confirmada: c.z >= 2.33 });
-      if (tickets.length >= cuantos) break;
-    }
-    res.json({ fecha: hoy, corridas: mem.corridas || 0, probadas_total: mem.probadas_total || 0, sorteos: N, evoluciono_ahora: !!corrida, tickets });
+    await cargarHistTeoria(); const hoy = fechaRD(); const serie = loto5Serie(hoy);
+    let reg = {}; try { (await leerJugadas(`fecha=eq.${hoy}&clave=eq.loto5&origen=eq.lab&select=metodo,numeros,generado_rd,evaluado,aciertos`)).forEach(f => { reg[f.metodo] = f; }); } catch (e) {}
+    const s = estado.especiales && estado.especiales.loto5; const mas = loto5Mas(serie);
+    const hoyT = (await loto5Lista()).map(k => { const r = reg[k.id]; const t = r ? null : loto5Ticket(k.w, serie); const nums = r ? r.numeros.map(Number) : (t ? [...t, mas] : null);
+      return { id: k.id, nombre: k.nombre, desc: k.desc, numeros: nums ? nums.slice(0, 5) : null, mas: nums ? nums[5] : null, registrado: !!r, registrado_a: r ? r.generado_rd : null, evaluado: r ? r.evaluado : false, aciertos: r ? r.aciertos : null }; });
+    res.json({ fecha: hoy, hora: s ? horaDeHoy('loto5', s.hora) : null, resultado_hoy: s && s.numeros && s.numeros.length >= 5 ? s.numeros.map(Number) : null,
+      sorteos_historial: serie.length, ayer: serie.length ? serie[serie.length - 1] : null, hoy: hoyT, vivo: await loto5Vivo(), costo: L5_COSTO });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 async function kinoGenerar() {
@@ -3301,7 +3386,7 @@ const labNums = new Map(); // grupo → números registrados (para actualizar la
 async function labGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const ests = (await labCargar()).filter(e => e.activa !== false && LAB_TIPOS[e.tipo]);
-  if (!ests.length) { try { await kinoGenerar(); } catch (e) {} return; }
+  if (!ests.length) { try { await kinoGenerar(); } catch (e) {} try { await loto5Generar(); } catch (e) {} return; }
   const hoy = fechaRD();
   if (labHechosFecha !== hoy) {
     labHechos.clear(); labNums.clear(); labHechosFecha = hoy;
@@ -3335,6 +3420,7 @@ async function labGenerar() {
   }
   if (nuevas.length) await upsertJugadas(nuevas);
   try { await kinoGenerar(); } catch (e) { console.log('kino lab:', e.message); }
+  try { await loto5Generar(); } catch (e) { console.log('loto5 lab:', e.message); }
 }
 async function labEvaluar() {
   if (!SUPABASE_ACTIVO) return;
@@ -3343,6 +3429,8 @@ async function labEvaluar() {
   const listas = [];
   for (const j of pend) {
     const esKino = j.clave === 'superkino';
+    if (j.clave === 'loto5') { const r5 = resultadoDe('especiales', 'loto5', j.fecha); if (!r5 || r5.length < 5) continue;
+      const { premio, aciertos } = loto5Cobro((j.numeros || []).map(Number), r5); listas.push({ ...j, resultado: r5, aciertos, premio, gano: aciertos >= 3, evaluado: true, evaluado_en: new Date().toISOString() }); continue; }
     const real = esKino ? resultadoDe('especiales', 'superkino', j.fecha) : resultadoDe(LAB_ESPECIALES[j.clave] ? 'especiales' : 'sorteos', j.clave, j.fecha);
     if (!real || real.length < (esKino ? 20 : labMin(j.clave))) continue;
     const { premio, aciertos } = esKino ? kinoCobro((j.numeros || []).map(Number), real) : labCobro((j.numeros || []).map(Number), real);
@@ -3459,8 +3547,8 @@ async function labResumenNoche() {
   if (labResumenEnviado === hoy || minutosActualesRD() < 23 * 60 + 20) return;
   labResumenEnviado = hoy;
   if (yaEnviado('lab')) return;
-  let filas; try { filas = (await leerJugadas(`fecha=eq.${hoy}&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,numeros,premio,aciertos,clave`)).filter(f => f.clave !== 'superkino'); } catch (e) { return; }
-  const kinoTxt = await kinoResumenTexto(hoy);
+  let filas; try { filas = (await leerJugadas(`fecha=eq.${hoy}&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,numeros,premio,aciertos,clave`)).filter(f => f.clave !== 'superkino' && f.clave !== 'loto5'); } catch (e) { return; }
+  const kinoTxt = (await kinoResumenTexto(hoy)) + (await loto5ResumenTexto(hoy));
   if (!filas.length && !kinoTxt) return;
   await marcarEnviado('lab');
   const ests = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre]));
@@ -3540,7 +3628,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.38-KINO-TICKETS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.40-LOTO5-EVO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
