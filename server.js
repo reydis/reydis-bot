@@ -1369,7 +1369,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.36-KINO-EVOLUTIVO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.37-KINO-TICKETS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3216,8 +3216,28 @@ app.get('/api/kino-explorador', async (req, res) => { try { res.json(req.query.u
 async function kinoLista() { // las 8 fijas + las evolutivas confirmadas y activas
   let evo = []; try { evo = (await labCargar()).filter(e => e.tipo === 'kino-evo' && e.activa !== false)
     .map(e => ({ id: e.id, nombre: e.nombre, desc: `🧬 ${e.parametros.receta} · confirmada con ${e.parametros.confirmacion ? e.parametros.confirmacion.prom : '?'} aciertos (azar ${e.parametros.confirmacion ? e.parametros.confirmacion.azar : '2.38'})`, w: e.parametros.w })); } catch (e) {}
+  try { const mem = await kinoEvoMemoria(); if (mem.semillas && mem.semillas[0]) evo.unshift({ id: 'kevo-mejor', nombre: 'Kino · 🧬 Mejor del explorador (en prueba)',
+    desc: `🧬 La receta #1 del bot evolutivo (cambia mientras aprende): ${kxDesc(mem.semillas[0])}. Todavía NO confirmada — se mide aquí en vivo contra el azar.`, w: mem.semillas[0] }); } catch (e) {}
   return [...KINO_LAB, ...evo];
 }
+// v9.37: tickets del bot evolutivo — las 5 mejores recetas aplicadas al Kino de hoy, con su prueba honesta
+app.get('/api/kino-evo/tickets', async (req, res) => {
+  try {
+    await cargarHistTeoria(); let mem = await kinoEvoMemoria(); let corrida = null;
+    if (req.query.nuevo === '1' || !(mem.semillas || []).length) { corrida = await kinoExplorador({ guardar: true }); if (corrida.error) return res.json(corrida); mem = await kinoEvoMemoria(); }
+    const hoy = fechaRD(), serie = kinoSerie(hoy), sr = serie.map(x => x.nums), Rs = serie.map(x => (x.fecha >= '2026-09-20' ? 84 : 80));
+    const N = sr.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6), cache = [];
+    for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(sr, i, Rs[i]), R: Rs[i], real: new Set(sr[i]) };
+    const R = kinoMax(serie), Fhoy = kxFeatures(sr, N, R), vistos = new Set(), tickets = [];
+    for (const w of mem.semillas || []) {
+      const numeros = kxTicket(Fhoy, w, R).sort((a, b) => a - b), k = numeros.join('-'); if (vistos.has(k)) continue; vistos.add(k);
+      const b = kxEval(cache, w, desde, corte), c = kxEval(cache, w, corte, N);
+      tickets.push({ receta: kxDesc(w), numeros, busqueda: { prom: b.prom, azar: b.azar }, confirmacion: { prom: c.prom, azar: c.azar, z: c.z, sorteos: c.n, cinco_mas: c.cinco_mas }, confirmada: c.z >= 2.33 });
+      if (tickets.length >= Math.min(10, Number(req.query.n) || 5)) break;
+    }
+    res.json({ fecha: hoy, corridas: mem.corridas || 0, probadas_total: mem.probadas_total || 0, sorteos: N, evoluciono_ahora: !!corrida, tickets });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 async function kinoGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const s = estado.especiales && estado.especiales.superkino; if (!s || (s.numeros && s.numeros.length >= 20)) return;
@@ -3513,7 +3533,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.36-KINO-EVOLUTIVO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.37-KINO-TICKETS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();

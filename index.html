@@ -5585,6 +5585,11 @@
                 <div style="font-size:11px;color:var(--muted)">${t.desc}</div>
                 <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${(t.numeros || []).map((n) => bola(n, res.has(n))).join("") || "<i>sin historial suficiente</i>"}</div></div>${acc}</div>`;
           }).join("");
+          // 🧬 bot evolutivo (v9.37)
+          h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">🧬 Bot evolutivo del Kino</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Las mejores recetas que el bot ha encontrado, aplicadas al Kino de hoy. "Evolucionar otra vez" prueba ~2,400 estrategias más (tarda unos segundos) y lo que aprende se queda guardado.</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-neon" onclick="kevoTickets(false)">🧬 Generar 5 tickets</button>
+            <button class="btn" onclick="kevoTickets(true)">🔄 Evolucionar otra vez</button></div><div id="kevo-res" style="margin-top:6px"></div>`;
           // acumulado en vivo
           const v = (d.vivo || []).filter((x) => x.sorteos);
           h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">📈 Kino en vivo</div>`;
@@ -5621,6 +5626,39 @@
       function labKinoJalaAyer() {
         const d = window._labKino; const a = (d && d.ayer && d.ayer.nums) || [];
         document.getElementById("kj-res").innerHTML = a.length ? `<div style="font-size:11px;color:var(--muted)">Kino del ${d.ayer.fecha}:</div>` + a.map(labKinoJalaFila).join("") : "";
+      }
+      async function kevoTickets(nuevo) {
+        const cont = document.getElementById("kevo-res"); if (!cont) return;
+        cont.innerHTML = `<div style="font-size:12px;color:var(--gold)">🧬 ${nuevo ? "Evolucionando… probando miles de estrategias" : "Buscando las mejores recetas…"}</div>`;
+        try {
+          const d = await (await fetch(`${API}/api/kino-evo/tickets?n=5${nuevo ? "&nuevo=1" : ""}`)).json();
+          if (d.error) { cont.innerHTML = `<div class="empty"><p>${d.error}</p></div>`; return; }
+          window._kevo = d;
+          const bola = (n) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem">${p2(n)}</span>`;
+          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Corrida #${d.corridas} · ${Number(d.probadas_total).toLocaleString()} estrategias probadas en total · ${d.sorteos} Kinos de historial</div>` +
+            d.tickets.map((t, i) => {
+              const ya = labYaJugada({ clave: "superkino", numeros: t.numeros });
+              const col = t.confirmada ? "var(--green)" : t.confirmacion.prom > t.confirmacion.azar ? "var(--gold)" : "var(--red)";
+              return `<div class="cardX" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+                <div style="min-width:0"><div style="font-weight:800;font-size:13px">🧬 Ticket ${i + 1} · <span style="font-size:10px;color:${col}">${t.confirmada ? "✅ CONFIRMADA" : "⚠️ SIN CONFIRMAR"}</span></div>
+                  <div style="font-size:11px;color:var(--muted)">${t.receta}</div>
+                  <div style="font-size:11px;margin-top:2px">Donde buscó: <b>${t.busqueda.prom}</b> aciertos · En ${t.confirmacion.sorteos} sorteos que nunca vio: <b style="color:${col}">${t.confirmacion.prom}</b> <span style="color:var(--muted)">· Por azar: ${t.confirmacion.azar}</span></div>
+                  <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${t.numeros.map(bola).join("")}</div></div>
+                ${ya ? `<span style="font-size:12px;font-weight:800;color:var(--green)">🙋 Ya la jugó</span>` : `<button class="btn btn-neon" onclick="kevoJugar(${i})">➕ Jugar RD$25</button>`}</div>`;
+            }).join("") + `<div style="font-size:11px;color:var(--muted)">Verde = pasó la prueba en sorteos que no vio. Amarillo/rojo = todavía es azar; juéguelo solo por diversión.</div>`;
+        } catch (e) { cont.innerHTML = `<div class="empty"><p>No se pudo conectar. Intente de nuevo.</p></div>`; }
+      }
+      function kevoJugar(i) {
+        if (!confirmarCompra()) return;
+        const t = window._kevo && window._kevo.tickets[i]; if (!t) return;
+        if (labYaJugada({ clave: "superkino", numeros: t.numeros })) return kevoTickets(false);
+        const jugada = { id: Date.now() + Math.random().toString(36).slice(2, 6), clave: "superkino", clave2: null,
+          fecha: fechaHoyAPI || new Date().toISOString().slice(0, 10), tipo: clasificarLoteria("superkino"),
+          numeros: t.numeros.map(Number), monto: 25, creado: new Date().toISOString() };
+        const lista = getJugadas(); lista.unshift(jugada); setJugadas(lista);
+        enviarJugadaServidor(jugada);
+        if (typeof renderJugadas === "function") renderJugadas();
+        kevoTickets(false);
       }
       function labKinoJugar(i) {
         if (!confirmarCompra()) return;
