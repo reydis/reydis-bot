@@ -1369,7 +1369,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.37-KINO-TICKETS', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.38-KINO-TICKETS', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3228,12 +3228,19 @@ app.get('/api/kino-evo/tickets', async (req, res) => {
     const hoy = fechaRD(), serie = kinoSerie(hoy), sr = serie.map(x => x.nums), Rs = serie.map(x => (x.fecha >= '2026-09-20' ? 84 : 80));
     const N = sr.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6), cache = [];
     for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(sr, i, Rs[i]), R: Rs[i], real: new Set(sr[i]) };
-    const R = kinoMax(serie), Fhoy = kxFeatures(sr, N, R), vistos = new Set(), tickets = [];
-    for (const w of mem.semillas || []) {
+    const R = kinoMax(serie), Fhoy = kxFeatures(sr, N, R), vistos = new Set(), recetas = new Set(), tickets = [];
+    const cuantos = Math.max(1, Math.min(20, Number(req.query.n) || 5));
+    // v9.38: las recetas aprendidas + variantes cercanas (mutaciones), ordenadas por cómo les fue donde buscaron; un ticket distinto por receta
+    let sd = 12345 + N; const rnd = () => ((sd = (sd * 48271) % 2147483647) / 2147483647);
+    const base = (mem.semillas || []).filter(Boolean), cands = [...base];
+    for (let i = 0; i < 300 && base.length; i++) { let w = base[i % base.length]; const m = 1 + Math.floor(rnd() * 3); for (let j = 0; j < m; j++) w = kxMutate(w, rnd); cands.push(w); }
+    const evals = cands.filter(w => KX_FEATS.some(k => w[k])).map(w => ({ w, b: kxEval(cache, w, desde, corte) })).sort((a, b) => b.b.z - a.b.z);
+    for (const { w, b } of evals) {
+      const rec = kxDesc(w); if (recetas.has(rec)) continue; recetas.add(rec);
       const numeros = kxTicket(Fhoy, w, R).sort((a, b) => a - b), k = numeros.join('-'); if (vistos.has(k)) continue; vistos.add(k);
-      const b = kxEval(cache, w, desde, corte), c = kxEval(cache, w, corte, N);
-      tickets.push({ receta: kxDesc(w), numeros, busqueda: { prom: b.prom, azar: b.azar }, confirmacion: { prom: c.prom, azar: c.azar, z: c.z, sorteos: c.n, cinco_mas: c.cinco_mas }, confirmada: c.z >= 2.33 });
-      if (tickets.length >= Math.min(10, Number(req.query.n) || 5)) break;
+      const c = kxEval(cache, w, corte, N);
+      tickets.push({ receta: rec, numeros, busqueda: { prom: b.prom, azar: b.azar }, confirmacion: { prom: c.prom, azar: c.azar, z: c.z, sorteos: c.n, cinco_mas: c.cinco_mas }, confirmada: c.z >= 2.33 });
+      if (tickets.length >= cuantos) break;
     }
     res.json({ fecha: hoy, corridas: mem.corridas || 0, probadas_total: mem.probadas_total || 0, sorteos: N, evoluciono_ahora: !!corrida, tickets });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3533,7 +3540,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.37-KINO-TICKETS en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.38-KINO-TICKETS en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();

@@ -5588,7 +5588,8 @@
           // 🧬 bot evolutivo (v9.37)
           h += `<div class="cons-tit" style="font-size:13px;margin-top:12px">🧬 Bot evolutivo del Kino</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Las mejores recetas que el bot ha encontrado, aplicadas al Kino de hoy. "Evolucionar otra vez" prueba ~2,400 estrategias más (tarda unos segundos) y lo que aprende se queda guardado.</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-neon" onclick="kevoTickets(false)">🧬 Generar 5 tickets</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap"><select id="kevo-n" style="padding:6px">${[1,2,3,4,5,6,8,10,15,20].map((n) => `<option value="${n}"${n === 5 ? " selected" : ""}>${n} ticket${n > 1 ? "s" : ""}</option>`).join("")}</select>
+            <button class="btn btn-neon" onclick="kevoTickets(false)">🧬 Generar tickets</button>
             <button class="btn" onclick="kevoTickets(true)">🔄 Evolucionar otra vez</button></div><div id="kevo-res" style="margin-top:6px"></div>`;
           // acumulado en vivo
           const v = (d.vivo || []).filter((x) => x.sorteos);
@@ -5631,11 +5632,12 @@
         const cont = document.getElementById("kevo-res"); if (!cont) return;
         cont.innerHTML = `<div style="font-size:12px;color:var(--gold)">🧬 ${nuevo ? "Evolucionando… probando miles de estrategias" : "Buscando las mejores recetas…"}</div>`;
         try {
-          const d = await (await fetch(`${API}/api/kino-evo/tickets?n=5${nuevo ? "&nuevo=1" : ""}`)).json();
+          const nSel = (document.getElementById("kevo-n") || {}).value || 5;
+          const d = await (await fetch(`${API}/api/kino-evo/tickets?n=${nSel}${nuevo ? "&nuevo=1" : ""}`)).json();
           if (d.error) { cont.innerHTML = `<div class="empty"><p>${d.error}</p></div>`; return; }
           window._kevo = d;
           const bola = (n) => `<span class="mini-esf mini-e1" style="width:26px;height:26px;line-height:26px;font-size:.72rem">${p2(n)}</span>`;
-          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Corrida #${d.corridas} · ${Number(d.probadas_total).toLocaleString()} estrategias probadas en total · ${d.sorteos} Kinos de historial</div>` +
+          cont.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Corrida #${d.corridas} · ${Number(d.probadas_total).toLocaleString()} estrategias probadas en total · ${d.sorteos} Kinos de historial · ${d.tickets.length} tickets · costo RD$${d.tickets.length * 25}</div>` +
             d.tickets.map((t, i) => {
               const ya = labYaJugada({ clave: "superkino", numeros: t.numeros });
               const col = t.confirmada ? "var(--green)" : t.confirmacion.prom > t.confirmacion.azar ? "var(--gold)" : "var(--red)";
