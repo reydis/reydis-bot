@@ -3871,11 +3871,22 @@
         const avgRepPerTransicion = transiciones
           ? totalRepInstances / transiciones
           : 0;
-        const topRepNumeros = Object.entries(repNumFreq).sort(
-          (a, b) => b[1] - a[1]
-        );
+        // v9.36: tasa justa = de las veces que salió, cuántas volvió al siguiente (azar = números por sorteo / rango)
+        const apar = {};
+        for (let i = 0; i < datosAsc.length - 1; i++) for (const n of new Set(datosAsc[i])) apar[n] = (apar[n] || 0) + 1;
+        const todosN = datosAsc.flat().map(Number);
+        const minN = Math.min(...todosN), maxN = Math.max(...todosN);
+        const rango = minN === 0 ? Math.max(100, maxN + 1) : maxN; // quinielas 00-99; Kino 1-84, etc.
+        const porSorteo = datosAsc.reduce((a, d) => a + new Set(d).size, 0) / Math.max(1, datosAsc.length);
+        const azarRep = porSorteo / rango;
+        const azarPar = (porSorteo * (porSorteo - 1)) / (rango * (rango - 1)); // prob. de que dos números dados salgan juntos
+        const topRepNumeros = Object.entries(repNumFreq)
+          .filter(([n]) => (apar[n] || 0) >= 5)
+          .map(([n, v]) => [n, v, apar[n]])
+          .sort((a, b) => b[1] / b[2] - a[1] / a[2] || b[1] - a[1]);
 
         return {
+          azarRep, azarPar, rango,
           totalDraws,
           transiciones,
           topAdjPairs: topAdjPairs.slice(0, 5),
@@ -3946,7 +3957,7 @@
           <div class="jmet">Par consecutivo ${p2(a)}-${p2(b)}</div>
           <div class="jraz">Salieron juntos ${veces} veces en ${
               r.totalDraws
-            } sorteos analizados.</div>
+            } sorteos analizados · <b style="color:${veces > r.azarPar * r.totalDraws * 1.5 ? "var(--green)" : "var(--muted)"}">por azar ~${(r.azarPar * r.totalDraws).toFixed(1)}</b>. <span style="color:var(--muted)">Es el más alto entre muchos pares posibles: siempre hay alguno arriba por suerte.</span></div>
           <button onclick="agregarAdyacenteMisJugadas('${lotActAdyacente}','${a},${b}','adyacente')" style="margin-top:8px;padding:7px 12px;border-radius:7px;background:#1a2029;color:#2fe6c8;border:1px solid #2fe6c8;font-size:12px;font-weight:600;cursor:pointer">📋 Agregar a Mis Jugadas</button>
         </div>
       </div>`;
@@ -3956,20 +3967,18 @@
 
         if (r.topRepNumeros.length) {
           html += `<div class="jsec"><div class="jsec-tit">🔁 Números que más se repiten de un sorteo al siguiente</div>`;
-          for (const [numStr, veces] of r.topRepNumeros) {
+          for (const [numStr, veces, apar] of r.topRepNumeros) {
             const n = parseInt(numStr, 10);
-            const pct = r.transiciones
-              ? Math.round((veces / r.transiciones) * 100)
-              : 0;
+            const pct = apar ? Math.round((veces / apar) * 100) : 0;
+            const az = Math.round(r.azarRep * 100);
+            const colorRep = pct > az * 1.3 ? "var(--green)" : pct < az * 0.8 ? "var(--red)" : "var(--gold)";
             html += `<div class="jcard tsp">
-        <div class="jleft"><div class="jtype">REPITE</div><div class="jconf" style="color:var(--neon)">${pct}%</div><div class="jconf-l">de veces</div></div>
+        <div class="jleft"><div class="jtype">REPITE</div><div class="jconf" style="color:${colorRep}">${pct}%</div><div class="jconf-l">azar ${az}%</div></div>
         <div class="jdiv"></div>
         <div class="jnums"><div class="jnum">${p2(n)}</div></div>
         <div class="jinfo">
           <div class="jmet">Número ${p2(n)}</div>
-          <div class="jraz">Cuando salió, volvió a salir al sorteo siguiente ${veces} de ${
-              r.transiciones
-            } transiciones posibles (${pct}%).</div>
+          <div class="jraz">De las ${apar} veces que salió, volvió a salir en el sorteo siguiente ${veces} veces (${pct}%). <b>Por azar: ${az}%.</b> ${pct > az * 1.3 ? "Va arriba, aunque con pocos casos puede ser suerte." : pct < az * 0.8 ? "Va por debajo del azar." : "Igual que el azar."}</div>
           <button onclick="agregarAdyacenteMisJugadas('${lotActAdyacente}','${n}','repetitivo')" style="margin-top:8px;padding:7px 12px;border-radius:7px;background:#1a2029;color:#2fe6c8;border:1px solid #2fe6c8;font-size:12px;font-weight:600;cursor:pointer">📋 Agregar a Mis Jugadas</button>
         </div>
       </div>`;

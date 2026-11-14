@@ -1337,6 +1337,7 @@ async function sincronizar() {
     await paso('lab-resumen', labResumenNoche);
     await paso('detector-sesgo', detectorSemanal);
     await paso('explorador', exploradorSemanal);
+    await paso('kino-evo', kinoExploradorDiario);
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
@@ -1368,7 +1369,7 @@ app.get(['/app', '/app/'], (req, res) => {
   if (!fs.existsSync(f)) return res.status(404).send('Falta subir index.html al repositorio de GitHub (junto a server.js).');
   res.set('Cache-Control', 'no-cache'); res.sendFile(f);
 });
-app.get('/', (req, res) => res.json({ version: 'v9.35-RADAR-CLARO', status: 'ok', fecha_rd: fechaRD() }));
+app.get('/', (req, res) => res.json({ version: 'v9.36-KINO-EVOLUTIVO', status: 'ok', fecha_rd: fechaRD() }));
 
 // ── ENDPOINTS BACKFILL RESTAURADOS ─────────────────────────────────────────
 app.get('/api/backfill-enloteria', (req, res) => {
@@ -3041,8 +3042,9 @@ function kinoTablaJaladora(serie) {
   const J = {}; for (let i = 1; i < serie.length; i++) for (const x of serie[i - 1].nums) { const c = J[x] = J[x] || {}; for (const y of serie[i].nums) c[y] = (c[y] || 0) + 1; }
   return J;
 }
-function kinoTicket(id, serie) {
+function kinoTicket(id, serie, w) {
   if (serie.length < 15) return null;
+  if (w) { const R0 = kinoMax(serie); const sr = serie.map(x => x.nums); return kxTicket(kxFeatures(sr, sr.length, R0), w, R0).sort((a, b) => a - b); } // v9.36 🧬
   const R = kinoMax(serie), ayer = serie[serie.length - 1].nums, fq = {};
   for (const x of serie) for (const n of x.nums) fq[n] = (fq[n] || 0) + 1;
   const todos = []; for (let n = 1; n <= R; n++) todos.push(n);
@@ -3086,6 +3088,136 @@ function kinoDigitos(serie, ultimos = 30) { // tabla de dígitos: terminación (
   });
   return { sorteos: sub.length, terminaciones: mk('t', n => n % 10), decenas: mk('d', n => Math.floor(n / 10)) };
 }
+
+// ══════════ 🧬 EXPLORADOR EVOLUTIVO DEL KINO (v9.36) ══════════
+// Cada estrategia = pesos sobre 11 señales por número (caliente, atrasado, repite, vecino, espejo, equivalente, jaladora, terminación, decena…).
+// Todos los días crea 60 estrategias, las cruza y muta 40 generaciones (2,400+ probadas) BUSCANDO en el 60% viejo de los Kinos,
+// y CONFIRMA las 5 mejores en el 40% nuevo que nunca vio (z ≥ 2.33, Bonferroni). Lo que aprende se guarda como semilla y sigue
+// evolucionando al día siguiente. Lo que se confirma entra al 🎰 Kino del laboratorio para medirse en vivo; si en vivo no aguanta, se pausa.
+// 🧬 Explorador evolutivo del Kino — módulo puro (sin dependencias)
+function kxFeatures(series, i, R) { // usa solo series[0..i-1]; devuelve matriz [feat][n] normalizada (z por sorteo)
+  const prev = series.slice(0, i); const ay = prev[prev.length - 1] || []; const aySet = new Set(ay);
+  const F = {};
+  const freq = W => { const c = new Array(R + 1).fill(0); for (const d of prev.slice(-W)) for (const n of d) c[n]++; return c; };
+  F.f10 = freq(10); F.f30 = freq(30); F.fall = freq(prev.length);
+  const last = new Array(R + 1).fill(-1); prev.forEach((d, j) => d.forEach(n => (last[n] = j)));
+  F.gap = last.map(l => prev.length - 1 - l);
+  F.ayer = Array.from({ length: R + 1 }, (_, n) => (aySet.has(n) ? 1 : 0));
+  F.vecino = Array.from({ length: R + 1 }, (_, n) => (aySet.has(n - 1) ? 1 : 0) + (aySet.has(n + 1) ? 1 : 0));
+  const esp = n => (n % 10) * 10 + Math.floor(n / 10), eq = n => ((Math.floor(n / 10) + 5) % 10) * 10 + (n % 10 + 5) % 10;
+  F.espejo = new Array(R + 1).fill(0); for (const n of ay) { const m = esp(n); if (m <= R) F.espejo[m]++; }
+  F.equiv = new Array(R + 1).fill(0); for (const n of ay) { const m = eq(n); if (m >= 1 && m <= R) F.equiv[m]++; }
+  // tabla jaladora: n salió el día siguiente de cada número de ayer
+  F.jala = new Array(R + 1).fill(0);
+  for (let j = 1; j < prev.length; j++) { const a = new Set(prev[j - 1]); let c = 0; for (const x of ay) if (a.has(x)) c++; if (c) for (const n of prev[j]) F.jala[n] += c; }
+  const term = new Array(10).fill(0); for (const n of ay) term[n % 10]++;
+  F.term = Array.from({ length: R + 1 }, (_, n) => term[n % 10]);
+  const dec = new Array(10).fill(0); for (const n of ay) dec[Math.floor(n / 10)]++;
+  F.decena = Array.from({ length: R + 1 }, (_, n) => dec[Math.floor(n / 10)]);
+  for (const k of Object.keys(F)) { // z-score sobre 1..R
+    const v = F[k].slice(1, R + 1); const m = v.reduce((a, b) => a + b, 0) / R; const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / R) || 1;
+    F[k] = F[k].map((x, n) => (n === 0 ? 0 : (x - m) / sd));
+  }
+  return F;
+}
+const KX_FEATS = ['f10', 'f30', 'fall', 'gap', 'ayer', 'vecino', 'espejo', 'equiv', 'jala', 'term', 'decena'];
+const KX_NOMBRE = { f10: 'caliente 10', f30: 'caliente 30', fall: 'frecuencia total', gap: 'atrasado', ayer: 'repite ayer', vecino: 'vecino ±1 de ayer', espejo: 'espejo de ayer', equiv: 'equivalente de ayer', jala: 'tabla jaladora', term: 'terminación de ayer', decena: 'decena de ayer' };
+function kxTicket(F, w, R) {
+  const sc = []; for (let n = 1; n <= R; n++) { let s = 0; for (const k of KX_FEATS) if (w[k]) s += w[k] * F[k][n]; sc.push([n, s]); }
+  return sc.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 10).map(x => x[0]);
+}
+function kxEval(cache, w, a0, a1) { let h = 0, n = 0, ex = 0, v = 0, a5 = 0; const dist = {};
+  for (let i = a0; i < a1; i++) { const c = cache[i]; if (!c) continue; const t = kxTicket(c.F, w, c.R); const real = c.real; let k = 0; for (const x of t) if (real.has(x)) k++;
+    h += k; n++; const p = 20 / c.R; ex += 10 * p; v += 10 * p * (1 - p) * (c.R - 10) / (c.R - 1); dist[k] = (dist[k] || 0) + 1; if (k >= 5) a5++; }
+  return { prom: n ? +(h / n).toFixed(2) : 0, z: v ? +((h - ex) / Math.sqrt(v)).toFixed(2) : 0, n, dist, azar: n ? +(ex / n).toFixed(2) : 0, cinco_mas: a5 };
+}
+function kxRandW(rnd) { const w = {}; for (const k of KX_FEATS) { const r = rnd(); w[k] = r < 0.55 ? 0 : Math.round((rnd() * 4 - 2) * 2) / 2; } return w; }
+function kxMutate(w, rnd) { const z = { ...w }; const k = KX_FEATS[Math.floor(rnd() * KX_FEATS.length)]; z[k] = rnd() < 0.3 ? 0 : Math.round(((z[k] || 0) + (rnd() * 2 - 1)) * 2) / 2; return z; }
+function kxCross(a, b, rnd) { const w = {}; for (const k of KX_FEATS) w[k] = rnd() < 0.5 ? a[k] : b[k]; return w; }
+function kxDesc(w) { return KX_FEATS.filter(k => w[k]).map(k => `${w[k] > 0 ? '+' : '−'}${Math.abs(w[k])} ${KX_NOMBRE[k]}`).join(', ') || '(vacía)'; }
+async function kxEvolucionar(series, Rs, opts = {}) { // series: [[20 nums]], Rs: rango por sorteo
+  let seed = opts.seed || Date.now() % 2147483647; const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+  const N = series.length, desde = 15, corte = Math.floor(desde + (N - desde) * 0.6);
+  const cache = []; for (let i = desde; i < N; i++) cache[i] = { F: kxFeatures(series, i, Rs[i]), R: Rs[i], real: new Set(series[i]) };
+  const POP = opts.pop || 60, GEN = opts.gen || 40; let pop = Array.from({ length: POP }, () => kxRandW(rnd));
+  (opts.semillas || []).slice(0, Math.floor(POP / 2)).forEach((w, i) => { pop[i] = { ...w }; }); // lo que aprendió antes sigue evolucionando
+  let probadas = 0;
+  const fit = w => { probadas++; return kxEval(cache, w, desde, corte).z; };
+  let scored = pop.map(w => [w, fit(w)]);
+  for (let g = 0; g < GEN; g++) {
+    await new Promise(r => setImmediate(r)); // no bloquea el servidor
+    scored.sort((a, b) => b[1] - a[1]); const elite = scored.slice(0, Math.floor(POP / 4)).map(x => x[0]);
+    const nueva = [...elite]; while (nueva.length < POP) { const r = rnd(); const a = elite[Math.floor(rnd() * elite.length)];
+      nueva.push(r < 0.4 ? kxMutate(a, rnd) : r < 0.8 ? kxCross(a, elite[Math.floor(rnd() * elite.length)], rnd) : kxRandW(rnd)); }
+    scored = nueva.map(w => [w, fit(w)]);
+  }
+  scored.sort((a, b) => b[1] - a[1]); const vistos = new Set(); const top = [];
+  for (const [w] of scored) { const key = kxDesc(w); if (vistos.has(key) || !KX_FEATS.some(k => w[k])) continue; vistos.add(key); top.push(w); if (top.length >= 5) break; }
+  const umbral = 2.33; // 5 candidatas → Bonferroni 5% ≈ z 2.33
+  return { sorteos: N, busqueda: corte - desde, confirmacion: N - corte, probadas, umbral,
+    mejores: top.map(w => ({ w, receta: kxDesc(w), busqueda: kxEval(cache, w, desde, corte), confirmacion: kxEval(cache, w, corte, N) }))
+      .map(x => ({ ...x, ok: x.confirmacion.z >= umbral })) };
+}
+
+const KX_MAX_ACTIVAS = 5;
+let kinoEvoUltimo = null, kinoEvoRevisado = null;
+async function kinoEvoMemoria() { const l = await labCargar(); const m = l.find(e => e.id === 'kinoevo-memoria'); return (m && m.parametros) || { semillas: [], corridas: 0, probadas_total: 0 }; }
+async function kinoEvoGuardar(filas) { await axios.post(`${SUPABASE_URL}/rest/v1/estrategias?on_conflict=id`, filas, { headers: { ...SB_HEADERS(), Prefer: 'resolution=merge-duplicates,return=minimal' }, timeout: 15000 }); await labCargar(true); }
+async function kinoExplorador(opts = {}) {
+  await cargarHistTeoria(); const hoy = fechaRD(); const serie = kinoSerie(hoy);
+  if (serie.length < 40) return { error: 'historial corto', sorteos: serie.length };
+  const mem = await kinoEvoMemoria(); const activas = (await labCargar()).filter(e => e.tipo === 'kino-evo');
+  const semillas = [...activas.map(e => e.parametros.w), ...(mem.semillas || [])].filter(Boolean);
+  const seed = opts.seed || (Date.now() % 2147483646) + 1;
+  const r = await kxEvolucionar(serie.map(x => x.nums), serie.map(x => (x.fecha >= '2026-09-20' ? 84 : 80)), { seed, semillas });
+  const firmas = new Set(activas.map(e => kxDesc(e.parametros.w || {})));
+  r.mejores.forEach(m => { m.ya_estaba = firmas.has(m.receta); });
+  const out = { fecha: hoy, seed, sorteos: r.sorteos, busqueda: `${serie[15].fecha} → ${serie[15 + r.busqueda - 1].fecha}`, confirmacion: `${serie[serie.length - r.confirmacion].fecha} → ${serie[serie.length - 1].fecha}`,
+    probadas: r.probadas, umbral: r.umbral, corridas: (mem.corridas || 0) + 1, probadas_total: (mem.probadas_total || 0) + r.probadas, mejores: r.mejores };
+  if (opts.guardar !== false && SUPABASE_ACTIVO) { // aprende: las mejores de hoy son semillas de mañana
+    const sem = [...r.mejores.map(m => m.w), ...(mem.semillas || [])].filter((w, i, a) => a.findIndex(x => kxDesc(x) === kxDesc(w)) === i).slice(0, 15);
+    try { await kinoEvoGuardar([{ id: 'kinoevo-memoria', nombre: '🧬 memoria del explorador Kino', tipo: 'kino-evo-memoria', activa: false, loterias: ['superkino'],
+      parametros: { semillas: sem, corridas: out.corridas, probadas_total: out.probadas_total, ultima: hoy } }]); } catch (e) {}
+  }
+  kinoEvoUltimo = out; return out;
+}
+async function kinoEvoVigilar() { // en vivo: si después de 40 sorteos no supera al azar, se pausa (sus pesos siguen como semilla)
+  const vivo = await kinoVivo() || []; const pausadas = [];
+  for (const e of (await labCargar()).filter(x => x.tipo === 'kino-evo' && x.activa !== false)) {
+    const v = vivo.find(x => x.id === e.id); if (!v || v.sorteos < 40) continue;
+    const z = (v.prom_aciertos - 2.38) * v.sorteos / Math.sqrt(v.sorteos * 1.8);
+    if (z <= 0) { pausadas.push({ ...e, activa: false }); }
+  }
+  if (pausadas.length) try { await kinoEvoGuardar(pausadas); } catch (e) {}
+  return pausadas;
+}
+async function kinoExploradorDiario() { // todos los días desde las 7:00 AM — no se cansa
+  if (!SUPABASE_ACTIVO) return;
+  const hoy = fechaRD(); if (minutosActualesRD() < 7 * 60 || kinoEvoRevisado === hoy) return;
+  kinoEvoRevisado = hoy; if (yaEnviado('kino-evo')) return;
+  const r = await kinoExplorador(); await marcarEnviado('kino-evo'); if (r.error) return;
+  const pausadas = await kinoEvoVigilar();
+  const nuevas = r.mejores.filter(m => m.ok && !m.ya_estaba);
+  const activas = (await labCargar()).filter(e => e.tipo === 'kino-evo' && e.activa !== false).length;
+  const agregar = nuevas.slice(0, Math.max(0, KX_MAX_ACTIVAS - activas)).map((m, i) => ({ id: `kevo-${hoy}-${i + 1}`, nombre: `Kino · 🧬 Evolutiva ${hoy.slice(5)}${nuevas.length > 1 ? ` #${i + 1}` : ''}`,
+    tipo: 'kino-evo', activa: true, loterias: ['superkino'], parametros: { w: m.w, receta: m.receta, confirmacion: m.confirmacion, nacio: hoy } }));
+  if (agregar.length) try { await kinoEvoGuardar(agregar); } catch (e) {}
+  if (!TG_ACTIVO) return;
+  const top = r.mejores[0];
+  if (agregar.length) await enviarTelegram(`🧬🌟 <b>EXPLORADOR KINO — ¡UNA ESTRATEGIA PASÓ LAS DOS PRUEBAS!</b> — ${hoy}\n\n` +
+    agregar.map(a => `• <b>${a.nombre}</b>\n   ${a.parametros.receta}\n   en sorteos que nunca vio: prom ${a.parametros.confirmacion.prom} aciertos (azar ${a.parametros.confirmacion.azar}, z ${a.parametros.confirmacion.z})`).join('\n') +
+    `\n\n<i>Entró al 🎰 Kino del laboratorio y se mide en vivo con su control al azar. Si en 40 sorteos no supera al azar, se pausa sola.</i>`);
+  else if (diaSemanaRD() === 'Sun' || pausadas.length) await enviarTelegram(`🧬 <b>EXPLORADOR KINO</b> — resumen ${hoy}\n\n` +
+    `Corrida #${r.corridas} · ${r.probadas_total.toLocaleString('en-US')} estrategias probadas en total · ${r.sorteos} Kinos de historial.\n` +
+    `Mejor de hoy: <b>${top.receta}</b>\nbuscando ${top.busqueda.prom} aciertos · confirmando <b>${top.confirmacion.prom}</b> (azar ${top.confirmacion.azar}) ${top.ok ? '✅' : '❌'}\n` +
+    (pausadas.length ? `\n⏸ Pausadas por no aguantar en vivo: ${pausadas.map(p => p.nombre).join(', ')}\n` : '') + `\n<i>Sigue buscando todos los días; solo avisa cuando algo se confirma.</i>`);
+}
+app.get('/api/kino-explorador', async (req, res) => { try { res.json(req.query.ultimo === '1' && kinoEvoUltimo ? kinoEvoUltimo : await kinoExplorador({ guardar: req.query.guardar === '1' })); } catch (e) { res.status(500).json({ error: e.message }); } });
+async function kinoLista() { // las 8 fijas + las evolutivas confirmadas y activas
+  let evo = []; try { evo = (await labCargar()).filter(e => e.tipo === 'kino-evo' && e.activa !== false)
+    .map(e => ({ id: e.id, nombre: e.nombre, desc: `🧬 ${e.parametros.receta} · confirmada con ${e.parametros.confirmacion ? e.parametros.confirmacion.prom : '?'} aciertos (azar ${e.parametros.confirmacion ? e.parametros.confirmacion.azar : '2.38'})`, w: e.parametros.w })); } catch (e) {}
+  return [...KINO_LAB, ...evo];
+}
 async function kinoGenerar() {
   if (!SUPABASE_ACTIVO) return;
   const s = estado.especiales && estado.especiales.superkino; if (!s || (s.numeros && s.numeros.length >= 20)) return;
@@ -3096,9 +3228,9 @@ async function kinoGenerar() {
     labHechos.clear(); labHechosFecha = hoy;
     try { (await leerJugadas(`fecha=eq.${hoy}&origen=eq.lab&select=grupo`)).forEach(f => labHechos.add(f.grupo)); } catch (e) { labHechosFecha = null; return; }
   }
-  for (const k of KINO_LAB) {
+  for (const k of await kinoLista()) {
     const g = `labk|${k.id}`; if (labHechos.has(g)) continue;
-    const c = kinoTicket(k.id, serie); if (!c) continue;
+    const c = kinoTicket(k.id, serie, k.w); if (!c) continue;
     const base = { clave: 'superkino', fecha: hoy, tipo: 'lab', hora_sorteo: hora, generado_rd: horaRD(), grupo: g, metodo: k.id, notificado: true, evaluado: false };
     const az = new Set(); while (az.size < 10) az.add(1 + Math.floor(Math.random() * R));
     nuevas.push({ ...base, id: `lab-${hoy}-${k.id}`, origen: 'lab', numeros: c });
@@ -3111,14 +3243,14 @@ async function kinoVivo() {
   let filas; try { filas = await leerJugadasTodas(`clave=eq.superkino&origen=in.(lab,labctl)&evaluado=eq.true&select=id,metodo,origen,numeros,premio,aciertos,fecha`); } catch (e) { return null; }
   const v = {}; for (const f of filas) { const a = v[f.metodo] = v[f.metodo] || { sorteos: 0, aciertos: 0, cobro: 0, ctl_aciertos: 0, ctl_cobro: 0, ctl_sorteos: 0 };
     if (f.origen === 'labctl') { a.ctl_sorteos++; a.ctl_aciertos += +f.aciertos || 0; a.ctl_cobro += +f.premio || 0; } else { a.sorteos++; a.aciertos += +f.aciertos || 0; a.cobro += +f.premio || 0; } }
-  return KINO_LAB.map(k => { const a = v[k.id] || { sorteos: 0, aciertos: 0, cobro: 0, ctl_aciertos: 0, ctl_cobro: 0, ctl_sorteos: 0 };
+  return (await kinoLista()).map(k => { const a = v[k.id] || { sorteos: 0, aciertos: 0, cobro: 0, ctl_aciertos: 0, ctl_cobro: 0, ctl_sorteos: 0 };
     return { id: k.id, nombre: k.nombre, desc: k.desc, sorteos: a.sorteos, prom_aciertos: a.sorteos ? +(a.aciertos / a.sorteos).toFixed(2) : null, azar_esperado: 2.38,
       jugado: a.sorteos * KINO_COSTO, cobro: a.cobro, ctl_prom: a.ctl_sorteos ? +(a.ctl_aciertos / a.ctl_sorteos).toFixed(2) : null, ctl_cobro: a.ctl_cobro }; });
 }
 async function kinoResumenTexto(hoy) {
   let filas; try { filas = await leerJugadas(`fecha=eq.${hoy}&clave=eq.superkino&origen=in.(lab,labctl)&evaluado=eq.true&select=metodo,origen,premio,aciertos`); } catch (e) { return ''; }
   if (!filas.length) return '';
-  const hoyL = KINO_LAB.map(k => { const m = filas.find(f => f.metodo === k.id && f.origen === 'lab'), c = filas.find(f => f.metodo === k.id && f.origen === 'labctl');
+  const hoyL = (await kinoLista()).map(k => { const m = filas.find(f => f.metodo === k.id && f.origen === 'lab'), c = filas.find(f => f.metodo === k.id && f.origen === 'labctl');
     if (!m) return null; return `${m.premio > 0 ? '🟢' : '⚪'} ${k.nombre.replace('Kino · ', '')}: ${m.aciertos} aciertos${m.premio ? ` · cobra RD$${m.premio}` : ''} · azar ${c ? c.aciertos : '?'}`; }).filter(Boolean);
   const vivo = await kinoVivo() || [];
   const acum = vivo.filter(x => x.sorteos).map(x => `• ${x.nombre.replace('Kino · ', '')}: ${x.sorteos} sorteos · prom ${x.prom_aciertos} (azar 2.38) · RD$${x.cobro} de RD$${x.jugado}`);
@@ -3128,7 +3260,7 @@ app.get('/api/lab/kino', async (req, res) => {
   await cargarHistTeoria(); const hoy = fechaRD(); const serie = kinoSerie(hoy);
   let reg = {}; try { (await leerJugadas(`fecha=eq.${hoy}&clave=eq.superkino&origen=eq.lab&select=metodo,numeros,generado_rd,evaluado,aciertos,premio`)).forEach(f => { reg[f.metodo] = f; }); } catch (e) {}
   const s = estado.especiales && estado.especiales.superkino;
-  const hoyT = KINO_LAB.map(k => { const r = reg[k.id]; return { id: k.id, nombre: k.nombre, desc: k.desc, numeros: r ? r.numeros.map(Number) : kinoTicket(k.id, serie),
+  const hoyT = (await kinoLista()).map(k => { const r = reg[k.id]; return { id: k.id, nombre: k.nombre, desc: k.desc, numeros: r ? r.numeros.map(Number) : kinoTicket(k.id, serie, k.w),
     registrado: !!r, registrado_a: r ? r.generado_rd : null, evaluado: r ? r.evaluado : false, aciertos: r ? r.aciertos : null, premio: r ? r.premio : null }; });
   const J = kinoTablaJaladora(serie); const R = kinoMax(serie);
   const jaladora = {}; for (let n = 1; n <= R; n++) jaladora[n] = Object.entries(J[n] || {}).sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 5).map(([y, v]) => ({ numero: +y, veces: v }));
@@ -3195,7 +3327,7 @@ async function labEvaluar() {
   // v9.19: solo se avisa cuando GANA de verdad (cobra más de lo que jugó); los aciertos chiquitos van en el resumen de la noche
   const pegaron = listas.filter(j => j.origen === 'lab' && j.premio > (j.clave === 'superkino' ? KINO_COSTO : (j.numeros || []).length));
   if (pegaron.length && TG_ACTIVO) {
-    const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre])); KINO_LAB.forEach(k => { nombres[k.id] = k.nombre; });
+    const nombres = Object.fromEntries((await labCargar()).map(e => [e.id, e.nombre])); (await kinoLista()).forEach(k => { nombres[k.id] = k.nombre; });
     const f2 = n => String(n).padStart(2, '0');
     await enviarTelegram(`🧪 <b>¡GANÓ EN EL LABORATORIO!</b> (en papel)\n\n` + pegaron.map(j =>
       `🎯 <b>${nombres[j.metodo] || j.metodo}</b> — ${j.clave === 'superkino' ? 'Super Kino TV' : ((labSorteoHoy(j.clave) || {}).nombre || j.clave)}\n     Jugó: ${j.numeros.map(f2).join('-')}${j.clave === 'superkino' ? ` · ${j.aciertos} aciertos` : ` · salió ${j.resultado.map(f2).join('-')}`}\n     Cobraría <b>RD$${j.premio}</b> por RD$${j.clave === 'superkino' ? KINO_COSTO : j.numeros.length} jugados`).join('\n\n'));
@@ -3381,7 +3513,7 @@ process.on('uncaughtException', (err) => console.error('⚠️ [uncaughtExceptio
 process.on('unhandledRejection', (reason) => console.error('⚠️ [unhandledRejection]', reason));
 
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Reydis Engine v9.35-RADAR-CLARO en puerto ${PORT}`);
+  console.log(`\n🚀 Reydis Engine v9.36-KINO-EVOLUTIVO en puerto ${PORT}`);
   await inicializarPersistenciaRemota();
   if (TG_ACTIVO) await enviarTelegram(`🚀 <b>REYDIS RADAR PRO</b> — Servidor Reiniciado y Conectado`);
   await sincronizar();
