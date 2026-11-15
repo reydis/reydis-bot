@@ -277,7 +277,7 @@ function paginaInicio(dias, series) {
 
   const reps = repetidos.length ? `<h2>⚡ Repetidos en varias loterías ${esHoy ? 'hoy' : 'ese día'}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${repetidos.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
-  const titulo = esHoy ? `Resultados de la lotería de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de la lotería · ${dia ? fechaLarga(dia.fecha) : ''}`;
+  const titulo = esHoy ? `Resultados de las loterías de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de las loterías · ${dia ? fechaLarga(dia.fecha) : ''}`;
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
@@ -374,7 +374,7 @@ function paginaFecha(dia, anterior, siguiente) {
   const otros = dia.otros.length ? `<h2>Otros juegos</h2><div class="tabla"><table><tr><th>Juego</th><th>Números</th></tr>${dia.otros.map(o => `<tr><td>${esc(o.nombre)}${o.empresa ? ` <span class="leyenda">${esc(o.empresa)}</span>` : ''}</td><td>${numerosJuego(o)}</td></tr>`).join('')}</table></div>` : '';
   const nav = `<p class="chips">${anterior ? `<a href="${url(`/resultados/${anterior}/`)}">← ${esc(fechaCorta(anterior))}</a>` : ''}${siguiente ? `<a href="${url(`/resultados/${siguiente}/`)}">${esc(fechaCorta(siguiente))} →</a>` : ''}</p>`;
   const cuerpo = `<p class="migas"><a href="${url('/resultados/')}">Historial</a> › ${esc(fechaCorta(dia.fecha))}</p>
-<h1>Resultados de la lotería del ${esc(fechaLarga(dia.fecha))}</h1>
+<h1>Resultados de las loterías del ${esc(fechaLarga(dia.fecha))}</h1>
 <div class="tabla"><table><tr><th>Lotería</th><th>Hora</th><th>Números</th></tr>${filas}</table></div>${otros}${nav}${ctaTelegram()}`;
   return pagina({ ruta: `/resultados/${dia.fecha}/`, titulo: `Resultados lotería ${fechaLarga(dia.fecha)} | ${NOMBRE_SITIO}`, descripcion: `Todos los resultados de la lotería del ${fechaLarga(dia.fecha)}: Leidsa, Loteka, Nacional, Real, La Primera, LoteDom, Anguila y más.`, cuerpo });
 }
