@@ -15,6 +15,33 @@ const TG_CHAT_IDS = (() => {
 })();
 const TG_ACTIVO = !!(TG_TOKEN && TG_CHAT_IDS.length);
 
+// ── SITIO PÚBLICO: le pide a GitHub que publique la página al salir un resultado ──
+// Necesita la variable GITHUB_TOKEN (token fine-grained con permiso Actions: Read and write
+// sobre el repo). Sin ese token no hace nada y el sitio sigue con su publicación de cada hora.
+const GH_TOKEN = process.env.GITHUB_TOKEN || '';
+const GH_REPO  = process.env.GITHUB_REPO || 'reydis/reydis-bot';
+let sitioUltimo = 0, sitioPendiente = null;
+async function dispararSitio(motivo = '') {
+  if (!GH_TOKEN) return { ok: false, error: 'Falta la variable GITHUB_TOKEN en Render' };
+  const espera = 120000 - (Date.now() - sitioUltimo); // máximo una publicación cada 2 minutos
+  if (espera > 0) {
+    if (!sitioPendiente) sitioPendiente = setTimeout(() => { sitioPendiente = null; dispararSitio(motivo); }, espera);
+    return { ok: true, programado_en_segundos: Math.ceil(espera / 1000) };
+  }
+  sitioUltimo = Date.now();
+  try {
+    await axios.post(`https://api.github.com/repos/${GH_REPO}/actions/workflows/sitio-publico.yml/dispatches`, { ref: 'main' }, {
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, timeout: 10000
+    });
+    console.log(`🌐 Sitio público: publicación pedida (${motivo})`);
+    return { ok: true };
+  } catch (e) {
+    const error = `${e.response?.status || ''} ${e.response?.data?.message || e.message}`.trim();
+    console.error('⚠️ [sitio-publico]', error);
+    return { ok: false, error };
+  }
+}
+
 const yaNotificado = {};
 const yaChequeado = {};
 const yaPredicho = {};
@@ -52,6 +79,7 @@ async function notificarNuevosSorteos() {
   if (!sinAvisar.length) return;
   nuevos.length = 0; nuevos.push(...sinAvisar);
   await marcarEnviado(nuevos.map(n => `res|${n.clave}`));
+  dispararSitio(nuevos.map(n => n.nombre).join(', ')); // 🌐 publica el sitio público al instante
 
   const f2 = x => String(x).padStart(2, '0');
 
@@ -1345,6 +1373,7 @@ setInterval(sincronizar, 15 * 60 * 1000);
 
 // ── ENDPOINTS Frontend y Diagnóstico ───────────────────────────────────────
 app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas || {} }); });
+app.get('/api/sitio-probar', async (req, res) => { res.json({ token_configurado: !!GH_TOKEN, repo: GH_REPO, ...(await dispararSitio('prueba manual')) }); });
 app.get('/api/historico', (req, res) => res.json({ historico: estado.historico, total: estado.historico.length }));
 app.get('/api/debug', async (req, res) => {
   try {
