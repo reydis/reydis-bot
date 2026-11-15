@@ -178,41 +178,55 @@ function estadisticas(serie) {
 
 // ── Plantilla ───────────────────────────────────────────────────────────────
 const CSS = `
-:root{--fondo:#0b1220;--panel:#121a2b;--borde:#22304a;--texto:#e6edf7;--suave:#9fb0c8;--acento:#22d3ee;--acento2:#a78bfa;--bien:#34d399;--ojo:#fbbf24}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--fondo);color:var(--texto);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+:root{--fondo:#070c18;--panel:#0f1729;--panel2:#141e36;--borde:#1f2d4a;--texto:#e8eef9;--suave:#93a4c0;--acento:#22d3ee;--acento2:#a78bfa;--bien:#34d399;--ojo:#fbbf24;--r:16px}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;min-height:100vh;color:var(--texto);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background-color:var(--fondo);background-image:radial-gradient(900px 420px at 12% -8%,rgba(34,211,238,.13),transparent 60%),radial-gradient(800px 420px at 92% -4%,rgba(167,139,250,.15),transparent 60%);background-repeat:no-repeat}
 a{color:var(--acento);text-decoration:none}a:hover{text-decoration:underline}
-.cab{background:linear-gradient(135deg,#0f1b33,#1a1040);border-bottom:1px solid var(--borde)}
-.cab .in{max-width:1080px;margin:auto;padding:14px 16px;display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center}
-.logo{font-weight:800;font-size:1.25rem;color:#fff;letter-spacing:.3px}.logo span{color:var(--acento)}
-.menu{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.95rem}.menu a{color:var(--suave)}.menu a:hover{color:#fff}
-main{max-width:1080px;margin:auto;padding:18px 16px 40px}
-h1{font-size:1.7rem;line-height:1.25;margin:.3em 0 .2em}h2{font-size:1.25rem;margin:1.6em 0 .6em}h3{font-size:1.05rem;margin:0 0 .4em}
-.sub{color:var(--suave);margin:0 0 1em}
-.rejilla{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
-.tarjeta{background:var(--panel);border:1px solid var(--borde);border-radius:12px;padding:12px}.tarjeta p{margin:.5em 0 0}
-.tarjeta .hora{color:var(--suave);font-size:.85rem}
-.bolas{display:inline-flex;flex-wrap:wrap;gap:6px}
-.bola{display:inline-grid;place-items:center;min-width:2.3em;height:2.3em;padding:0 .3em;border-radius:999px;background:#1d2a44;border:1px solid #2d4166;font-weight:700;font-variant-numeric:tabular-nums}
-.bola.rep{border-color:var(--ojo);color:var(--ojo)}.pend{color:var(--suave);font-style:italic}
-.aviso{background:#131c2e;border-left:4px solid var(--acento2);padding:12px 14px;border-radius:8px;color:#cfd8e6;margin:16px 0}
-.cta{background:linear-gradient(135deg,#0e7490,#6d28d9);border-radius:12px;padding:16px;margin:22px 0;color:#fff}
-.cta a{color:#fff;font-weight:700;text-decoration:underline}
+.cab{position:sticky;top:0;z-index:10;background:rgba(7,12,24,.82);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--borde)}
+.cab .in{max-width:1120px;margin:auto;padding:14px 18px;display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center;justify-content:space-between}
+.logo{font-weight:800;font-size:1.3rem;color:#fff;letter-spacing:.2px}.logo span{background:linear-gradient(90deg,var(--acento),var(--acento2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.logo:hover{text-decoration:none}
+.menu{display:flex;flex-wrap:wrap;gap:2px 6px;font-size:.95rem}.menu a{color:var(--suave);padding:6px 12px;border-radius:999px;transition:background .15s,color .15s}.menu a:hover{color:#fff;background:rgba(255,255,255,.07);text-decoration:none}
+main{max-width:1120px;margin:auto;padding:12px 18px 56px}
+.hero{padding:44px 0 26px}
+.hero h1{font-size:clamp(1.9rem,4.6vw,3rem);line-height:1.12;letter-spacing:-.02em;margin:.1em 0 .35em;font-weight:800}
+.hero .sub{font-size:1.08rem;max-width:720px;margin:0 0 1.1em}
+.vivo{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;color:var(--bien);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.28);padding:5px 12px;border-radius:999px}
+.vivo:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--bien);box-shadow:0 0 0 0 rgba(52,211,153,.6);animation:pulso 2s infinite}
+@keyframes pulso{70%{box-shadow:0 0 0 9px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+h1{font-size:1.9rem;line-height:1.2;margin:.4em 0 .25em;letter-spacing:-.01em}
+h2{font-size:1.3rem;margin:2.4em 0 .9em;display:flex;align-items:center;gap:10px;letter-spacing:-.005em}
+h2:before{content:"";width:4px;height:1.1em;border-radius:3px;background:linear-gradient(var(--acento),var(--acento2))}
+h3{font-size:1.02rem;margin:0 0 .15em;font-weight:700}h3 a{color:var(--texto)}
+.sub{color:var(--suave);margin:0 0 1.2em}
+.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.tarjeta{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:18px 16px;min-height:128px;transition:transform .18s,border-color .18s,box-shadow .18s}
+.tarjeta:hover{transform:translateY(-3px);border-color:#36507f;box-shadow:0 12px 30px -14px rgba(34,211,238,.35)}
+.tarjeta p{margin:.8em 0 0}.tarjeta .hora{color:var(--suave);font-size:.82rem}
+.bolas{display:inline-flex;flex-wrap:wrap;gap:7px}
+.bola{display:inline-grid;place-items:center;min-width:2.45em;height:2.45em;padding:0 .35em;border-radius:999px;background:radial-gradient(circle at 32% 28%,#2c4270,#16223d);border:1px solid #35508a;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.bola.rep{border-color:var(--ojo);color:#1a1200;background:radial-gradient(circle at 32% 28%,#fde68a,#f59e0b);box-shadow:0 0 14px rgba(251,191,36,.45)}
+.pend{color:var(--suave);font-style:italic;font-size:.92rem}
+.aviso{background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.25);border-left:4px solid var(--acento2);padding:16px 18px;border-radius:12px;color:#d3dbea;margin:26px 0}
+.cta{background:linear-gradient(120deg,#0e7490,#6d28d9);border-radius:var(--r);padding:20px 22px;margin:34px 0;color:#fff;box-shadow:0 18px 40px -22px rgba(109,40,217,.7)}
+.cta a{color:#fff;font-weight:800;text-decoration:underline}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{padding:8px 6px;border-bottom:1px solid var(--borde);text-align:left}th{color:var(--suave);font-weight:600;font-size:.9rem}
-.tabla{overflow-x:auto;background:var(--panel);border:1px solid var(--borde);border-radius:12px;padding:4px 10px}
-.mapa{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;max-width:560px}
-.mapa a{display:grid;place-items:center;aspect-ratio:1;border-radius:6px;font-size:.8rem;font-weight:700;color:#fff;line-height:1.1;text-align:center}
+th,td{padding:12px 10px;border-bottom:1px solid var(--borde);text-align:left}tr:last-child td{border-bottom:0}th{color:var(--suave);font-weight:600;font-size:.88rem}
+.tabla{overflow-x:auto;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:6px 14px}
+.mapa{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:600px}
+.mapa a{display:grid;place-items:center;aspect-ratio:1;border-radius:8px;font-size:.82rem;font-weight:700;color:#fff;line-height:1.1;text-align:center;transition:transform .12s}.mapa a:hover{transform:scale(1.12);text-decoration:none}
 .mapa small{display:block;font-weight:400;opacity:.85;font-size:.7rem}
-.leyenda{color:var(--suave);font-size:.85rem;margin-top:6px}
-.chips{display:flex;flex-wrap:wrap;gap:8px}.chips a{background:var(--panel);border:1px solid var(--borde);border-radius:999px;padding:6px 12px;color:var(--texto)}
-form.buscar{display:flex;gap:8px;max-width:340px}
-form.buscar input{flex:1;padding:10px;border-radius:8px;border:1px solid var(--borde);background:var(--panel);color:#fff;font-size:1rem}
-form.buscar button{padding:10px 16px;border:0;border-radius:8px;background:var(--acento);color:#04131a;font-weight:700;cursor:pointer}
+.leyenda{color:var(--suave);font-size:.86rem;margin-top:8px}
+.chips{display:flex;flex-wrap:wrap;gap:10px}.chips a{background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:8px 16px;color:var(--texto);transition:border-color .15s}.chips a:hover{border-color:var(--acento);text-decoration:none}
+form.buscar{display:flex;gap:10px;max-width:380px}
+form.buscar input{flex:1;padding:13px 14px;border-radius:12px;border:1px solid var(--borde);background:var(--panel);color:#fff;font-size:1.05rem}
+form.buscar input:focus{outline:2px solid var(--acento);outline-offset:1px}
+form.buscar button{padding:13px 22px;border:0;border-radius:12px;background:linear-gradient(120deg,var(--acento),#60a5fa);color:#04131a;font-weight:800;cursor:pointer}
 .migas{font-size:.85rem;color:var(--suave)}.ok{color:var(--bien)}.ojo{color:var(--ojo)}
-footer{border-top:1px solid var(--borde);color:var(--suave);font-size:.88rem}
-footer .in{max-width:1080px;margin:auto;padding:20px 16px}
-@media(max-width:520px){h1{font-size:1.4rem}.bola{min-width:2.1em;height:2.1em}}
+footer{border-top:1px solid var(--borde);color:var(--suave);font-size:.88rem;background:rgba(0,0,0,.18)}
+footer .in{max-width:1120px;margin:auto;padding:28px 18px}
+@media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
 
 function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
@@ -264,8 +278,9 @@ function paginaInicio(dias, series) {
   const reps = repetidos.length ? `<h2>⚡ Repetidos en varias loterías ${esHoy ? 'hoy' : 'ese día'}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${repetidos.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
   const titulo = esHoy ? `Resultados de la lotería de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de la lotería · ${dia ? fechaLarga(dia.fecha) : ''}`;
-  const cuerpo = `<h1>${esc(titulo)}</h1>
-<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. ${esHoy ? 'Los resultados se actualizan unos minutos después de cada sorteo.' : ''}</p>
+  const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
+<h1>${esc(titulo)}</h1>
+<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
 ${ctaTelegram()}
