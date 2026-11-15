@@ -280,7 +280,7 @@ function paginaInicio(dias, series) {
   const titulo = esHoy ? `Resultados de las loterías de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de las loterías · ${dia ? fechaLarga(dia.fecha) : ''}`;
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
-<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
+<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Los números en amarillo se repitieron en 2 o más loterías del mismo día.</p></section>
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
 ${ctaTelegram()}
