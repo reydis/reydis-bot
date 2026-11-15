@@ -265,7 +265,7 @@ function paginaInicio(dias, series) {
 
   const titulo = esHoy ? `Resultados de la lotería de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de la lotería · ${dia ? fechaLarga(dia.fecha) : ''}`;
   const cuerpo = `<h1>${esc(titulo)}</h1>
-<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. ${esHoy ? 'Esta página se actualiza durante el día.' : ''}</p>
+<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. ${esHoy ? 'Los resultados se actualizan unos minutos después de cada sorteo.' : ''}</p>
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
 ${ctaTelegram()}
