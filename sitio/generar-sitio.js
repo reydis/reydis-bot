@@ -225,6 +225,10 @@ form.buscar button{padding:13px 22px;border:0;border-radius:12px;background:line
 .migas{font-size:.85rem;color:var(--suave)}.ok{color:var(--bien)}.ojo{color:var(--ojo)}
 footer{border-top:1px solid var(--borde);color:var(--suave);font-size:.88rem;background:rgba(0,0,0,.18)}
 footer .in{max-width:1120px;margin:auto;padding:28px 18px}
+.bola.ya{border-color:var(--bien);color:#03150e;background:radial-gradient(circle at 32% 28%,#6ee7b7,#059669);box-shadow:0 0 14px rgba(52,211,153,.4)}
+.radar{text-align:center;min-height:0}.radar p{margin:.6em 0 0}.radar .bola{width:3.2em;height:3.2em;font-size:1.15rem}
+.radar-cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:16px 18px;margin:30px 0}
+details{margin:12px 0}summary{cursor:pointer;color:var(--acento);font-weight:700;padding:10px 0}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -240,7 +244,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <link rel="stylesheet" href="${url('/estilos.css')}">${ads}
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
@@ -255,6 +259,91 @@ function colorMapa(v, max) {
   const t = max ? v / max : 0;
   const h = 220 - Math.round(t * 200); // azul (frío) → rojo (caliente)
   return `hsl(${h} 70% ${22 + Math.round(t * 20)}%)`;
+}
+
+// ── Radar: números del día, marcador contra el azar y jaladeras ────────────
+const PESOS = [60, 8, 4];          // 1.er, 2.º y 3.er premio (como el motor del bot)
+const PL = 1 - Math.pow(0.99, 3);  // prob. de que un número salga en un sorteo
+const VENT_RADAR = 30, K_RADAR = 5, DIAS_MARCADOR = 60;
+
+function puntajes(dias, hasta) {
+  const pts = Array(100).fill(0);
+  for (const d of dias.slice(Math.max(0, hasta - VENT_RADAR), hasta))
+    for (const nums of Object.values(d.quinielas)) nums.forEach((n, i) => { pts[n] += PESOS[i] || 0; });
+  return pts;
+}
+const topN = (pts, k = K_RADAR) => pts.map((p, n) => ({ n, p })).sort((a, b) => b.p - a.p || a.n - b.n).slice(0, k).map(x => x.n);
+const nombreLoteria = k => (LOTERIAS.find(l => l.clave === k) || { nombre: k }).nombre;
+
+function calcularRadar(dias) {
+  const hoy = fechaRD();
+  const idxHoy = dias.findIndex(d => d.fecha === hoy);
+  const fin = idxHoy >= 0 ? idxHoy : dias.length; // el marcador solo usa días ya terminados
+  const diaHoy = idxHoy >= 0 ? dias[idxHoy] : null;
+  const hoyNums = fin >= 10 ? topN(puntajes(dias, fin)) : [];
+  const yaSalio = n => diaHoy ? Object.entries(diaHoy.quinielas).filter(([, nums]) => nums.includes(n)).map(([k]) => nombreLoteria(k)) : [];
+  const picks = hoyNums.map(n => ({ n, yaSalio: yaSalio(n) }));
+  const detalle = [];
+  let sumHits = 0, sumEsp = 0;
+  for (let i = Math.max(10, fin - DIAS_MARCADOR); i < fin; i++) {
+    const L = Object.keys(dias[i].quinielas).length;
+    if (L < 8) continue; // día incompleto
+    const top = topN(puntajes(dias, i));
+    const salidos = new Set(Object.values(dias[i].quinielas).flat());
+    const hits = top.filter(n => salidos.has(n));
+    const esp = K_RADAR * (1 - Math.pow(1 - PL, L));
+    sumHits += hits.length; sumEsp += esp;
+    detalle.push({ fecha: dias[i].fecha, top, hits, esp });
+  }
+  return { hoy: picks, dias: detalle.length, sumHits, sumEsp, detalle };
+}
+
+function calcularJaladeras(series) {
+  const M = Array(100).fill(0);
+  const sig = Array.from({ length: 100 }, () => Array(100).fill(0));
+  for (const l of LOTERIAS) {
+    const s = series[l.clave] || [];
+    for (let i = 0; i < s.length - 1; i++) {
+      if (diasEntre(s[i].fecha, s[i + 1].fecha) !== 1) continue; // solo sorteos de días seguidos
+      for (const a of new Set(s[i].nums)) { M[a]++; for (const b of new Set(s[i + 1].nums)) sig[a][b]++; }
+    }
+  }
+  return Array.from({ length: 100 }, (_, a) => ({ a, M: M[a], top: sig[a].map((c, b) => ({ b, c })).sort((x, y) => y.c - x.c || x.b - y.b).slice(0, 3) }));
+}
+
+function teaserRadar(dias) {
+  const r = calcularRadar(dias);
+  if (!r.hoy.length) return '';
+  return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a></div>`;
+}
+
+function paginaJugadas(dias, series) {
+  const r = calcularRadar(dias);
+  const jal = calcularJaladeras(series);
+  const tarjetas = r.hoy.map(x => `<div class="tarjeta radar"><div>${bola(f2(x.n), x.yaSalio.length ? ' ya' : '')}</div><p class="hora">${x.yaSalio.length ? `Ya salió hoy en: <strong>${x.yaSalio.map(esc).join(', ')}</strong>` : 'Todavía no ha salido hoy'}</p></div>`).join('');
+  const prom = r.dias ? r.sumHits / r.dias : 0, esp = r.dias ? r.sumEsp / r.dias : 0;
+  const veredicto = !r.dias ? 'Todavía no hay suficientes días para medirlo.'
+    : Math.abs(prom - esp) < 0.2 ? 'Prácticamente igual que el azar.'
+    : prom > esp ? 'Un poco por encima del azar, aunque con tan pocos días puede ser casualidad.'
+    : 'Un poco por debajo del azar.';
+  const filasDia = [...r.detalle].reverse().slice(0, 14).map(d => `<tr><td>${esc(fechaMini(d.fecha))}</td><td><span class="bolas">${d.top.map(n => bola(f2(n), d.hits.includes(n) ? ' ya' : '')).join('')}</span></td><td>${d.hits.length}</td><td>${d.esp.toFixed(1)}</td></tr>`).join('');
+  const filasJal = jal.map(j => `<tr><td>${bola(f2(j.a))}</td><td><span class="bolas">${j.top.map(t => `${bola(f2(t.b))}<small class="leyenda">${t.c}×</small>`).join(' ')}</span></td><td>${j.M}</td></tr>`).join('');
+  const cuerpo = `<section class="hero"><h1>Números del día y jaladeras</h1>
+<p class="sub">Lo que dicen las estadísticas del Radar para hoy, sin dividir por lotería. Es información y entretenimiento: <strong>no es una ventaja</strong>, y abajo te mostramos cuánto le ha ido contra el azar.</p></section>
+<h2>🎯 Números del día</h2>
+${r.hoy.length ? `<div class="rejilla">${tarjetas}</div><p class="leyenda">Son los 5 números con más peso en los últimos ${VENT_RADAR} días (el 1.er premio pesa más que el 2.º y el 3.º). En verde, los que ya salieron hoy en alguna lotería: si no salió en una, puede salir en otra.</p>` : '<p>Todavía no hay suficientes días de historial para calcularlos.</p>'}
+<h2>¿Qué tan bien le ha ido?</h2>
+<p>${r.dias ? `En los últimos <strong>${r.dias}</strong> días completos, los 5 números del Radar salieron en promedio <strong>${prom.toFixed(2)}</strong> por día. El azar esperaba <strong>${esp.toFixed(2)}</strong>. ${veredicto}` : veredicto}</p>
+<p class="leyenda">Con unas 20 loterías al día, cualquier número sale en alguna casi la mitad de los días solo por azar. Por eso el marcador compara contra eso y no contra cero. Cada día se calcula usando solo los días anteriores.</p>
+${r.dias ? `<div class="tabla"><table><tr><th>Día</th><th>Números del Radar</th><th>Salieron</th><th>Azar esperaba</th></tr>${filasDia}</table></div>` : ''}
+<h2>🔗 Jaladeras</h2>
+<p>La jaladera es la idea de que un número "jala" a otro. Esto es lo que dicen los datos: cuando un número sale en una lotería, lo que más salió en el siguiente sorteo de esa misma lotería (al día siguiente).</p>
+<p class="leyenda">Cuidado al leerlo: por azar, cada número aparece en el siguiente sorteo unas 3 de cada 100 veces. Con tan pocas repeticiones, casi todo lo que se ve aquí es casualidad.</p>
+<details><summary>Ver las 100 jaladeras</summary><div class="tabla"><table><tr><th>Si sale</th><th>Después salió más</th><th>Veces vistas</th></tr>${filasJal}</table></div></details>
+${avisoHonesto()}
+<p class="leyenda">Juega con responsabilidad, solo lo que puedas perder. Solo mayores de 18 años.</p>
+${ctaTelegram()}`;
+  return pagina({ ruta: '/jugadas/', titulo: `Números del día y jaladeras de la lotería dominicana | ${NOMBRE_SITIO}`, descripcion: 'Números del día según las estadísticas, marcador contra el azar y jaladeras de la lotería dominicana, con datos reales.', cuerpo });
 }
 
 // ── Páginas ─────────────────────────────────────────────────────────────────
@@ -277,12 +366,13 @@ function paginaInicio(dias, series) {
 
   const reps = repetidos.length ? `<h2>⚡ Repetidos en varias loterías ${esHoy ? 'hoy' : 'ese día'}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${repetidos.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
-  const titulo = esHoy ? `Resultados de las loterías de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de las loterías · ${dia ? fechaLarga(dia.fecha) : ''}`;
+  const titulo = esHoy ? `Resultados de la lotería de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de la lotería · ${dia ? fechaLarga(dia.fecha) : ''}`;
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
-<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Los números en amarillo se repitieron en 2 o más loterías del mismo día.</p></section>
+<p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
+${teaserRadar(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
 <form class="buscar" onsubmit="var n=parseInt(this.n.value,10);if(n>=0&&n<=99){location.href='${url('/numeros/')}'+String(n).padStart(2,'0')+'/'}return false"><input name="n" inputmode="numeric" maxlength="2" placeholder="Ej: 27" aria-label="Número del 00 al 99"><button>Ver</button></form>
@@ -374,7 +464,7 @@ function paginaFecha(dia, anterior, siguiente) {
   const otros = dia.otros.length ? `<h2>Otros juegos</h2><div class="tabla"><table><tr><th>Juego</th><th>Números</th></tr>${dia.otros.map(o => `<tr><td>${esc(o.nombre)}${o.empresa ? ` <span class="leyenda">${esc(o.empresa)}</span>` : ''}</td><td>${numerosJuego(o)}</td></tr>`).join('')}</table></div>` : '';
   const nav = `<p class="chips">${anterior ? `<a href="${url(`/resultados/${anterior}/`)}">← ${esc(fechaCorta(anterior))}</a>` : ''}${siguiente ? `<a href="${url(`/resultados/${siguiente}/`)}">${esc(fechaCorta(siguiente))} →</a>` : ''}</p>`;
   const cuerpo = `<p class="migas"><a href="${url('/resultados/')}">Historial</a> › ${esc(fechaCorta(dia.fecha))}</p>
-<h1>Resultados de las loterías del ${esc(fechaLarga(dia.fecha))}</h1>
+<h1>Resultados de la lotería del ${esc(fechaLarga(dia.fecha))}</h1>
 <div class="tabla"><table><tr><th>Lotería</th><th>Hora</th><th>Números</th></tr>${filas}</table></div>${otros}${nav}${ctaTelegram()}`;
   return pagina({ ruta: `/resultados/${dia.fecha}/`, titulo: `Resultados lotería ${fechaLarga(dia.fecha)} | ${NOMBRE_SITIO}`, descripcion: `Todos los resultados de la lotería del ${fechaLarga(dia.fecha)}: Leidsa, Loteka, Nacional, Real, La Primera, LoteDom, Anguila y más.`, cuerpo });
 }
@@ -399,7 +489,7 @@ function paginaComoFunciona() {
 <p><strong>Rango normal:</strong> el azar nunca reparte parejo. Marcamos los números que se alejan mucho de lo esperado, pero con 100 números lo normal es que unos 5 se alejen por pura casualidad.</p>
 <p><strong>Atrasados:</strong> cuántos sorteos lleva un número sin salir. Un número atrasado <em>no</em> tiene más chance de salir: las tómbolas no tienen memoria.</p>
 <h2>¿Ustedes predicen números?</h2>
-<p>No. Nuestro laboratorio probó 12 métodos populares (jaladera, espejo, gemelos, calientes, atrasados y otros) contra datos reales sorteo por sorteo, y ninguno le ganó al azar. Por eso no vendemos "números fuertes": te damos los datos claros para que decidas tú.</p>
+<p>No. Nuestro laboratorio probó 12 métodos populares (jaladera, espejo, gemelos, calientes, atrasados y otros) contra datos reales sorteo por sorteo, y ninguno le ganó al azar. Por eso no prometemos nada. Aun así, en la página <a href="${url('/jugadas/')}">Jugadas</a> mostramos los "números del día" y las "jaladeras" porque mucha gente los consulta, siempre con un marcador contra el azar para que veas cuándo es suerte y cuándo no.</p>
 <h2>Juego responsable</h2>
 <p>La lotería es entretenimiento. Juega solo lo que puedas perder, ponte un límite y no intentes recuperar lo perdido apostando más. Solo para mayores de 18 años.</p>
 ${ctaTelegram()}`;
@@ -433,6 +523,7 @@ async function main() {
   guardar('/', paginaInicio(dias, series));
   guardar('/loterias/', paginaLoterias(series));
   for (const l of LOTERIAS) if (series[l.clave].length) guardar(`/loterias/${l.slug}/`, paginaLoteria(l, series[l.clave]));
+  guardar('/jugadas/', paginaJugadas(dias, series));
   guardar('/numeros/', paginaNumeros(series));
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
