@@ -40,15 +40,15 @@ const LOTERIAS = [
   ['lotedom', 'lotedom', 'LoteDom', '12:00 PM'],
   ['suerte', 'la-suerte-1230', 'La Suerte 12:30', '12:30 PM'],
   ['king_t', 'king-lottery-tarde', 'King Lottery Tarde', '12:30 PM'],
-  ['real_t', 'loteria-real', 'Lotería Real', '12:30 PM'],
+  ['real_t', 'loteria-real', 'Lotería Real', '12:55 PM'],
   ['anguila_t', 'anguila-1pm', 'Anguila 1:00 PM', '1:00 PM'],
   ['florida_d', 'florida-dia', 'Florida Día', '2:00 PM'],
   ['gana_mas', 'gana-mas', 'Gana Más', '2:30 PM'],
   ['new_york_t', 'new-york-tarde', 'New York Tarde', '3:30 PM'],
   ['suerte_t2', 'la-suerte-tarde', 'La Suerte Tarde', '6:00 PM'],
   ['anguila_n', 'anguila-6pm', 'Anguila 6:00 PM', '6:00 PM'],
-  ['loteka', 'loteka', 'Loteka', '6:55 PM'],
   ['king_n', 'king-lottery-noche', 'King Lottery Noche', '7:00 PM'],
+  ['loteka', 'loteka', 'Loteka', '7:55 PM'],
   ['laprimera_n', 'la-primera-noche', 'La Primera Noche', '8:00 PM'],
   ['leidsa', 'leidsa', 'Leidsa (Quiniela Palé)', '8:55 PM'],
   ['nacional', 'loteria-nacional', 'Lotería Nacional', '9:00 PM'],
@@ -56,6 +56,12 @@ const LOTERIAS = [
   ['new_york_n', 'new-york-noche', 'New York Noche', '10:30 PM'],
   ['florida_n', 'florida-noche', 'Florida Noche', '10:30 PM'],
 ].map(([clave, slug, nombre, hora]) => ({ clave, slug, nombre, hora }));
+// Horarios de domingo CONFIRMADOS en fuentes públicas (otros medios + el calendario de cada lotería).
+// Las que no están aquí no tienen horario de domingo confirmado todavía.
+const HORA_DOMINGO = { leidsa: '3:55 PM', nacional: '6:00 PM' };
+const IGUAL_DOMINGO = new Set(['gana_mas', 'real_t', 'loteka']); // confirmadas: sortean a la misma hora el domingo
+const esDomingoRD = () => new Date(fechaRD() + 'T12:00:00Z').getUTCDay() === 0;
+const horaHoy = l => (esDomingoRD() && HORA_DOMINGO[l.clave]) || l.hora;
 const ALIAS = { laprimera_d: 'laprimera', suerte_m: 'suerte' };
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
@@ -364,7 +370,7 @@ function paginaInicio(dias, series) {
   const tarjetas = LOTERIAS.filter(l => series[l.clave].length).map(l => {
     const nums = dia && dia.quinielas[l.clave];
     const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), conteo[n] && conteo[n].length >= 2 ? ' rep' : '')).join('')}</span>` : `<span class="pend">Pendiente</span>`;
-    return `<div class="tarjeta"><h3><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></h3><div class="hora">${esc(l.hora)}</div><p>${cont}</p></div>`;
+    return `<div class="tarjeta"><h3><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></h3><div class="hora">${esc(horaHoy(l))}</div><p>${cont}</p></div>`;
   }).join('');
 
   const otros = dia && dia.otros.length ? `<h2>Otros juegos</h2><div class="rejilla">${dia.otros.map(o => `<div class="tarjeta"><h3>${esc(o.nombre)}</h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`).join('')}</div>` : '';
@@ -395,7 +401,7 @@ function numerosJuego(o) {
 function paginaLoterias(series) {
   const filas = LOTERIAS.filter(l => series[l.clave].length).map(l => {
     const s = series[l.clave], u = s[s.length - 1];
-    return `<tr><td><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></td><td>${esc(l.hora)}</td><td>${bolas(u.nums)}</td><td>${esc(fechaCorta(u.fecha))}</td></tr>`;
+    return `<tr><td><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></td><td>${esc(horaHoy(l))}</td><td>${bolas(u.nums)}</td><td>${esc(fechaCorta(u.fecha))}</td></tr>`;
   }).join('');
   const cuerpo = `<h1>Loterías y quinielas</h1><p class="sub">Último resultado de cada una. Entra a cualquiera para ver su historial y sus estadísticas.</p>
 <div class="tabla"><table><tr><th>Lotería</th><th>Hora</th><th>Último</th><th>Fecha</th></tr>${filas}</table></div>${ctaTelegram()}`;
@@ -415,7 +421,7 @@ function paginaLoteria(l, serie) {
 
   const cuerpo = `<p class="migas"><a href="${url('/loterias/')}">Loterías</a> › ${esc(l.nombre)}</p>
 <h1>${esc(l.nombre)}: resultados y estadísticas</h1>
-<p class="sub">Sorteo de las ${esc(l.hora)}. Último resultado (${esc(fechaLarga(u.fecha))}): ${bolas(u.nums)}</p>
+<p class="sub">Sorteo de las ${esc(l.hora)}${HORA_DOMINGO[l.clave] ? ` (los domingos, a las ${esc(HORA_DOMINGO[l.clave])})` : ''}. Último resultado (${esc(fechaLarga(u.fecha))}): ${bolas(u.nums)}</p>
 <h2>Mapa de los últimos ${e.N} sorteos</h2>
 <div class="mapa">${mapa}</div>
 <p class="leyenda">Cada casilla: el número y cuántas veces salió. Lo esperado por azar es ~${e.esperado.toFixed(1)} veces (lo normal va de ${Math.max(0, e.esperado - 2 * e.sd).toFixed(0)} a ${(e.esperado + 2 * e.sd).toFixed(0)}). Azul = menos, rojo = más.</p>
@@ -566,11 +572,12 @@ ${pieGuia()}`;
 }
 
 function paginaGuiaHorarios() {
-  const filas = LOTERIAS.map(l => `<tr><td>${esc(l.hora)}</td><td>${enlaceLoteria(l)}</td></tr>`).join('');
+  const dom = l => HORA_DOMINGO[l.clave] || (IGUAL_DOMINGO.has(l.clave) ? 'igual' : 'por confirmar');
+  const filas = LOTERIAS.map(l => `<tr><td>${esc(l.hora)}</td><td>${enlaceLoteria(l)}</td><td>${esc(dom(l))}</td></tr>`).join('');
   const cuerpo = `${migasGuia('Horarios')}<h1>Horarios de las loterías dominicanas</h1>
 <p class="sub">A qué hora sortea cada lotería y quiniela, ordenadas de la mañana a la noche.</p>
-<div class="tabla"><table><tr><th>Hora</th><th>Lotería</th></tr>${filas}</table></div>
-<p class="leyenda">Son los horarios habituales entre semana. Los domingos y los días feriados algunas loterías cambian la hora o no sortean, así que confírmalo con la lotería o con tu banca. Los resultados aparecen en la web unos minutos después de cada sorteo.</p>
+<div class="tabla"><table><tr><th>Hora (lunes a sábado)</th><th>Lotería</th><th>Domingo</th></tr>${filas}</table></div>
+<p class="leyenda">En la columna Domingo solo ponemos los horarios que hemos confirmado: Leidsa sortea a las 3:55 PM y la Lotería Nacional a las 6:00 PM. "Por confirmar" significa que todavía no tenemos el dato seguro del domingo. Los días feriados también pueden cambiar la hora, así que confírmalo con la lotería o con tu banca. Los resultados aparecen en la web unos minutos después de cada sorteo.</p>
 <p>¿Buscas lo que salió? Mira los <a href="${url('/')}">resultados de hoy</a> o el <a href="${url('/resultados/')}">historial por fecha</a>.</p>
 ${pieGuia()}`;
   return pagina({ ruta: '/guias/horarios-loterias-dominicanas/', titulo: `Horarios de las loterías dominicanas: a qué hora sortea cada una | ${NOMBRE_SITIO}`, descripcion: 'Horario de los sorteos de Leidsa, Loteka, Lotería Nacional, Real, La Primera, LoteDom, Anguila, King Lottery, New York y Florida.', cuerpo });
@@ -586,7 +593,7 @@ function paginaGuiaNacional(series) {
 <h2>Qué es</h2>
 <p>La Lotería Nacional es una institución del Estado dominicano fundada en 1882. Hoy se conoce sobre todo por dos sorteos diarios: <strong>Gana Más</strong> y <strong>Lotería Nacional</strong>.</p>
 <h2>A qué hora juega</h2>
-<p>Gana Más sortea a las <strong>${esc(gm.hora)}</strong> y la Lotería Nacional a las <strong>${esc(nac.hora)}</strong> de la noche. Los domingos y feriados el horario puede cambiar, así que confírmalo con la lotería.</p>
+<p>Gana Más sortea a las <strong>${esc(gm.hora)}</strong> y la Lotería Nacional a las <strong>${esc(nac.hora)}</strong> de la noche, de lunes a sábado. Los <strong>domingos</strong> Gana Más sigue a las 2:30 PM, pero la Lotería Nacional sortea más temprano, a las <strong>6:00 PM</strong>. En días feriados el horario puede cambiar, así que confírmalo con la lotería.</p>
 <h2>Lo que salió en la Lotería Nacional</h2>
 ${ult ? `<p>El último sorteo registrado fue el ${esc(fechaLarga(ult.fecha))}: ${bolas(ult.nums)}</p>` : ''}
 ${tablaUltimos(series, nac.clave, 10)}
