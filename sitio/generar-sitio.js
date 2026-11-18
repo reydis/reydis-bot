@@ -11,6 +11,7 @@
 //  Variables opcionales:
 //    SITE_URL        dirección pública del sitio (por defecto GitHub Pages del repo)
 //    ADSENSE_CLIENT  ca-pub-XXXXXXXXXXXXXXXX  (vacío = sin anuncios)
+//    CONTACTO_EMAIL  correo público para la página de Contacto (vacío = aviso de que viene pronto)
 //    TELEGRAM_BOT    usuario del bot sin @ (por defecto ReydisRadarProV2Bot)
 //    SALIDA          carpeta de salida (por defecto sitio-publico)
 //  Sin dependencias: solo Node 18+.
@@ -23,6 +24,9 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 const SITE_URL = (process.env.SITE_URL || 'https://reydis.github.io/reydis-bot').replace(/\/$/, '');
 const ADSENSE_CLIENT = (process.env.ADSENSE_CLIENT || '').trim();
+// ▼▼ PON AQUÍ EL CORREO DEL SITIO entre las comillas (ejemplo: 'contacto@tudominio.com'). Vacío = la página Contacto dice que viene pronto.
+const CORREO_DEL_SITIO = '';
+const CONTACTO_EMAIL = (process.env.CONTACTO_EMAIL || CORREO_DEL_SITIO).trim();
 const TELEGRAM_BOT = (process.env.TELEGRAM_BOT || 'ReydisRadarProV2Bot').replace(/^@/, '');
 const SALIDA = path.resolve(process.env.SALIDA || 'sitio-publico');
 const BASE = new URL(SITE_URL + '/').pathname.replace(/\/$/, ''); // '' con dominio propio, '/reydis-bot' en GitHub Pages
@@ -244,15 +248,15 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <link rel="stylesheet" href="${url('/estilos.css')}">${ads}
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
-<p><a href="${url('/como-funciona/')}">Cómo funciona</a> · <a href="${url('/privacidad/')}">Privacidad</a> · <a href="https://t.me/${esc(TELEGRAM_BOT)}" rel="noopener">Telegram</a> · Actualizado: ${esc(fechaCorta(fechaRD()))}, ${esc(horaRD())} (hora RD)</p></div></footer>
+<p><a href="${url('/guias/')}">Guías</a> · <a href="${url('/como-funciona/')}">Cómo funciona</a> · <a href="${url('/sobre-nosotros/')}">Sobre nosotros</a> · <a href="${url('/contacto/')}">Contacto</a> · <a href="${url('/terminos/')}">Términos</a> · <a href="${url('/privacidad/')}">Privacidad</a> · Actualizado: ${esc(fechaCorta(fechaRD()))}, ${esc(horaRD())} (hora RD)</p></div></footer>
 </body></html>`;
 }
 
-const ctaTelegram = () => `<div class="cta"><strong>📲 Recibe cada resultado al instante en Telegram.</strong> Sin entrar a la web: <a href="https://t.me/${esc(TELEGRAM_BOT)}" rel="noopener">abrir @${esc(TELEGRAM_BOT)}</a></div>`;
+const ctaTelegram = () => `<div class="cta"><strong>📲 Próximamente: avisos de resultados por Telegram.</strong> Mientras tanto, esta página se actualiza sola después de cada sorteo. <a href="${url('/guias/')}">Mira nuestras guías</a></div>`;
 const avisoHonesto = () => `<div class="aviso">🔎 <strong>Claro y sin cuentos:</strong> cada sorteo es independiente. Que un número esté "caliente" o "atrasado" describe lo que ya pasó, no lo que va a salir. Nuestro laboratorio probó 12 métodos con datos reales y ninguno le ganó al azar. Usa estos datos para informarte, no como garantía.</div>`;
 
 function colorMapa(v, max) {
@@ -423,7 +427,7 @@ ${avisoHonesto()}
 <h2>Últimos 30 resultados</h2>
 <div class="tabla"><table><tr><th>Fecha</th><th>Números</th></tr>${ultimos}</table></div>
 ${ctaTelegram()}`;
-  return pagina({ ruta: `/loterias/${l.slug}/`, titulo: `${l.nombre} hoy: resultados y números más salidos | ${NOMBRE_SITIO}`, descripcion: `Último resultado de ${l.nombre} (${l.hora}), historial de los últimos sorteos, números más salidos, menos salidos y atrasados. Estadística real, sin promesas.`, cuerpo });
+  return pagina({ ruta: `/loterias/${l.slug}/`, titulo: `${l.nombre} hoy (${l.hora}): resultados y números más salidos | ${NOMBRE_SITIO}`, descripcion: `Último resultado de ${l.nombre} (${l.hora}), historial de los últimos sorteos, números más salidos, menos salidos y atrasados. Estadística real, sin promesas.`, cuerpo });
 }
 
 function paginaNumero(n, series) {
@@ -501,9 +505,173 @@ function paginaPrivacidad() {
 <p>${NOMBRE_SITIO} no pide registro ni guarda datos personales de quienes visitan este sitio.</p>
 <p>Este sitio puede mostrar anuncios de Google AdSense. Google y sus socios usan cookies para mostrar anuncios según las visitas anteriores a este y otros sitios. Puedes desactivar los anuncios personalizados en la <a href="https://adssettings.google.com" rel="noopener">configuración de anuncios de Google</a>, y conocer más en <a href="https://policies.google.com/technologies/ads" rel="noopener">cómo usa Google la información</a>.</p>
 <p>El sitio está alojado en un servicio externo que puede registrar datos técnicos de las visitas (como la dirección IP) por razones de seguridad.</p>
-<p>Para cualquier consulta, escríbenos por <a href="https://t.me/${esc(TELEGRAM_BOT)}" rel="noopener">Telegram</a>.</p>
+<p>Para cualquier consulta, usa la página de <a href="${url('/contacto/')}">Contacto</a>.</p>
 <p class="leyenda">Última actualización: ${esc(fechaLarga(fechaRD()))}.</p>`;
   return pagina({ ruta: '/privacidad/', titulo: `Política de privacidad | ${NOMBRE_SITIO}`, descripcion: `Política de privacidad de ${NOMBRE_SITIO}.`, cuerpo });
+}
+
+// ── Guías y páginas informativas ───────────────────────────────────────────
+const lotPorSlug = slug => LOTERIAS.find(l => l.slug === slug);
+const enlaceLoteria = l => `<a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a>`;
+function tablaUltimos(series, clave, n = 7) {
+  const filas = (series[clave] || []).slice(-n).reverse().map(x => `<tr><td><a href="${url(`/resultados/${x.fecha}/`)}">${esc(fechaCorta(x.fecha))}</a></td><td>${bolas(x.nums)}</td></tr>`).join('');
+  return filas ? `<div class="tabla"><table><tr><th>Fecha</th><th>Números</th></tr>${filas}</table></div>` : '';
+}
+const juegoResp = () => `<h2>Juego responsable</h2>
+<p>La lotería es entretenimiento, no una forma de ganar dinero. Juega solo lo que puedas perder, ponte un límite antes de empezar y no intentes recuperar lo perdido apostando más. Solo para mayores de 18 años.</p>`;
+const pieGuia = () => `${avisoHonesto()}${juegoResp()}<p class="leyenda">Los resultados se publican tal como los dan las fuentes. Ante cualquier duda, el resultado oficial es el de cada lotería.</p>`;
+const migasGuia = t => `<p class="migas"><a href="${url('/guias/')}">Guías</a> › ${esc(t)}</p>`;
+
+function paginaGuias() {
+  const items = [
+    ['/guias/como-jugar-quiniela-pale-tripleta/', 'Cómo se juega la quiniela, el palé y la tripleta', 'Qué es cada jugada, cuántos números salen y qué tan probable es cada una.'],
+    ['/guias/horarios-loterias-dominicanas/', 'Horarios de las loterías dominicanas', 'A qué hora sortea cada lotería y quiniela, de la mañana a la noche.'],
+    ['/guias/loteria-nacional/', 'Lotería Nacional: sorteos, horarios y resultados', 'Gana Más y Lotería Nacional, cuándo juegan y dónde ver lo que salió anoche.'],
+    ['/guias/anguila/', 'Anguila: sorteos y resultados', 'Los cuatro sorteos de Anguila al día y sus últimos números.'],
+    ['/guias/preguntas-frecuentes/', 'Preguntas frecuentes', 'Respuestas cortas a lo que más se pregunta sobre las loterías.'],
+  ];
+  const cuerpo = `<section class="hero"><h1>Guías de la lotería dominicana</h1>
+<p class="sub">Explicaciones claras, sin promesas ni trucos: cómo funcionan las jugadas, los horarios y cada lotería.</p></section>
+<div class="rejilla">${items.map(([r, t, d]) => `<a class="tarjeta" href="${url(r)}"><h3>${esc(t)}</h3><p class="hora">${esc(d)}</p></a>`).join('')}</div>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/', titulo: `Guías de la lotería dominicana | ${NOMBRE_SITIO}`, descripcion: 'Guías claras sobre la lotería dominicana: cómo se juega la quiniela, el palé y la tripleta, horarios de cada sorteo y preguntas frecuentes.', cuerpo });
+}
+
+function paginaGuiaJugar() {
+  const cuerpo = `${migasGuia('Cómo se juega')}<h1>Cómo se juega la quiniela, el palé y la tripleta</h1>
+<p class="sub">Las tres jugadas más comunes en las bancas dominicanas, explicadas sin enredos y con las probabilidades reales.</p>
+<h2>La quiniela</h2>
+<p>Eliges un número del <strong>00 al 99</strong>. En cada sorteo salen <strong>tres números</strong>: el primer, el segundo y el tercer premio. Si el tuyo es uno de ellos, ganas, y cada premio paga distinto según la lotería y la banca. Por eso conviene preguntar en tu banca cuánto paga cada posición y guardar siempre el recibo.</p>
+<h2>El palé</h2>
+<p>Apuestas a <strong>dos números</strong> a la vez. Para ganar, los dos tienen que salir entre los tres números del sorteo. Las reglas del orden y lo que paga cambian según la lotería, así que confirma las condiciones con tu banca antes de jugar.</p>
+<h2>La tripleta</h2>
+<p>Apuestas a <strong>tres números</strong> y tienen que salir los tres. Es la jugada más difícil de las tres, y por eso suele ser la que más paga.</p>
+<h2>Súper palé</h2>
+<p>Según Leidsa, el Súper Palé consiste en acertar el primer número del sorteo de Quiniela Palé Electrónico y el primer número del sorteo de la Lotería Nacional. Revisa siempre las reglas vigentes con la lotería.</p>
+<h2>¿Qué tan probable es cada una?</h2>
+<p>En cada sorteo salen tres números del 00 al 99. Haciendo la cuenta:</p>
+<div class="tabla"><table><tr><th>Jugada</th><th>Probabilidad aproximada</th></tr>
+<tr><td>Un número específico como primer premio</td><td>1 en 100 (1%)</td></tr>
+<tr><td>Un número específico en cualquiera de los tres premios</td><td>1 en 34 (casi 3%)</td></tr>
+<tr><td>Un palé específico</td><td>menos de 1 en 1,000</td></tr>
+<tr><td>Una tripleta específica</td><td>menos de 1 en 100,000</td></tr></table></div>
+<p>Mientras más números juntos pides que coincidan, más difícil es y más paga. Ninguna jugada tiene trucos: cada sorteo es independiente de los anteriores.</p>
+<h2>Cómo usar nuestras estadísticas</h2>
+<p>En ${NOMBRE_SITIO} puedes ver los <a href="${url('/loterias/')}">resultados de cada lotería</a>, cuántas veces ha salido cada <a href="${url('/numeros/')}">número</a> y el <a href="${url('/resultados/')}">historial por fecha</a>. Sirve para informarte y entretenerte, no para predecir: un número que lleva muchos sorteos sin salir no tiene más chance de salir.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/como-jugar-quiniela-pale-tripleta/', titulo: `Cómo se juega la quiniela, el palé y la tripleta | ${NOMBRE_SITIO}`, descripcion: 'Qué es la quiniela, el palé y la tripleta en República Dominicana, cuántos números salen en cada sorteo y qué tan probable es cada jugada.', cuerpo });
+}
+
+function paginaGuiaHorarios() {
+  const filas = LOTERIAS.map(l => `<tr><td>${esc(l.hora)}</td><td>${enlaceLoteria(l)}</td></tr>`).join('');
+  const cuerpo = `${migasGuia('Horarios')}<h1>Horarios de las loterías dominicanas</h1>
+<p class="sub">A qué hora sortea cada lotería y quiniela, ordenadas de la mañana a la noche.</p>
+<div class="tabla"><table><tr><th>Hora</th><th>Lotería</th></tr>${filas}</table></div>
+<p class="leyenda">Son los horarios habituales entre semana. Los domingos y los días feriados algunas loterías cambian la hora o no sortean, así que confírmalo con la lotería o con tu banca. Los resultados aparecen en la web unos minutos después de cada sorteo.</p>
+<p>¿Buscas lo que salió? Mira los <a href="${url('/')}">resultados de hoy</a> o el <a href="${url('/resultados/')}">historial por fecha</a>.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/horarios-loterias-dominicanas/', titulo: `Horarios de las loterías dominicanas: a qué hora sortea cada una | ${NOMBRE_SITIO}`, descripcion: 'Horario de los sorteos de Leidsa, Loteka, Lotería Nacional, Real, La Primera, LoteDom, Anguila, King Lottery, New York y Florida.', cuerpo });
+}
+
+function paginaGuiaNacional(series) {
+  const nac = lotPorSlug('loteria-nacional'), gm = lotPorSlug('gana-mas');
+  const sn = series[nac.clave] || [];
+  const ult = sn[sn.length - 1];
+  const desde = sn[0];
+  const cuerpo = `${migasGuia('Lotería Nacional')}<h1>Lotería Nacional: sorteos, horarios y resultados</h1>
+<p class="sub">Lo que necesitas saber para encontrar rápido el resultado de la Lotería Nacional y de Gana Más.</p>
+<h2>Qué es</h2>
+<p>La Lotería Nacional es una institución del Estado dominicano fundada en 1882. Hoy se conoce sobre todo por dos sorteos diarios: <strong>Gana Más</strong> y <strong>Lotería Nacional</strong>.</p>
+<h2>A qué hora juega</h2>
+<p>Gana Más sortea a las <strong>${esc(gm.hora)}</strong> y la Lotería Nacional a las <strong>${esc(nac.hora)}</strong> de la noche. Los domingos y feriados el horario puede cambiar, así que confírmalo con la lotería.</p>
+<h2>Lo que salió en la Lotería Nacional</h2>
+${ult ? `<p>El último sorteo registrado fue el ${esc(fechaLarga(ult.fecha))}: ${bolas(ult.nums)}</p>` : ''}
+${tablaUltimos(series, nac.clave, 10)}
+<p>Para ver cualquier otro día usa el <a href="${url('/resultados/')}">historial por fecha</a>. ${desde ? `Nuestro archivo de Lotería Nacional empieza el ${esc(fechaLarga(desde.fecha))} y crece todos los días.` : ''}</p>
+<h2>Lo que salió en Gana Más</h2>
+${tablaUltimos(series, gm.clave, 7)}
+<p>Más datos en las páginas de ${enlaceLoteria(nac)} y ${enlaceLoteria(gm)}: mapa de números, más salidos, menos salidos y atrasados.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/loteria-nacional/', titulo: `Lotería Nacional hoy: horario, sorteos y resultados de anoche | ${NOMBRE_SITIO}`, descripcion: 'Horario de Gana Más y Lotería Nacional, qué salió en el último sorteo y cómo ver los resultados de días anteriores.', cuerpo });
+}
+
+function paginaGuiaAnguila(series) {
+  const ang = LOTERIAS.filter(l => l.slug.startsWith('anguila'));
+  const bloques = ang.map(l => { const sr = series[l.clave] || []; const u = sr[sr.length - 1]; return `<h3>${enlaceLoteria(l)} · ${esc(l.hora)}</h3>${u ? `<p>Último resultado (${esc(fechaLarga(u.fecha))}): ${bolas(u.nums)}</p>` : ''}`; }).join('');
+  const cuerpo = `${migasGuia('Anguila')}<h1>Anguila: sorteos y resultados</h1>
+<p class="sub">Anguila es una de las quinielas de afuera que más se juegan en las bancas dominicanas. Aquí están sus horarios y sus últimos números.</p>
+<h2>Cuántos sorteos tiene</h2>
+<p>Anguila tiene <strong>${ang.length} sorteos al día</strong>: ${ang.map(l => esc(l.hora)).join(', ')}. Cada sorteo saca tres números del 00 al 99, igual que las demás quinielas, y se juega con las mismas jugadas: quiniela, palé y tripleta. Consulta nuestra <a href="${url('/guias/como-jugar-quiniela-pale-tripleta/')}">guía de cómo se juega</a>.</p>
+<h2>Últimos resultados de cada sorteo</h2>
+${bloques}
+<p>Si tu número sale en un sorteo de Anguila y también en otra lotería el mismo día, lo verás marcado en la sección de repetidos de los <a href="${url('/')}">resultados de hoy</a>.</p>
+<p class="leyenda">Las loterías de afuera se juegan en las bancas dominicanas, pero no las organiza ni las respalda este sitio. Confirma siempre el resultado y las condiciones con tu banca.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/anguila/', titulo: `Anguila lotería hoy: horarios y resultados de los 4 sorteos | ${NOMBRE_SITIO}`, descripcion: 'Horarios de los sorteos de Anguila (10:00 AM, 1:00 PM, 6:00 PM y 9:00 PM) y últimos resultados de cada uno.', cuerpo });
+}
+
+function paginaGuiaFAQ() {
+  const q = [
+    ['¿Cuántos números salen en cada sorteo?', 'Tres, del 00 al 99: el primer, el segundo y el tercer premio. Pueden repetirse en el mismo sorteo.'],
+    ['¿A qué hora salen los resultados?', `Cada lotería sortea a su hora, desde las 10:00 de la mañana hasta las 10:30 de la noche. Mira la <a href="${url('/guias/horarios-loterias-dominicanas/')}">tabla de horarios</a>.`],
+    ['¿Los resultados de esta página son oficiales?', 'Los publicamos tal como los dan las fuentes, pero el resultado oficial es siempre el de cada lotería. Si hay una diferencia, vale el de la lotería.'],
+    ['¿Se puede predecir qué número va a salir?', 'No. Cada sorteo es independiente. Probamos 12 métodos populares contra datos reales y ninguno le ganó al azar. Más detalle en <a href="' + url('/como-funciona/') + '">Cómo funciona</a>.'],
+    ['¿Qué significa un número atrasado?', 'Que lleva muchos sorteos sin salir. No tiene más posibilidades de salir: las bolas no tienen memoria.'],
+    ['¿Cuánto paga cada jugada?', 'Depende de la lotería y de la banca donde juegues. Pregunta antes de jugar y guarda tu recibo.'],
+    ['¿Cómo veo lo que salió otro día?', `En el <a href="${url('/resultados/')}">historial por fecha</a> puedes abrir cualquier día guardado y ver todas las loterías.`],
+    ['¿Venden boletos o reciben apuestas?', 'No. Este sitio solo informa. No vendemos boletos, no recibimos apuestas y no tenemos relación con ninguna lotería o banca.'],
+  ];
+  const cuerpo = `${migasGuia('Preguntas frecuentes')}<h1>Preguntas frecuentes sobre la lotería</h1>
+${q.map(([a, b]) => `<h2>${esc(a)}</h2><p>${b}</p>`).join('')}
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/preguntas-frecuentes/', titulo: `Preguntas frecuentes sobre la lotería dominicana | ${NOMBRE_SITIO}`, descripcion: 'Respuestas claras a las preguntas más comunes sobre la lotería dominicana: cuántos números salen, horarios, resultados oficiales y juego responsable.', cuerpo });
+}
+
+function paginaSobre() {
+  const cuerpo = `<h1>Sobre ${NOMBRE_SITIO}</h1>
+<p>${NOMBRE_SITIO} es un proyecto independiente hecho en República Dominicana por un desarrollador dominicano. Empezó como una herramienta personal para llevar el historial de las loterías y hoy lo ponemos al alcance de todos.</p>
+<h2>Qué hacemos</h2>
+<p>Publicamos los resultados de las loterías y quinielas que se juegan en las bancas dominicanas, los guardamos en un historial y calculamos estadísticas sencillas: qué números han salido más, cuáles menos y cuánto llevan sin salir.</p>
+<h2>Qué no hacemos</h2>
+<p>No vendemos boletos, no recibimos apuestas, no tenemos relación con ninguna lotería ni banca y no prometemos números ganadores. Nuestro laboratorio probó 12 métodos populares contra datos reales y ninguno le ganó al azar. Por eso nuestra regla es simple: <strong>vendemos claridad, no esperanza</strong>.</p>
+<h2>De dónde salen los datos</h2>
+<p>Los resultados se toman de fuentes públicas y se publican tal como las dan. Ante cualquier duda, el resultado oficial es el de cada lotería. Si ves un error, avísanos desde <a href="${url('/contacto/')}">Contacto</a>.</p>
+<h2>Cómo se financia</h2>
+<p>El sitio es gratuito. Más adelante puede mostrar anuncios para cubrir sus costos. Nunca recibirás de nosotros promesas de premios.</p>
+${avisoHonesto()}
+<p class="leyenda">Solo para mayores de 18 años. Juega con responsabilidad.</p>`;
+  return pagina({ ruta: '/sobre-nosotros/', titulo: `Sobre ${NOMBRE_SITIO} | ${NOMBRE_SITIO}`, descripcion: `Quiénes somos y qué hace ${NOMBRE_SITIO}: resultados y estadísticas de la lotería dominicana, sin promesas.`, cuerpo });
+}
+
+function paginaContacto() {
+  const via = CONTACTO_EMAIL
+    ? `<p>Escríbenos a <a href="mailto:${esc(CONTACTO_EMAIL)}">${esc(CONTACTO_EMAIL)}</a>.</p>`
+    : `<p>Estamos habilitando nuestro correo de contacto. Vuelve pronto.</p>`;
+  const cuerpo = `<h1>Contacto</h1>
+<p>¿Viste un resultado equivocado, tienes una sugerencia o una duda sobre el sitio? Cuéntanos.</p>
+${via}
+<p>Para errores en un resultado, indica la lotería, la fecha y lo que ves en la página, para revisarlo más rápido.</p>
+<p class="leyenda">No podemos ayudar con reclamos de premios ni con apuestas: eso se hace directamente con la lotería o con tu banca.</p>`;
+  return pagina({ ruta: '/contacto/', titulo: `Contacto | ${NOMBRE_SITIO}`, descripcion: `Cómo contactar a ${NOMBRE_SITIO}: errores en resultados, sugerencias y consultas.`, cuerpo });
+}
+
+function paginaTerminos() {
+  const cuerpo = `<h1>Términos de uso</h1>
+<p>Al usar ${NOMBRE_SITIO} aceptas estos términos.</p>
+<h2>Solo información</h2>
+<p>Este sitio ofrece resultados y estadísticas de loterías con fines informativos y de entretenimiento. No es una casa de apuestas, no vende boletos y no recibe apuestas. No tiene relación con ninguna lotería, banca o institución de sorteos.</p>
+<h2>Resultados</h2>
+<p>Los resultados se publican tal como los dan las fuentes y pueden tener errores o retrasos. El resultado oficial es siempre el de cada lotería. No nos hacemos responsables de decisiones tomadas con base en lo que muestra el sitio.</p>
+<h2>Estadísticas</h2>
+<p>Las estadísticas describen lo que ya pasó y no predicen lo que va a salir. Cada sorteo es independiente. Nada en este sitio garantiza ganancias.</p>
+<h2>Mayores de 18 años</h2>
+<p>El sitio es solo para mayores de 18 años. Juega con responsabilidad y solo lo que puedas perder.</p>
+<h2>Contenido</h2>
+<p>El texto, el diseño y los cálculos de este sitio son propios. Puedes citar una parte indicando la fuente y un enlace. No está permitido copiar el sitio completo.</p>
+<h2>Cambios</h2>
+<p>Podemos actualizar estos términos. La versión vigente es la publicada aquí. Más sobre privacidad en la <a href="${url('/privacidad/')}">política de privacidad</a>.</p>
+<p class="leyenda">Última actualización: ${esc(fechaLarga(fechaRD()))}.</p>`;
+  return pagina({ ruta: '/terminos/', titulo: `Términos de uso | ${NOMBRE_SITIO}`, descripcion: `Términos de uso de ${NOMBRE_SITIO}: sitio informativo, sin venta de boletos ni apuestas.`, cuerpo });
 }
 
 // ── Principal ───────────────────────────────────────────────────────────────
@@ -530,6 +698,15 @@ async function main() {
   dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
   guardar('/como-funciona/', paginaComoFunciona());
   guardar('/privacidad/', paginaPrivacidad());
+  guardar('/sobre-nosotros/', paginaSobre());
+  guardar('/contacto/', paginaContacto());
+  guardar('/terminos/', paginaTerminos());
+  guardar('/guias/', paginaGuias());
+  guardar('/guias/como-jugar-quiniela-pale-tripleta/', paginaGuiaJugar());
+  guardar('/guias/horarios-loterias-dominicanas/', paginaGuiaHorarios());
+  guardar('/guias/loteria-nacional/', paginaGuiaNacional(series));
+  guardar('/guias/anguila/', paginaGuiaAnguila(series));
+  guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
   const hoy = fechaRD();
