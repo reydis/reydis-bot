@@ -733,8 +733,7 @@ const LECTURAS = [
 <p>Eso describe lo que ya pasó, no lo que va a pasar. Para que se vea con honestidad, publicamos un marcador: cuántos de esos 5 números salieron cada día en alguna lotería, comparado con lo que el azar esperaba.</p>
 <p>Como hay unas 20 loterías al día, casi cualquier número aparece en alguna la mitad de los días solo por casualidad. Por eso nos importa más comparar contra el azar que contar aciertos sueltos.</p>
 <p>El marcador está ahí para que juzgues tú: si algún día supera al azar de forma clara y sostenida, lo verás. Mientras tanto, es entretenimiento.</p>` },
-];
-
+].concat(require('./lecturas-extra.js')(url));
 function lecturaDeHoy() {
   const dia = Math.floor(Date.parse(fechaRD() + 'T00:00:00Z') / 86400000);
   return LECTURAS[((dia % LECTURAS.length) + LECTURAS.length) % LECTURAS.length];
