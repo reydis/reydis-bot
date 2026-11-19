@@ -252,7 +252,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <title>${esc(titulo)}</title><meta name="description" content="${esc(descripcion)}">
 <link rel="canonical" href="${esc(canon)}">${indexar ? '' : '<meta name="robots" content="noindex">'}
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(titulo)}"><meta property="og:description" content="${esc(descripcion)}"><meta property="og:url" content="${esc(canon)}"><meta property="og:site_name" content="${NOMBRE_SITIO}">
-<link rel="stylesheet" href="${url('/estilos.css')}">${ads}
+<link rel="stylesheet" href="${url('/estilos.css')}">${ads}<script data-goatcounter="https://reydisradar.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
 <nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
@@ -514,6 +514,7 @@ function paginaPrivacidad() {
 <p>Este sitio puede mostrar anuncios de Google AdSense. Google y sus socios usan cookies para mostrar anuncios según las visitas anteriores a este y otros sitios. Puedes desactivar los anuncios personalizados en la <a href="https://adssettings.google.com" rel="noopener">configuración de anuncios de Google</a>, y conocer más en <a href="https://policies.google.com/technologies/ads" rel="noopener">cómo usa Google la información</a>.</p>
 <p>El sitio está alojado en un servicio externo que puede registrar datos técnicos de las visitas (como la dirección IP) por razones de seguridad.</p>
 <p>Para cualquier consulta, usa la página de <a href="${url('/contacto/')}">Contacto</a>.</p>
+<p>Para saber cuántas personas visitan el sitio y qué páginas leen, usamos GoatCounter, un contador de visitas sin cookies que no guarda datos personales ni te sigue entre sitios. Solo cuenta visitas y páginas vistas de forma agregada.</p>
 <p class="leyenda">Última actualización: ${esc(fechaLarga(fechaRD()))}.</p>`;
   return pagina({ ruta: '/privacidad/', titulo: `Política de privacidad | ${NOMBRE_SITIO}`, descripcion: `Política de privacidad de ${NOMBRE_SITIO}.`, cuerpo });
 }
