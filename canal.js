@@ -15,13 +15,25 @@ async function enviarCanal(mensaje) {
   } catch (e) { console.error('⚠️ [canal]', e.response && e.response.data ? JSON.stringify(e.response.data) : e.message); }
 }
 
+// 🔗 El enlace al sitio va solo en el primer mensaje de cada franja (mañana, tarde, noche) = 3 veces al día.
+let slotsConEnlace = { fecha: '', usados: {} };
+function franjaConEnlace(fecha) {
+  const hora = parseInt(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Santo_Domingo', hour: '2-digit', hour12: false }).format(new Date()), 10) % 24;
+  const franja = hora < 12 ? 'manana' : hora < 18 ? 'tarde' : 'noche';
+  if (slotsConEnlace.fecha !== fecha) slotsConEnlace = { fecha, usados: {} };
+  if (slotsConEnlace.usados[franja]) return false;
+  slotsConEnlace.usados[franja] = true;
+  return true;
+}
+
 function mensajeCanal(nuevos, fecha) {
   const f2 = x => String(x).padStart(2, '0');
   const lineas = nuevos.map(n => {
     const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
     return `${etiqueta} <b>${n.nombre}</b> — <b>${n.numeros.map(f2).join('-')}</b> <i>(${n.hora})</i>`;
   });
-  return `🇩🇴 <b>Resultados</b> — ${fecha}\n\n${lineas.join('\n')}\n\n🌐 Todos los resultados y estadísticas: ${SITIO_URL_PUBLICO}/\n<i>Solo informativo. Mayores de 18. Juega con responsabilidad.</i>`;
+  const enlace = franjaConEnlace(fecha) ? `\n\n🌐 Todos los resultados y estadísticas: ${SITIO_URL_PUBLICO}/` : '';
+  return `🇩🇴 <b>Resultados</b> — ${fecha}\n\n${lineas.join('\n')}${enlace}\n<i>Solo informativo. Mayores de 18. Juega con responsabilidad.</i>`;
 }
 
 module.exports = { enviarCanal, mensajeCanal };
