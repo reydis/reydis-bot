@@ -5,6 +5,7 @@ const cors    = require('cors');
 const fs      = require('fs');
 const path    = require('path');
 const app     = express();
+const { enviarCanal, mensajeCanal } = require('./canal');
 const PORT    = process.env.PORT || 3000;
 
 // ── TELEGRAM BOT ────────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ async function notificarNuevosSorteos() {
     lineas.join('\n') +
     resumenDia
   );
+  await enviarCanal(mensajeCanal(nuevos, fechaRD())); // 📢 canal público: solo resultados
 }
 
 // ── PERSISTENCIA: SUPABASE & DISCO ──────────────────────────────────────────
