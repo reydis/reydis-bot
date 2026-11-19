@@ -1789,7 +1789,7 @@ async function detectorSesgo() {
     pruebas.push({ loteria: x.nombre, clave: k, prueba: 'todos los números parejos', sorteos: x.sorteos, p: chi2P(x2, N - 1) });
     for (let n = x.min; n <= x.max; n++) { // cada número por separado (solo nos interesa si sale DE MÁS)
       const o = cnt[n] || 0, mu = x.sorteos * pBin, sd = Math.sqrt(x.sorteos * pBin * (1 - pBin)), z = (o - 0.5 - mu) / sd;
-      pruebas.push({ loteria: x.nombre, clave: k, prueba: `número ${String(n).padStart(2, '0')}`, numero: n, sorteos: x.sorteos, salio: o, esperado: +mu.toFixed(1), p: 1 - normCdf(z) });
+      pruebas.push({ loteria: x.nombre, clave: k, prueba: `número ${String(n).padStart(2, '0')}`, numero: n, sorteos: x.sorteos, salio: o, esperado: +mu.toFixed(1), p: binSf(o, x.sorteos, pBin) });
     }
     if (k !== 'superkino') for (const [nom, f] of [['1er dígito', n => Math.floor(n / 10)], ['terminación', n => n % 10]]) {
       const c = {}; for (const n of x.nums) c[f(n)] = (c[f(n)] || 0) + 1; const e = x.nums.length / 10; let q = 0; for (let dgt = 0; dgt < 10; dgt++) q += Math.pow((c[dgt] || 0) - e, 2) / e;
@@ -1803,6 +1803,28 @@ async function detectorSesgo() {
     top10: pruebas.slice(0, 10).map(t => ({ ...t, p: +t.p.toExponential(2) })),
     veredicto: alarmas.length ? `🚨 ${alarmas.length} señal(es) de bolo cargado` : 'Todo parejo: ninguna lotería muestra bolos cargados' };
 }
+// ✅ Probabilidad EXACTA (binomial) de que un número salga k veces o más; reemplaza la aproximación normal, que se quedaba corta en las colas.
+function binSf(k, n, p) {
+  if (k <= 0) return 1;
+  let pmf = Math.pow(1 - p, n), cdf = 0;
+  for (let i = 0; i < k; i++) { cdf += pmf; pmf *= ((n - i) / (i + 1)) * (p / (1 - p)); }
+  return Math.max(0, 1 - cdf);
+}
+// 📅 En qué fechas salió un número en una lotería, para revisar si hay datos repetidos. Ej: /api/fechas-numero?k=florida_d&n=28
+app.get('/api/fechas-numero', async (req, res) => {
+  try {
+    const n = parseInt(req.query.n, 10), k = String(req.query.k || '');
+    histTeoria.fecha = null; await cargarHistTeoria();
+    const porFecha = {}; for (const d of histTeoria.filas) porFecha[d.fecha] = d; for (const d of estado.historico) porFecha[d.fecha] = { ...(porFecha[d.fecha] || {}), ...d };
+    const fechas = []; let total = 0;
+    for (const d of Object.values(porFecha).sort((a, b) => (a.fecha < b.fecha ? -1 : 1))) {
+      const s = d.sorteos && d.sorteos[k]; if (!s || !Array.isArray(s.numeros) || s.numeros.length < 3) continue; total++;
+      const pos = s.numeros.slice(0, 3).map(Number).indexOf(n);
+      if (pos >= 0) fechas.push({ fecha: d.fecha, posicion: pos + 1, numeros: s.numeros.slice(0, 3) });
+    }
+    res.json({ clave: k, numero: n, sorteos: total, veces: fechas.length, esperado: +(total * 0.03).toFixed(1), fechas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/api/sesgo', async (req, res) => { try { res.json(await detectorSesgo()); } catch (e) { res.status(500).json({ error: e.message }); } });
 let sesgoRevisado = null;
 // v9.31: 👀 PARA PONER ATENCIÓN — informe diario (8:00 AM) con lo que de verdad merece mirarse:
@@ -2831,6 +2853,7 @@ const LAB_NUEVAS = [
   { id: 'piramide-fecha', nombre: 'Pirámide de fechas', tipo: 'piramide', parametros: {}, loterias: 'auto' },
   { id: 'rodean-anterior', nombre: 'Números que rodean · lotería anterior', tipo: 'rodean', parametros: { fuente: 'anterior' }, loterias: 'todas' },
   { id: 'bolo-28-florida', nombre: 'Bolo cargado · 28 en Florida Día', tipo: 'fe', parametros: { numeros: [28] }, loterias: ['florida_d'] }, // v9.30: alarma del detector (15 veces vs ~4.9)
+    { id: 'bolo-86-newyork-noche', nombre: 'Bolo cargado · 86 en New York Noche', tipo: 'fe', parametros: { numeros: [86] }, loterias: ['new_york_n'] }, // 19 nov: candidato del detector (22 veces vs ~10.3), solo vigilancia
   { id: 'quemaito-eq-lotedom-ayer', nombre: 'Quemaito · equivalente de LoteDom de ayer', tipo: 'equivde', parametros: { desde: 'lotedom', ayer: true }, loterias: ['quemaito'] },
   { id: 'caliente30-laprimera', nombre: 'Caliente 30 días · La Primera Día', tipo: 'frecuencia', parametros: { n: 1, ventana: 30 }, loterias: ['laprimera'] }, // v9.35: mejor de su lotería en la búsqueda y en la confirmación
   { id: 'deldia-top5', nombre: 'Los 5 más salidos hoy', tipo: 'deldia', parametros: {}, loterias: 'auto' },
