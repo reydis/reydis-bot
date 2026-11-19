@@ -1371,7 +1371,16 @@ async function sincronizar() {
   } catch(e) { console.error('⚠️ Error en sincronizar:', e.message); } finally { sincronizando = false; }
 }
 
-setInterval(sincronizar, 15 * 60 * 1000);
+setInterval(sincronizar, 15 * 60 * 1000); 
+// ⚡ Carril rápido: cada 4 min, SOLO si hay un sorteo que ya debió salir (últimos 30 min) y aún no tiene sus números
+setInterval(() => {
+  const ahora = minutosActualesRD();
+  const debeEstar = (o, n) => { const m = horaTextoAMinutos(o.hora); return m !== null && o.numeros.length < n && ahora >= m && ahora - m <= 30; };
+  const hayPendiente = Object.values(estado.sorteos).some(s => debeEstar(s, 3))
+    || Object.values(estado.cuartetas).some(c => debeEstar(c, 4))
+    || Object.values(estado.especiales).some(e => debeEstar(e, e.cant));
+  if (hayPendiente) sincronizar();
+}, 4 * 60 * 1000);
 
 // ── ENDPOINTS Frontend y Diagnóstico ───────────────────────────────────────
 app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas || {} }); });
