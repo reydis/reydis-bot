@@ -235,7 +235,7 @@ form.buscar button{padding:13px 22px;border:0;border-radius:12px;background:line
 .migas{font-size:.85rem;color:var(--suave)}.ok{color:var(--bien)}.ojo{color:var(--ojo)}
 footer{border-top:1px solid var(--borde);color:var(--suave);font-size:.88rem;background:rgba(0,0,0,.18)}
 footer .in{max-width:1120px;margin:auto;padding:28px 18px}
-.bola.ya{border-color:var(--bien);color:#03150e;background:radial-gradient(circle at 32% 28%,#6ee7b7,#059669);box-shadow:0 0 14px rgba(52,211,153,.4)}
+.bola.ya{border-color:var(--bien);color:#03150e;background:radial-gradient(circle at 32% 28%,#6ee7b7,#059669);box-shadow:0 0 14px rgba(52,211,153,.4)} .celebra{display:flex;gap:12px;align-items:center;background:linear-gradient(180deg,rgba(5,150,105,.22),rgba(5,150,105,.08));border:1px solid var(--bien);border-radius:var(--r);padding:14px 16px;margin:18px 0}.celebra .fiesta{font-size:1.8rem;animation:salto 1.6s ease-in-out infinite}@keyframes salto{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}.radar-cta .bola.ya{animation:brilla 2s ease-in-out infinite}@keyframes brilla{0%,100%{box-shadow:0 0 14px rgba(52,211,153,.4)}50%{box-shadow:0 0 26px rgba(52,211,153,.9)}}
 .lectura h3{margin:0 0 .3em}.dato{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:12px 16px;margin:14px 0}a.tarjeta{display:block;color:inherit;text-decoration:none}
 .radar{text-align:center;min-height:0}.radar p{margin:.6em 0 0}.radar .bola{width:3.2em;height:3.2em;font-size:1.15rem}
 .radar-cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:16px 18px;margin:30px 0}
@@ -327,8 +327,16 @@ function teaserRadar(dias) {
   if (!r.hoy.length) return '';
   return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a></div>`;
 }
-
-function paginaJugadas(dias, series) {
+// 🎉 Celebración: avisa cuando alguno de los números del día ya salió hoy (sin prometer nada)
+function bannerCelebra(r) {
+  const salidos = r.hoy.filter(x => x.yaSalio.length);
+  if (!salidos.length) return '';
+  const titulo = salidos.length === 1 ? 'Ya salió 1 de los 5 números del día' : `Ya salieron ${salidos.length} de los 5 números del día`;
+  const lista = salidos.map(x => `<strong>${f2(x.n)}</strong> en ${x.yaSalio.map(esc).join(' y ')}`).join(' · ');
+  return `<div class="celebra"><span class="fiesta">🎉</span><div><strong>¡${titulo}!</strong><br>${lista}<br><small class="leyenda">Con unas 20 loterías al día, cada número sale casi la mitad de los días solo por azar. Es información, no una promesa.</small></div></div>`;
+}
+function teaserCelebra(dias) { return bannerCelebra(calcularRadar(dias)) + teaserRadar(dias); }
+function paginaJugadas(dias, series) { 
   const r = calcularRadar(dias);
   const jal = calcularJaladeras(series);
   const tarjetas = r.hoy.map(x => `<div class="tarjeta radar"><div>${bola(f2(x.n), x.yaSalio.length ? ' ya' : '')}</div><p class="hora">${x.yaSalio.length ? `Ya salió hoy en: <strong>${x.yaSalio.map(esc).join(', ')}</strong>` : 'Todavía no ha salido hoy'}</p></div>`).join('');
