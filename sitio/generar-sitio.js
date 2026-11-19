@@ -263,7 +263,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 </body></html>`;
 }
 
-const ctaTelegram = () => `<div class="cta"><strong>📲 Próximamente: avisos de resultados por Telegram.</strong> Mientras tanto, esta página se actualiza sola después de cada sorteo. <a href="${url('/guias/')}">Mira nuestras guías</a></div>`;
+const ctaTelegram = () => `<div class="cta"><strong>📲 Resultados por Telegram.</strong> Únete a nuestro canal gratis y recibe los resultados apenas salen. Solo información, sin predicciones. <a href="https://t.me/reydis_resultados" target="_blank" rel="noopener">Unirme al canal</a></div>`;
 const avisoHonesto = () => `<div class="aviso">🔎 <strong>Claro y sin cuentos:</strong> cada sorteo es independiente. Que un número esté "caliente" o "atrasado" describe lo que ya pasó, no lo que va a salir. Nuestro laboratorio probó 12 métodos con datos reales y ninguno le ganó al azar. Usa estos datos para informarte, no como garantía.</div>`;
 
 function colorMapa(v, max) {
