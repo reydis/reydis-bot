@@ -328,7 +328,7 @@ function calcularJaladeras(series) {
   return Array.from({ length: 100 }, (_, a) => ({ a, M: M[a], top: sig[a].map((c, b) => ({ b, c })).sort((x, y) => y.c - x.c || x.b - y.b).slice(0, 3) }));
 }
 
-const palTxtLista = (pales, grande) => pales.map(x => { const t = f2(x.p[0]) + '-' + f2(x.p[1]); return x.salio.length ? `<strong style="color:#34d399">${t} ✅</strong>` : `<strong>${t}</strong>`; }).join(', ');
+const palTxtLista = (pales, grande) => pales.map(x => { const t = f2(x.p[0]) + '-' + f2(x.p[1]); return x.salio.length ? `<strong style="color:#34d399;white-space:nowrap">${t} ✅</strong>` : `<strong style="white-space:nowrap">${t}</strong>`; }).join(', ');
 function teaserRadar(dias) {
   const r = calcularRadar(dias);
   if (!r.hoy.length) return '';
