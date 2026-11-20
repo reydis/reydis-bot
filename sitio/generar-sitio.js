@@ -328,13 +328,13 @@ function calcularJaladeras(series) {
   return Array.from({ length: 100 }, (_, a) => ({ a, M: M[a], top: sig[a].map((c, b) => ({ b, c })).sort((x, y) => y.c - x.c || x.b - y.b).slice(0, 3) }));
 }
 
+const palTxtLista = (pales, grande) => pales.map(x => { const t = f2(x.p[0]) + '-' + f2(x.p[1]); return x.salio.length ? `<strong style="color:#34d399">${t} ✅</strong>` : `<strong>${t}</strong>`; }).join(', ');
 function teaserRadar(dias) {
   const r = calcularRadar(dias);
   if (!r.hoy.length) return '';
-  const chip = x => `<span style="display:inline-block;padding:3px 10px;margin:3px 6px 3px 0;border-radius:999px;font-weight:700;border:1px solid ${x.salio.length ? 'var(--bien)' : 'var(--borde)'};${x.salio.length ? 'background:#059669;color:#03150e' : ''}">${f2(x.p[0])}-${f2(x.p[1])}</span>`;
   const acert = r.pales.filter(x => x.salio.length);
   const acertTxt = acert.length ? acert.map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ') : 'ninguno todavía';
-  const palesHtml = r.pales.length ? `<div style="flex-basis:100%"><strong>🎲 Palés del día</strong><div>${r.pales.map(chip).join('')}</div><small class="leyenda">Palés acertados hoy: ${acertTxt}</small></div>` : '';
+  const palesHtml = r.pales.length ? `<div style="flex-basis:100%"><strong>🎲 Palés del día</strong><div style="font-size:1.05rem;line-height:1.9">${palTxtLista(r.pales)}</div><small class="leyenda">Palés acertados hoy: ${acertTxt}</small></div>` : '';
   return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a>${palesHtml}</div>`;
 }
 // 🎉 Celebración: avisa cuando alguno de los números del día ya salió hoy (sin prometer nada)
@@ -365,7 +365,7 @@ function paginaJugadas(dias, series) {
 ${r.hoy.length ? `<div class="rejilla">${tarjetas}</div><p class="leyenda">Son los 5 números con más peso en los últimos ${VENT_RADAR} días (el 1.er premio pesa más que el 2.º y el 3.º). En verde, los que ya salieron hoy en alguna lotería: si no salió en una, puede salir en otra.</p>` : '<p>Todavía no hay suficientes días de historial para calcularlos.</p>'}
 ${r.pales.length ? `<h2>🎲 Palés con los números del día</h2>
 <p>Un palé son dos números que salen juntos en el mismo sorteo. Con los 5 números del día se arman 10 parejas. En verde, las que ya salieron hoy.</p>
-<p>${r.pales.map(x => `<span class="bolas" style="display:inline-flex;margin:6px 16px 6px 0">${bola(f2(x.p[0]), x.salio.length ? ' ya' : '')}${bola(f2(x.p[1]), x.salio.length ? ' ya' : '')}</span>`).join('')}</p>
+<p style="font-size:1.35rem;line-height:2">${palTxtLista(r.pales)}</p>
 <p class="leyenda">${r.pales.some(x => x.salio.length) ? `Ya salió hoy: ${r.pales.filter(x => x.salio.length).map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ')}. ` : 'Todavía no ha salido ninguna pareja hoy. '}Por azar, una pareja concreta sale en un sorteo concreto 1 de cada 1,650 veces: paga mucho cuando sale, pero sale muy pocas veces.</p>` : ''}
 <h2>¿Qué tan bien le ha ido?</h2>
 <p>${r.dias ? `En los últimos <strong>${r.dias}</strong> días completos, los 5 números del Radar salieron en promedio <strong>${prom.toFixed(2)}</strong> por día. El azar esperaba <strong>${esp.toFixed(2)}</strong>. ${veredicto}` : veredicto}</p>
