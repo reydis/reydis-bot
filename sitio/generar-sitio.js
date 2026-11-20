@@ -389,9 +389,9 @@ function paginaInicio(dias, series) {
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
+${teaserCelebra(dias)}
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
-${teaserCelebra(dias)}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
