@@ -331,7 +331,11 @@ function calcularJaladeras(series) {
 function teaserRadar(dias) {
   const r = calcularRadar(dias);
   if (!r.hoy.length) return '';
-  return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a></div>`;
+  const chip = x => `<span style="display:inline-block;padding:3px 10px;margin:3px 6px 3px 0;border-radius:999px;font-weight:700;border:1px solid ${x.salio.length ? 'var(--bien)' : 'var(--borde)'};${x.salio.length ? 'background:#059669;color:#03150e' : ''}">${f2(x.p[0])}-${f2(x.p[1])}</span>`;
+  const acert = r.pales.filter(x => x.salio.length);
+  const acertTxt = acert.length ? acert.map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ') : 'ninguno todavía';
+  const palesHtml = r.pales.length ? `<div style="flex-basis:100%"><strong>🎲 Palés del día</strong><div>${r.pales.map(chip).join('')}</div><small class="leyenda">Palés acertados hoy: ${acertTxt}</small></div>` : '';
+  return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a>${palesHtml}</div>`;
 }
 // 🎉 Celebración: avisa cuando alguno de los números del día ya salió hoy (sin prometer nada)
 function bannerCelebra(r) {
@@ -339,7 +343,9 @@ function bannerCelebra(r) {
   if (!salidos.length) return '';
   const titulo = salidos.length === 1 ? 'Ya salió 1 de los 5 números del día' : `Ya salieron ${salidos.length} de los 5 números del día`;
   const lista = salidos.map(x => `<strong>${f2(x.n)}</strong> en ${x.yaSalio.map(esc).join(' y ')}`).join(' · ');
-  return `<div class="celebra"><span class="fiesta">🎉</span><div><strong>¡${titulo}!</strong><br>${lista}<br><small class="leyenda">Con unas 20 loterías al día, cada número sale casi la mitad de los días solo por azar. Es información, no una promesa.</small></div></div>`;
+  const pal = r.pales.filter(x => x.salio.length);
+  const palTxt = pal.length ? `<br>🎲 <strong>¡${pal.length === 1 ? 'Palé acertado' : 'Palés acertados'}!</strong> ${pal.map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ')}` : '';
+  return `<div class="celebra"><span class="fiesta">🎉</span><div><strong>¡${titulo}!</strong><br>${lista}${palTxt}<br><small class="leyenda">Con unas 20 loterías al día, cada número sale casi la mitad de los días solo por azar. Es información, no una promesa.</small></div></div>`;
 }
 function teaserCelebra(dias) { return bannerCelebra(calcularRadar(dias)) + teaserRadar(dias); }
 function paginaJugadas(dias, series) { 
