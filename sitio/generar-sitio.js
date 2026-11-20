@@ -285,6 +285,10 @@ function puntajes(dias, hasta) {
 }
 const topN = (pts, k = K_RADAR) => pts.map((p, n) => ({ n, p })).sort((a, b) => b.p - a.p || a.n - b.n).slice(0, k).map(x => x.n);
 const nombreLoteria = k => (LOTERIAS.find(l => l.clave === k) || { nombre: k }).nombre;
+// 🎲 Palés: todas las parejas entre los 5 números del día (10 parejas). Un palé sale si los dos números caen en el mismo sorteo.
+const PARES_PROB = 3 / 4950; // en un sorteo salen 3 números = 3 parejas posibles de las 4,950 que existen
+const paresDe = a => { const o = []; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) o.push([a[i], a[j]]); return o; };
+const parSalio = (par, quin) => Object.entries(quin).filter(([, nums]) => nums.includes(par[0]) && nums.includes(par[1])).map(([k]) => nombreLoteria(k));
 
 function calcularRadar(dias) {
   const hoy = fechaRD();
@@ -294,8 +298,9 @@ function calcularRadar(dias) {
   const hoyNums = fin >= 10 ? topN(puntajes(dias, fin)) : [];
   const yaSalio = n => diaHoy ? Object.entries(diaHoy.quinielas).filter(([, nums]) => nums.includes(n)).map(([k]) => nombreLoteria(k)) : [];
   const picks = hoyNums.map(n => ({ n, yaSalio: yaSalio(n) }));
+  const pales = paresDe(hoyNums).map(p => ({ p, salio: diaHoy ? parSalio(p, diaHoy.quinielas) : [] }));
   const detalle = [];
-  let sumHits = 0, sumEsp = 0;
+  let sumHits = 0, sumEsp = 0, palesHits = 0, palesEsp = 0;
   for (let i = Math.max(10, fin - DIAS_MARCADOR); i < fin; i++) {
     const L = Object.keys(dias[i].quinielas).length;
     if (L < 8) continue; // día incompleto
@@ -304,9 +309,10 @@ function calcularRadar(dias) {
     const hits = top.filter(n => salidos.has(n));
     const esp = K_RADAR * (1 - Math.pow(1 - PL, L));
     sumHits += hits.length; sumEsp += esp;
+    const prs = paresDe(top); palesHits += prs.filter(p => parSalio(p, dias[i].quinielas).length).length; palesEsp += prs.length * (1 - Math.pow(1 - PARES_PROB, L));
     detalle.push({ fecha: dias[i].fecha, top, hits, esp });
   }
-  return { hoy: picks, dias: detalle.length, sumHits, sumEsp, detalle };
+  return { hoy: picks, pales, palesHits, palesEsp, dias: detalle.length, sumHits, sumEsp, detalle };
 }
 
 function calcularJaladeras(series) {
@@ -351,8 +357,13 @@ function paginaJugadas(dias, series) {
 <p class="sub">Lo que dicen las estadísticas del Radar para hoy, sin dividir por lotería. Es información y entretenimiento: <strong>no es una ventaja</strong>, y abajo te mostramos cuánto le ha ido contra el azar.</p></section>
 <h2>🎯 Números del día</h2>
 ${r.hoy.length ? `<div class="rejilla">${tarjetas}</div><p class="leyenda">Son los 5 números con más peso en los últimos ${VENT_RADAR} días (el 1.er premio pesa más que el 2.º y el 3.º). En verde, los que ya salieron hoy en alguna lotería: si no salió en una, puede salir en otra.</p>` : '<p>Todavía no hay suficientes días de historial para calcularlos.</p>'}
+${r.pales.length ? `<h2>🎲 Palés con los números del día</h2>
+<p>Un palé son dos números que salen juntos en el mismo sorteo. Con los 5 números del día se arman 10 parejas. En verde, las que ya salieron hoy.</p>
+<p>${r.pales.map(x => `<span class="bolas" style="display:inline-flex;margin:6px 16px 6px 0">${bola(f2(x.p[0]), x.salio.length ? ' ya' : '')}${bola(f2(x.p[1]), x.salio.length ? ' ya' : '')}</span>`).join('')}</p>
+<p class="leyenda">${r.pales.some(x => x.salio.length) ? `Ya salió hoy: ${r.pales.filter(x => x.salio.length).map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ')}. ` : 'Todavía no ha salido ninguna pareja hoy. '}Por azar, una pareja concreta sale en un sorteo concreto 1 de cada 1,650 veces: paga mucho cuando sale, pero sale muy pocas veces.</p>` : ''}
 <h2>¿Qué tan bien le ha ido?</h2>
 <p>${r.dias ? `En los últimos <strong>${r.dias}</strong> días completos, los 5 números del Radar salieron en promedio <strong>${prom.toFixed(2)}</strong> por día. El azar esperaba <strong>${esp.toFixed(2)}</strong>. ${veredicto}` : veredicto}</p>
+${r.dias ? `<p>Con los palés pasa igual: de <strong>${r.dias * 10}</strong> parejas armadas en esos días, salieron <strong>${r.palesHits}</strong> veces y el azar esperaba <strong>${r.palesEsp.toFixed(1)}</strong>.</p>` : ''}
 <p class="leyenda">Con unas 20 loterías al día, cualquier número sale en alguna casi la mitad de los días solo por azar. Por eso el marcador compara contra eso y no contra cero. Cada día se calcula usando solo los días anteriores.</p>
 ${r.dias ? `<div class="tabla"><table><tr><th>Día</th><th>Números del Radar</th><th>Salieron</th><th>Azar esperaba</th></tr>${filasDia}</table></div>` : ''}
 <h2>🔗 Jaladeras</h2>
