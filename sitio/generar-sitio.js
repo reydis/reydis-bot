@@ -391,7 +391,7 @@ function paginaInicio(dias, series) {
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}
-${teaserRadar(dias)}
+${teaserCelebra(dias)}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
