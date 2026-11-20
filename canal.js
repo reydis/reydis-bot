@@ -34,10 +34,20 @@ const franjaActual = () => {
   return hora < 12 ? 'manana' : hora < 18 ? 'tarde' : 'noche';
 };
 
+// "2:30 PM" -> minutos desde medianoche, para ordenar los sorteos por hora
+function minutosDe(h) {
+  const m = /(\d{1,2}):(\d{2})\s*([AP]M)?/i.exec(String(h || ''));
+  if (!m) return 99999;
+  let hh = parseInt(m[1], 10) % 12;
+  if (!m[3]) hh = parseInt(m[1], 10);
+  if (m[3] && m[3].toUpperCase() === 'PM') hh += 12;
+  return hh * 60 + parseInt(m[2], 10);
+}
+
 function lineaResultado(n) {
   const f2 = x => String(x).padStart(2, '0');
   const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
-  return { clave: `${n.nombre}|${n.hora}`, texto: `${etiqueta} <b>${n.nombre}</b> — <b>${n.numeros.map(f2).join('-')}</b> <i>(${n.hora})</i>` };
+  return { clave: `${n.nombre}|${n.hora}`, min: minutosDe(n.hora), texto: `${etiqueta} <b>${n.nombre}</b> — <b>${n.numeros.map(f2).join('-')}</b> <i>(${n.hora})</i>` };
 }
 
 function textoBloque() {
@@ -58,6 +68,7 @@ async function acumular(nuevos, fecha) {
     const l = lineaResultado(n);
     const i = bloque.lineas.findIndex(x => x.clave === l.clave);
     if (i >= 0) bloque.lineas[i] = l; else bloque.lineas.push(l);
+    bloque.lineas.sort((a, b) => (a.min ?? 99999) - (b.min ?? 99999));
   }
   const texto = textoBloque();
   const base = { chat_id: TG_CANAL, text: texto, parse_mode: 'HTML', disable_web_page_preview: true };
