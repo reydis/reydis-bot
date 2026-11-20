@@ -385,30 +385,40 @@ ${ctaTelegram()}`;
 // ── Páginas ─────────────────────────────────────────────────────────────────
 function paginaInicio(dias, series) {
   const hoy = fechaRD();
-  const dia = dias[dias.length - 1];
-  const esHoy = dia && dia.fecha === hoy;
-  const conteo = {};
-  if (dia) for (const [k, nums] of Object.entries(dia.quinielas)) new Set(nums).forEach(n => (conteo[n] = conteo[n] || []).push(k));
-  const repetidos = Object.entries(conteo).filter(([, ks]) => ks.length >= 2).sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
+  const ultimo = dias[dias.length - 1];
+  const esHoy = !!(ultimo && ultimo.fecha === hoy);
+  const dia = esHoy ? ultimo : null;      // lo de HOY: si aún no sale nada, las tarjetas dicen "Pendiente"
+  const prev = esHoy ? null : ultimo;     // el último día con resultados, abajo y bien rotulado
   const nombre = k => (LOTERIAS.find(l => l.clave === k) || { nombre: k }).nombre;
-
-  const tarjetas = LOTERIAS.filter(l => series[l.clave].length).map(l => {
-    const nums = dia && dia.quinielas[l.clave];
-    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), conteo[n] && conteo[n].length >= 2 ? ' rep' : '')).join('')}</span>` : `<span class="pend">Pendiente</span>`;
+  const conteoDe = d => { const c = {}; if (d) for (const [k, nums] of Object.entries(d.quinielas)) new Set(nums).forEach(n => (c[n] = c[n] || []).push(k)); return c; };
+  const repetidosDe = c => Object.entries(c).filter(([, ks]) => ks.length >= 2).sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
+  const tarjetasDe = (d, c) => LOTERIAS.filter(l => series[l.clave].length).map(l => {
+    const nums = d && d.quinielas[l.clave];
+    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), c[n] && c[n].length >= 2 ? ' rep' : '')).join('')}</span>` : `<span class="pend">Pendiente</span>`;
     return `<div class="tarjeta"><h3><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></h3><div class="hora">${esc(horaHoy(l))}</div><p>${cont}</p></div>`;
   }).join('');
+  const repsDe = (rep, cuando) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
+  const conteo = conteoDe(dia);
+  const tarjetas = tarjetasDe(dia, conteo);
   const otros = dia && dia.otros.length ? `<h2>Otros juegos</h2><div class="rejilla">${dia.otros.map(o => `<div class="tarjeta"><h3>${esc(o.nombre)}</h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`).join('')}</div>` : '';
+  const reps = repsDe(repetidosDe(conteo), 'hoy');
 
-  const reps = repetidos.length ? `<h2>⚡ Repetidos en varias loterías ${esHoy ? 'hoy' : 'ese día'}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${repetidos.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
+  let previo = '';
+  if (prev) {
+    const ayer = new Date(hoy + 'T12:00:00Z'); ayer.setUTCDate(ayer.getUTCDate() - 1);
+    const rotulo = prev.fecha === ayer.toISOString().slice(0, 10) ? 'Resultados de ayer' : 'Últimos resultados publicados';
+    const cp = conteoDe(prev);
+    previo = `<h2>${rotulo} · ${esc(fechaLarga(prev.fecha))}</h2><div class="rejilla">${tarjetasDe(prev, cp)}</div>${repsDe(repetidosDe(cp), 'ese día')}`;
+  }
 
-  const titulo = esHoy ? `Resultados de la lotería de hoy, ${fechaLarga(hoy)}` : `Últimos resultados de la lotería · ${dia ? fechaLarga(dia.fecha) : ''}`;
+  const titulo = `Resultados de la lotería de hoy, ${fechaLarga(hoy)}`;
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 ${teaserCelebra(dias)}
 <div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
-${reps}${otros}
+${reps}${otros}${previo}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
