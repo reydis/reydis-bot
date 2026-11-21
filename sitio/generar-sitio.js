@@ -348,6 +348,55 @@ function bannerCelebra(r) {
   return `<div class="celebra"><span class="fiesta">🎉</span><div><strong>¡${titulo}!</strong><br>${lista}${palTxt}<br><small class="leyenda">Con unas 20 loterías al día, cada número sale casi la mitad de los días solo por azar. Es información, no una promesa.</small></div></div>`;
 }
 function teaserCelebra(dias) { return bannerCelebra(calcularRadar(dias)) + teaserRadar(dias); }
+// 📊 Página privada (sin enlace, noindex): ¿dónde y a qué hora salen más los 5 números del Radar? Siempre contra lo que esperaba el azar.
+function minLoteria(hora) {
+  const m = /(\d{1,2}):(\d{2})\s*([AP]M)/i.exec(hora); if (!m) return 0;
+  let h = parseInt(m[1], 10) % 12; if (m[3].toUpperCase() === 'PM') h += 12;
+  return h * 60 + parseInt(m[2], 10);
+}
+const FRANJAS = [
+  ['Mañana (antes de las 12:00 PM)', 0, 720], ['Mediodía (12:00 – 1:59 PM)', 720, 840], ['Tarde (2:00 – 5:59 PM)', 840, 1080],
+  ['Noche temprana (6:00 – 8:59 PM)', 1080, 1260], ['Noche (9:00 PM en adelante)', 1260, 1441],
+];
+function calcularAciertosPorLoteria(dias) {
+  const hoy = fechaRD();
+  const fin = dias.findIndex(d => d.fecha === hoy) >= 0 ? dias.findIndex(d => d.fecha === hoy) : dias.length;
+  const acc = {}; for (const l of LOTERIAS) acc[l.clave] = { l, sorteos: 0, hits: 0, esp: 0, pHits: 0, pEsp: 0 };
+  let ndias = 0;
+  for (let i = 10; i < fin; i++) {
+    if (Object.keys(dias[i].quinielas).length < 8) continue; // día incompleto
+    ndias++;
+    const top = topN(puntajes(dias, i)), prs = paresDe(top);
+    for (const [k, nums] of Object.entries(dias[i].quinielas)) {
+      const a = acc[k]; if (!a) continue;
+      a.sorteos++; a.hits += top.filter(n => nums.includes(n)).length; a.esp += K_RADAR * PL;
+      a.pHits += prs.filter(p => nums.includes(p[0]) && nums.includes(p[1])).length; a.pEsp += prs.length * PARES_PROB;
+    }
+  }
+  return { ndias, filas: Object.values(acc).filter(a => a.sorteos > 0) };
+}
+function paginaAciertos(dias) {
+  const { ndias, filas } = calcularAciertosPorLoteria(dias);
+  const z = (o, e) => e > 0 ? (o - e) / Math.sqrt(e * (1 - PL)) : 0;
+  const fila = (nombre, hora, a) => `<tr><td>${esc(nombre)}</td><td>${esc(hora)}</td><td>${a.sorteos}</td><td><strong>${a.hits}</strong></td><td>${a.esp.toFixed(1)}</td><td>${a.esp ? (a.hits / a.esp).toFixed(2) : '–'}×</td><td>${z(a.hits, a.esp).toFixed(1)}</td><td>${a.pHits}</td><td>${a.pEsp.toFixed(1)}</td></tr>`;
+  const porLot = [...filas].sort((x, y) => z(y.hits, y.esp) - z(x.hits, x.esp)).map(a => fila(a.l.nombre, a.l.hora, a)).join('');
+  const franjas = FRANJAS.map(([nombre, d, h]) => {
+    const g = filas.filter(a => { const m = minLoteria(a.l.hora); return m >= d && m < h; });
+    if (!g.length) return '';
+    const t = g.reduce((s, a) => ({ sorteos: s.sorteos + a.sorteos, hits: s.hits + a.hits, esp: s.esp + a.esp, pHits: s.pHits + a.pHits, pEsp: s.pEsp + a.pEsp }), { sorteos: 0, hits: 0, esp: 0, pHits: 0, pEsp: 0 });
+    return fila(nombre, `${g.length} loterías`, t);
+  }).join('');
+  const cab = '<tr><th>Lotería / franja</th><th>Hora</th><th>Sorteos</th><th>Números que salieron</th><th>Azar esperaba</th><th>Veces el azar</th><th>z</th><th>Palés salidos</th><th>Palés azar</th></tr>';
+  const cuerpo = `<section class="hero"><h1>¿Dónde salen más los números del Radar?</h1>
+<p class="sub">Página privada de trabajo. Usa los ${ndias} días completos con historial (cada día calculado solo con los días anteriores, igual que el marcador).</p></section>
+<h2>Por franja de horario</h2>
+<div class="tabla"><table>${cab}${franjas}</table></div>
+<h2>Por lotería (de más a menos sobre el azar)</h2>
+<div class="tabla"><table>${cab}${porLot}</table></div>
+<p class="leyenda"><strong>Cómo leerlo:</strong> "Números que salieron" cuenta cada vez que uno de los 5 números del día cayó en ese sorteo. "Azar esperaba" es lo que habría salido sin ninguna ventaja (5 números × 3 de 100 por sorteo). "z" mide cuántas desviaciones se alejó del azar: con 20 loterías mirándolas a la vez, es normal que alguna llegue a +2 solo por casualidad, y solo algo muy por encima y sostenido merece atención. Los palés son casi todos 0 o 1 por lotería, así que no dicen nada todavía.</p>`;
+  return pagina({ ruta: '/aciertos/', titulo: `Aciertos del Radar por lotería y horario | ${NOMBRE_SITIO}`, descripcion: 'Página privada de análisis.', indexar: false, cuerpo });
+}
+
 function paginaJugadas(dias, series) { 
   const r = calcularRadar(dias);
   const jal = calcularJaladeras(series);
@@ -838,6 +887,7 @@ async function main() {
   guardar('/loterias/', paginaLoterias(series));
   for (const l of LOTERIAS) if (series[l.clave].length) guardar(`/loterias/${l.slug}/`, paginaLoteria(l, series[l.clave]));
   guardar('/jugadas/', paginaJugadas(dias, series));
+  escribir(path.join('/aciertos/', 'index.html'), paginaAciertos(dias)); // privada: sin enlace, noindex y fuera del sitemap
   guardar('/numeros/', paginaNumeros(series));
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
