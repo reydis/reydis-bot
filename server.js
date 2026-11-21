@@ -1382,6 +1382,16 @@ setInterval(() => {
   if (hayPendiente) sincronizar();
 }, 4 * 60 * 1000);
 
+// 🌐 Reloj del sitio público: la ejecución automática de GitHub se salta horas (sobre todo de madrugada),
+// así que el bot mismo pide la publicación: a las 12:01 AM (día nuevo) y luego una vez cada hora, pasado el minuto 5.
+let sitioHoraPedida = '';
+setInterval(() => {
+  const min = minutosActualesRD(), h = Math.floor(min / 60), m = min % 60;
+  const clave = fechaRD() + '|' + h;
+  if (sitioHoraPedida === clave) return;
+  if (m >= 5 || (h === 0 && m >= 1)) { sitioHoraPedida = clave; dispararSitio(h === 0 ? 'día nuevo' : 'reloj de la hora'); }
+}, 60 * 1000);
+
 // ── ENDPOINTS Frontend y Diagnóstico ───────────────────────────────────────
 app.get('/api/hoy', async (req, res) => { await sincronizar(); res.json({ fecha: estado.fecha, hora_actualizacion: estado.hora_actualizacion, sorteos: estado.sorteos, cuartetas: estado.cuartetas, especiales: estado.especiales, anguilas: estado.anguilas || {} }); });
 app.get('/api/sitio-probar', async (req, res) => { res.json({ token_configurado: !!GH_TOKEN, repo: GH_REPO, ...(await dispararSitio('prueba manual')) }); });
