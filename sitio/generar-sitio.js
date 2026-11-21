@@ -443,6 +443,41 @@ function calcularSesgos(dias) {
   }
   return filas;
 }
+// 💵 Cartera virtual: las hipótesis se escogen con los sorteos ANTERIORES a esta fecha y se prueban solo con los que salgan desde ella.
+const SEGUIMIENTO_DESDE = process.env.SEGUIMIENTO_DESDE || '2026-11-22';
+const BANCA_VIRTUAL = 1000;          // pesos virtuales para estas pruebas
+const PAGOS_QUINIELA = [60, 8, 4];   // pago por peso: 1.er, 2.º y 3.er premio (ajustable según la banca)
+const SEGUIMIENTO_LOTERIAS = ['florida_d', 'new_york_n'];
+function hipotesisDe(clave, pre) {
+  const total = pre.length * 3, c100 = Array(100).fill(0), cDec = Array(10).fill(0), cUni = Array(10).fill(0);
+  for (const nums of pre) for (const n of nums) { c100[n]++; cDec[Math.floor(n / 10)]++; cUni[n % 10]++; }
+  const mejor = (arr, e) => arr.reduce((b, c, i) => (c - e) / Math.sqrt(e) > b.z ? { i, c, z: (c - e) / Math.sqrt(e) } : b, { i: 0, c: arr[0], z: -Infinity });
+  const n = mejor(c100, total / 100), d = mejor(cDec, total / 10), u = mejor(cUni, total / 10);
+  return [
+    { clave, tipo: 'número', etiqueta: `el ${f2(n.i)}`, nums: [n.i], antes: `${n.c} veces, esperaba ${(total / 100).toFixed(1)}` },
+    { clave, tipo: 'decena', etiqueta: `la decena ${d.i}0–${d.i}9`, nums: Array.from({ length: 10 }, (_, k) => d.i * 10 + k), antes: `${d.c} veces, esperaba ${(total / 10).toFixed(1)}` },
+    { clave, tipo: 'unidad', etiqueta: `terminados en ${u.i}`, nums: Array.from({ length: 10 }, (_, k) => k * 10 + u.i), antes: `${u.c} veces, esperaba ${(total / 10).toFixed(1)}` },
+  ];
+}
+function seguimientoVirtual(dias) {
+  const filas = [];
+  for (const clave of SEGUIMIENTO_LOTERIAS) {
+    const l = LOTERIAS.find(x => x.clave === clave); if (!l) continue;
+    const quin = f => dias.filter(d => f(d.fecha)).map(d => d.quinielas[clave]).filter(x => Array.isArray(x) && x.length === 3);
+    const pre = quin(f => f < SEGUIMIENTO_DESDE), post = quin(f => f >= SEGUIMIENTO_DESDE);
+    if (pre.length < 60) continue;
+    for (const h of hipotesisDe(clave, pre)) {
+      let gastado = 0, ganado = 0, aciertos = 0;
+      for (const nums of post) {
+        gastado += 1;
+        for (const n of h.nums) { const pos = nums.indexOf(n); if (pos >= 0) { ganado += (1 / h.nums.length) * PAGOS_QUINIELA[pos]; aciertos++; } }
+      }
+      filas.push({ ...h, lot: l.nombre, sorteos: post.length, gastado, ganado, aciertos, esperados: post.length * 3 * h.nums.length / 100 });
+    }
+  }
+  return filas;
+}
+
 function paginaSesgos(dias) {
   const filas = calcularSesgos(dias);
   const pruebas = filas.length * 3, alfa = pruebas ? 0.05 / pruebas : 0.05, alfaNum = filas.length ? 0.05 / (filas.length * 100) : 0.05;
@@ -455,12 +490,21 @@ function paginaSesgos(dias) {
   const veredicto = !filas.length ? 'Todavía no hay datos suficientes.'
     : hayFuerte ? '<strong>Hay al menos una señal que pasa la regla estricta.</strong> Antes de creerla, hay que confirmarla con datos nuevos que no se hayan usado aquí.'
     : `Ninguna lotería pasa la regla estricta. De ${pruebas} pruebas, ${bajo05} dieron p menor a 0.05; por puro azar se esperaban unas ${(pruebas * 0.05).toFixed(1)}. <strong>No hay evidencia de sesgo en ninguna lotería.</strong>`;
+  const seg = seguimientoVirtual(dias);
+  const gastoT = seg.reduce((a, f) => a + f.gastado, 0), ganT = seg.reduce((a, f) => a + f.ganado, 0), saldo = BANCA_VIRTUAL - gastoT + ganT;
+  const pesos = x => 'RD$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const filasSeg = seg.map(f => `<tr><td>${esc(f.lot)}</td><td>${esc(f.tipo)}: ${esc(f.etiqueta)}<br><small class="leyenda">hasta el ${esc(fechaMini(SEGUIMIENTO_DESDE))}: ${esc(f.antes)}</small></td><td>${f.sorteos}</td><td>${f.aciertos} <small class="leyenda">(azar ${f.esperados.toFixed(1)})</small></td><td>${pesos(f.gastado)}</td><td>${pesos(f.ganado)}</td><td>${pesos(f.ganado - f.gastado)}</td></tr>`).join('');
+  const seguimiento = seg.length ? `<h2>💵 Cartera virtual de ${pesos(BANCA_VIRTUAL)}</h2>
+<p>Las hipótesis (el número, la decena y el dígito final más desviados de Florida Día y New York Noche) se escogieron con los sorteos <strong>anteriores al ${esc(fechaMini(SEGUIMIENTO_DESDE))}</strong>. Desde esa fecha el sistema "juega" cada una en papel: RD$1 por sorteo por hipótesis (repartido en partes iguales entre sus números) y paga ${PAGOS_QUINIELA.join(' / ')} por peso a 1.er, 2.º y 3.er premio. Solo cuentan sorteos que no se usaron para escogerlas.</p>
+<p><strong>Saldo virtual: ${pesos(saldo)}</strong> de ${pesos(BANCA_VIRTUAL)} (gastado ${pesos(gastoT)}, ganado ${pesos(ganT)}).${gastoT ? ` Devolvió ${(100 * ganT / gastoT).toFixed(0)}% de lo gastado; sin ninguna ventaja, la quiniela devuelve en promedio ${PAGOS_QUINIELA.reduce((a, b) => a + b, 0)}%.` : ' Todavía no hay sorteos desde esa fecha: empieza a llenarse con el primero.'}</p>
+<div class="tabla"><table><tr><th>Lotería</th><th>Hipótesis</th><th>Sorteos</th><th>Aciertos</th><th>Gastado</th><th>Ganado</th><th>Balance</th></tr>${filasSeg}</table></div>
+<p class="leyenda">Cómo leerlo: si no hay ventaja real, lo normal es que se gaste más de lo que se gana: la quiniela devuelve en promedio 72 de cada 100 pesos jugados, así que perder cerca del 28% es el azar. Solo si dentro de muchas semanas la cartera devuelve más del 100% de lo gastado, de forma sostenida y con muchos sorteos, habría algo que investigar. Con pocos sorteos, cualquier resultado es suerte.</p>` : '';
   const cuerpo = `<section class="hero"><h1>¿Hay algún sesgo en alguna lotería?</h1>
 <p class="sub">Página privada de trabajo. Para cada lotería se prueba si sus números salen parejos: los 100 números a la vez, las decenas (0–9) y las unidades (0–9).</p></section>
 <h2>Veredicto</h2>
 <p>${veredicto}</p>
 <div class="tabla"><table><tr><th>Lotería</th><th>Sorteos</th><th>p (100 números)</th><th>p (decenas)</th><th>p (unidades)</th><th>Número más desviado</th></tr>${tabla}</table></div>
-<p class="leyenda"><strong>Cómo leerlo:</strong> p mide qué tan raro sería ver ese reparto si la lotería fuera perfectamente pareja. Un p de 0.03 suena raro, pero con ${pruebas} pruebas es normal que unas ${(pruebas * 0.05).toFixed(0)} den menos de 0.05 por casualidad. Por eso solo cuenta como señal fuerte 🚨 un p menor a ${alfa.toExponential(1)} (0.05 repartido entre todas las pruebas), o un número cuyo p sea menor a ${alfaNum.toExponential(1)} (0.05 repartido entre los 100 números de cada lotería). 👀 es "cerca, pero puede ser suerte". Ordenadas de la que más se aleja a la que menos. Una señal fuerte habría que confirmarla con sorteos nuevos antes de creerla.</p>`;
+<p class="leyenda"><strong>Cómo leerlo:</strong> p mide qué tan raro sería ver ese reparto si la lotería fuera perfectamente pareja. Un p de 0.03 suena raro, pero con ${pruebas} pruebas es normal que unas ${(pruebas * 0.05).toFixed(0)} den menos de 0.05 por casualidad. Por eso solo cuenta como señal fuerte 🚨 un p menor a ${alfa.toExponential(1)} (0.05 repartido entre todas las pruebas), o un número cuyo p sea menor a ${alfaNum.toExponential(1)} (0.05 repartido entre los 100 números de cada lotería). 👀 es "cerca, pero puede ser suerte". Ordenadas de la que más se aleja a la que menos. Una señal fuerte habría que confirmarla con sorteos nuevos antes de creerla.</p>${seguimiento}`;
   return pagina({ ruta: '/sesgos/', titulo: `Sesgos por lotería | ${NOMBRE_SITIO}`, descripcion: 'Página privada de análisis.', indexar: false, cuerpo });
 }
 
