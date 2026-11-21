@@ -401,6 +401,69 @@ function paginaAciertos(dias) {
   return pagina({ ruta: '/aciertos/', titulo: `Aciertos del Radar por lotería y horario | ${NOMBRE_SITIO}`, descripcion: 'Página privada de análisis.', indexar: false, cuerpo });
 }
 
+// 🔬 Página privada (sin enlace, noindex): ¿alguna lotería tiene un sesgo real? Prueba chi-cuadrado por lotería, corrigiendo por mirar muchas a la vez.
+function lgamma(z) {
+  const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = z, t = z + 5.5; t -= (z + 0.5) * Math.log(t);
+  let ser = 1.000000000190015; for (const cj of c) ser += cj / ++y;
+  return -t + Math.log(2.5066282746310005 * ser / z);
+}
+function gammaQ(a, x) { // gamma incompleta regularizada superior Q(a, x)
+  if (x <= 0) return 1;
+  const gln = lgamma(a);
+  if (x < a + 1) {
+    let ap = a, sum = 1 / a, del = sum;
+    for (let n = 0; n < 500; n++) { ap++; del *= x / ap; sum += del; if (Math.abs(del) < Math.abs(sum) * 1e-12) break; }
+    return Math.min(1, Math.max(0, 1 - sum * Math.exp(-x + a * Math.log(x) - gln)));
+  }
+  let b = x + 1 - a, c = 1e300, d = 1 / b, h = d;
+  for (let i = 1; i < 500; i++) {
+    const an = -i * (i - a); b += 2; d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300;
+    c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-12) break;
+  }
+  return Math.min(1, Math.max(0, Math.exp(-x + a * Math.log(x) - gln) * h));
+}
+const pChi = (chi, df) => gammaQ(df / 2, chi / 2);
+function chiCuadrado(conteos, esperado) { return conteos.reduce((s, c) => s + (c - esperado) * (c - esperado) / esperado, 0); }
+function calcularSesgos(dias) {
+  const filas = [];
+  for (const l of LOTERIAS) {
+    const sorteos = dias.map(d => d.quinielas[l.clave]).filter(x => Array.isArray(x) && x.length === 3);
+    if (sorteos.length < 60) continue;
+    const total = sorteos.length * 3;
+    const c100 = Array(100).fill(0), cDec = Array(10).fill(0), cUni = Array(10).fill(0);
+    for (const nums of sorteos) for (const n of nums) { c100[n]++; cDec[Math.floor(n / 10)]++; cUni[n % 10]++; }
+    const e100 = total / 100;
+    let mejor = { n: 0, p: 1, c: 0 };
+    c100.forEach((c, n) => { // cola exacta de Poisson (más fiable que z cuando se esperan pocas salidas), de dos lados
+      const cola = c >= e100 ? 1 - gammaQ(c, e100) : gammaQ(c + 1, e100);
+      const pn = Math.min(1, 2 * cola); if (pn < mejor.p) mejor = { n, p: pn, c };
+    });
+    filas.push({ l, sorteos: sorteos.length, p100: pChi(chiCuadrado(c100, e100), 99), pDec: pChi(chiCuadrado(cDec, total / 10), 9), pUni: pChi(chiCuadrado(cUni, total / 10), 9), mejor, e100 });
+  }
+  return filas;
+}
+function paginaSesgos(dias) {
+  const filas = calcularSesgos(dias);
+  const pruebas = filas.length * 3, alfa = pruebas ? 0.05 / pruebas : 0.05, alfaNum = filas.length ? 0.05 / (filas.length * 100) : 0.05;
+  const todos = filas.flatMap(f => [f.p100, f.pDec, f.pUni]);
+  const bajo05 = todos.filter(p => p < 0.05).length, fuertes = todos.filter(p => p < alfa).length;
+  const marca = p => `${p < alfa ? '🚨 ' : p < 0.01 ? '👀 ' : ''}${p < 0.001 ? p.toExponential(1) : p.toFixed(3)}`;
+  const orden = [...filas].sort((a, b) => Math.min(a.p100, a.pDec, a.pUni, a.mejor.p * 100) - Math.min(b.p100, b.pDec, b.pUni, b.mejor.p * 100));
+  const tabla = orden.map(f => `<tr><td>${esc(f.l.nombre)}</td><td>${f.sorteos}</td><td>${marca(f.p100)}</td><td>${marca(f.pDec)}</td><td>${marca(f.pUni)}</td><td>${f2(f.mejor.n)} <small class="leyenda">(${f.mejor.c} veces, esperaba ${f.e100.toFixed(1)}; p ${f.mejor.p < 0.001 ? f.mejor.p.toExponential(1) : f.mejor.p.toFixed(3)}${f.mejor.p < alfaNum ? ' 🚨' : ''})</small></td></tr>`).join('');
+  const hayFuerte = fuertes > 0 || filas.some(f => f.mejor.p < alfaNum);
+  const veredicto = !filas.length ? 'Todavía no hay datos suficientes.'
+    : hayFuerte ? '<strong>Hay al menos una señal que pasa la regla estricta.</strong> Antes de creerla, hay que confirmarla con datos nuevos que no se hayan usado aquí.'
+    : `Ninguna lotería pasa la regla estricta. De ${pruebas} pruebas, ${bajo05} dieron p menor a 0.05; por puro azar se esperaban unas ${(pruebas * 0.05).toFixed(1)}. <strong>No hay evidencia de sesgo en ninguna lotería.</strong>`;
+  const cuerpo = `<section class="hero"><h1>¿Hay algún sesgo en alguna lotería?</h1>
+<p class="sub">Página privada de trabajo. Para cada lotería se prueba si sus números salen parejos: los 100 números a la vez, las decenas (0–9) y las unidades (0–9).</p></section>
+<h2>Veredicto</h2>
+<p>${veredicto}</p>
+<div class="tabla"><table><tr><th>Lotería</th><th>Sorteos</th><th>p (100 números)</th><th>p (decenas)</th><th>p (unidades)</th><th>Número más desviado</th></tr>${tabla}</table></div>
+<p class="leyenda"><strong>Cómo leerlo:</strong> p mide qué tan raro sería ver ese reparto si la lotería fuera perfectamente pareja. Un p de 0.03 suena raro, pero con ${pruebas} pruebas es normal que unas ${(pruebas * 0.05).toFixed(0)} den menos de 0.05 por casualidad. Por eso solo cuenta como señal fuerte 🚨 un p menor a ${alfa.toExponential(1)} (0.05 repartido entre todas las pruebas), o un número cuyo p sea menor a ${alfaNum.toExponential(1)} (0.05 repartido entre los 100 números de cada lotería). 👀 es "cerca, pero puede ser suerte". Ordenadas de la que más se aleja a la que menos. Una señal fuerte habría que confirmarla con sorteos nuevos antes de creerla.</p>`;
+  return pagina({ ruta: '/sesgos/', titulo: `Sesgos por lotería | ${NOMBRE_SITIO}`, descripcion: 'Página privada de análisis.', indexar: false, cuerpo });
+}
+
 function paginaJugadas(dias, series) { 
   const r = calcularRadar(dias);
   const jal = calcularJaladeras(series);
@@ -891,7 +954,8 @@ async function main() {
   guardar('/loterias/', paginaLoterias(series));
   for (const l of LOTERIAS) if (series[l.clave].length) guardar(`/loterias/${l.slug}/`, paginaLoteria(l, series[l.clave]));
   guardar('/jugadas/', paginaJugadas(dias, series));
-  escribir(path.join('/aciertos/', 'index.html'), paginaAciertos(dias)); // privada: sin enlace, noindex y fuera del sitemap
+  escribir(path.join('/aciertos/', 'index.html'), paginaAciertos(dias)); // privada
+  escribir(path.join('/sesgos/', 'index.html'), paginaSesgos(dias)); // privada: sin enlace, noindex y fuera del sitemap // privada: sin enlace, noindex y fuera del sitemap
   guardar('/numeros/', paginaNumeros(series));
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
