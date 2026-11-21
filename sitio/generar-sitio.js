@@ -362,21 +362,22 @@ function calcularAciertosPorLoteria(dias) {
   const hoy = fechaRD();
   const fin = dias.findIndex(d => d.fecha === hoy) >= 0 ? dias.findIndex(d => d.fecha === hoy) : dias.length;
   const acc = {}; for (const l of LOTERIAS) acc[l.clave] = { l, sorteos: 0, hits: 0, esp: 0, pHits: 0, pEsp: 0 };
-  let ndias = 0;
+  let ndias = 0; const detalle = [];
   for (let i = 10; i < fin; i++) {
     if (Object.keys(dias[i].quinielas).length < 8) continue; // día incompleto
     ndias++;
     const top = topN(puntajes(dias, i)), prs = paresDe(top);
+    detalle.push({ fecha: dias[i].fecha, top, donde: top.map(n => Object.entries(dias[i].quinielas).filter(([, nums]) => nums.includes(n)).map(([k]) => LOTERIAS.find(l => l.clave === k)).filter(Boolean).sort((a, b) => minLoteria(a.hora) - minLoteria(b.hora))) });
     for (const [k, nums] of Object.entries(dias[i].quinielas)) {
       const a = acc[k]; if (!a) continue;
       a.sorteos++; a.hits += top.filter(n => nums.includes(n)).length; a.esp += K_RADAR * PL;
       a.pHits += prs.filter(p => nums.includes(p[0]) && nums.includes(p[1])).length; a.pEsp += prs.length * PARES_PROB;
     }
   }
-  return { ndias, filas: Object.values(acc).filter(a => a.sorteos > 0) };
+  return { ndias, detalle, filas: Object.values(acc).filter(a => a.sorteos > 0) };
 }
 function paginaAciertos(dias) {
-  const { ndias, filas } = calcularAciertosPorLoteria(dias);
+  const { ndias, filas, detalle } = calcularAciertosPorLoteria(dias);
   const z = (o, e) => e > 0 ? (o - e) / Math.sqrt(e * (1 - PL)) : 0;
   const fila = (nombre, hora, a) => `<tr><td>${esc(nombre)}</td><td>${esc(hora)}</td><td>${a.sorteos}</td><td><strong>${a.hits}</strong></td><td>${a.esp.toFixed(1)}</td><td>${a.esp ? (a.hits / a.esp).toFixed(2) : '–'}×</td><td>${z(a.hits, a.esp).toFixed(1)}</td><td>${a.pHits}</td><td>${a.pEsp.toFixed(1)}</td></tr>`;
   const porLot = [...filas].sort((x, y) => z(y.hits, y.esp) - z(x.hits, x.esp)).map(a => fila(a.l.nombre, a.l.hora, a)).join('');
@@ -386,9 +387,12 @@ function paginaAciertos(dias) {
     const t = g.reduce((s, a) => ({ sorteos: s.sorteos + a.sorteos, hits: s.hits + a.hits, esp: s.esp + a.esp, pHits: s.pHits + a.pHits, pEsp: s.pEsp + a.pEsp }), { sorteos: 0, hits: 0, esp: 0, pHits: 0, pEsp: 0 });
     return fila(nombre, `${g.length} loterías`, t);
   }).join('');
+  const filasDia = [...detalle].reverse().slice(0, 30).map(d => `<tr><td>${esc(fechaMini(d.fecha))}</td><td>${d.top.map((n, j) => d.donde[j].length ? `<div><span class="bolas">${bola(f2(n), ' ya')}</span> ${d.donde[j].map(l => `${esc(l.nombre)}${l.nombre.includes(l.hora) ? '' : ` <small class="leyenda">(${esc(l.hora)})</small>`}`).join(' · ')}</div>` : `<div><span class="bolas">${bola(f2(n))}</span> <small class="leyenda">no salió</small></div>`).join('')}</td></tr>`).join('');
   const cab = '<tr><th>Lotería / franja</th><th>Hora</th><th>Sorteos</th><th>Números que salieron</th><th>Azar esperaba</th><th>Veces el azar</th><th>z</th><th>Palés salidos</th><th>Palés azar</th></tr>';
   const cuerpo = `<section class="hero"><h1>¿Dónde salen más los números del Radar?</h1>
 <p class="sub">Página privada de trabajo. Usa los ${ndias} días completos con historial (cada día calculado solo con los días anteriores, igual que el marcador).</p></section>
+<h2>Día por día: dónde y a qué hora salió cada número</h2>
+<div class="tabla"><table><tr><th>Día</th><th>Número → lotería (hora)</th></tr>${filasDia}</table></div>
 <h2>Por franja de horario</h2>
 <div class="tabla"><table>${cab}${franjas}</table></div>
 <h2>Por lotería (de más a menos sobre el azar)</h2>
