@@ -761,6 +761,7 @@ function paginaGuias() {
     ['/guias/anguila/', 'Anguila: sorteos y resultados', 'Los cuatro sorteos de Anguila al día y sus últimos números.'],
     ['/guias/leidsa/', 'Leidsa: horario y resultados de la Quiniela Palé', 'A qué hora sortea Leidsa, el cambio del domingo y lo que salió en los últimos sorteos.'],
     ['/guias/loteka/', 'Loteka: horario y resultados de la quiniela', 'A qué hora sortea Loteka y los últimos números que salieron.'],
+    ['/laboratorio/', 'El laboratorio: ¿algo le gana al azar?', 'Cómo probamos ideas para predecir la lotería y qué resultados dieron.'],
     ['/guias/preguntas-frecuentes/', 'Preguntas frecuentes', 'Respuestas cortas a lo que más se pregunta sobre las loterías.'],
   ];
   const cuerpo = `<section class="hero"><h1>Guías de la lotería dominicana</h1>
@@ -871,6 +872,94 @@ ${tablaUltimos(series, l.clave, 10)}
 <p>Más datos en la página de ${enlaceLoteria(l)}: mapa de números, más salidos, menos salidos y atrasados.</p>
 ${pieGuia()}`;
   return pagina({ ruta: '/guias/loteka/', titulo: `Loteka hoy: horario de la quiniela y resultados | ${NOMBRE_SITIO}`, descripcion: 'Horario de la quiniela de Loteka, últimos resultados y cómo ver días anteriores.', cuerpo });
+}
+// 🧪 Laboratorio público: ideas nuevas probadas con las mismas reglas estrictas del Explorador del bot
+// (buscar en el 60% viejo del historial, confirmar en el 40% nuevo, exigir más según cuántas ideas se probaron)
+// y un control con datos inventados al azar para ver cuántas "candidatas" aparecen solas por pura casualidad.
+function normInvSitio(p) { // inversa de la normal (Acklam)
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239], b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572], c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783], d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q = p < 0.5 ? Math.sqrt(-2 * Math.log(p)) : Math.sqrt(-2 * Math.log(1 - p));
+  const x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  return p < 0.5 ? x : -x;
+}
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function evaluarIdeasLab(D) {
+  const ideas = [];
+  for (const l of LOTERIAS) {
+    for (let dow = 0; dow < 7; dow++) for (let d = 0; d < 10; d++) {
+      ideas.push({ fam: 'dia', clave: l.clave, nombre: l.nombre, texto: `${l.nombre} · ${DIAS_SEMANA[dow]} · terminación en ${d}`, dow, S: new Set(Array.from({ length: 10 }, (_, k) => k * 10 + d)) });
+      ideas.push({ fam: 'dia', clave: l.clave, nombre: l.nombre, texto: `${l.nombre} · ${DIAS_SEMANA[dow]} · decena de los ${d}0`, dow, S: new Set(Array.from({ length: 10 }, (_, k) => d * 10 + k)) });
+    }
+    ideas.push({ fam: 'repite', clave: l.clave, nombre: l.nombre, texto: `${l.nombre} · los números de ayer vuelven hoy` });
+  }
+  const corte = Math.floor(D.length * 0.6);
+  const stats = (id, a0, a1) => {
+    let h = 0, ex = 0, v = 0;
+    for (let i = a0; i < a1; i++) {
+      const b = D[i].q[id.clave]; if (!b) continue;
+      let S;
+      if (id.fam === 'dia') { if (D[i].dow !== id.dow) continue; S = id.S; }
+      else { if (i === 0 || D[i].t - D[i - 1].t !== 86400000) continue; const a = D[i - 1].q[id.clave]; if (!a) continue; S = new Set(a); }
+      const B = new Set(b), p = B.size / 100;
+      for (const x of S) if (B.has(x)) h++;
+      ex += S.size * p; v += S.size * p * (1 - p);
+    }
+    return v > 0 ? { h, ex, z: (h - ex) / Math.sqrt(v) } : null;
+  };
+  const porFam = { dia: { ideas: 0, cand: 0, conf: 0 }, repite: { ideas: 0, cand: 0, conf: 0 } };
+  const cands = [];
+  for (const id of ideas) { const r = stats(id, 0, corte); if (!r) continue; porFam[id.fam].ideas++; if (r.z >= 3) { cands.push({ id, busqueda: r }); porFam[id.fam].cand++; } }
+  const umbral = cands.length ? -normInvSitio(0.05 / cands.length) : 2;
+  for (const c of cands) { c.confirmacion = stats(c.id, corte, D.length); c.ok = !!c.confirmacion && c.confirmacion.z >= umbral; if (c.ok) porFam[c.id.fam].conf++; }
+  const total = porFam.dia.ideas + porFam.repite.ideas;
+  return { total, candidatas: cands.length, confirmadas: cands.filter(c => c.ok), umbral, porFam, corte, n: D.length,
+    mejores: cands.filter(c => !c.ok).sort((x, y) => y.busqueda.z - x.busqueda.z).slice(0, 5) };
+}
+function paginaLaboratorio(dias) {
+  const hoy = fechaRD();
+  const D = dias.filter(d => d.fecha < hoy && Object.keys(d.quinielas).length >= 8).map(d => ({ fecha: d.fecha, t: dUTC(d.fecha).getTime(), dow: dUTC(d.fecha).getUTCDay(), q: d.quinielas }));
+  if (D.length < 60) return pagina({ ruta: '/laboratorio/', titulo: `El laboratorio | ${NOMBRE_SITIO}`, descripcion: 'Cómo probamos si algo le gana al azar.', cuerpo: `<h1>El laboratorio</h1><p>Todavía no hay suficientes días de historial para probar ideas.</p>${pieGuia()}` });
+  const real = evaluarIdeasLab(D);
+  const rnd = mulberry32(20261121);
+  const D2 = D.map(d => { const q = {}; for (const k of Object.keys(d.q)) { const s = new Set(); while (s.size < 3) s.add(Math.floor(rnd() * 100)); q[k] = [...s]; } return { fecha: d.fecha, t: d.t, dow: d.dow, q }; });
+  const sim = evaluarIdeasLab(D2);
+  const fmt = n => n.toLocaleString('es-DO');
+  const fila = (nombre, r) => `<tr><td>${esc(nombre)}</td><td>${fmt(r.ideas)}</td><td>${r.cand}</td><td><strong>${r.conf}</strong></td></tr>`;
+  const mejores = real.mejores.map(c => `<tr><td>${esc(c.id.texto)}</td><td>${c.busqueda.h} <small class="leyenda">(azar ${c.busqueda.ex.toFixed(1)})</small></td><td>${c.confirmacion ? `${c.confirmacion.h} <small class="leyenda">(azar ${c.confirmacion.ex.toFixed(1)})</small>` : '–'}</td><td>no se confirmó</td></tr>`).join('');
+  const conf = real.confirmadas.length ? `<p><strong>Ideas que pasaron las dos pruebas:</strong> ${real.confirmadas.map(c => esc(c.id.texto)).join('; ')}. Se siguen midiendo hacia adelante antes de creerles.</p>` : '<p><strong>Ideas que pasaron las dos pruebas: ninguna.</strong></p>';
+  const cuerpo = `<section class="hero"><h1>El laboratorio: cómo probamos si algo le gana al azar</h1>
+<p class="sub">Aquí mostramos cómo se prueba una idea para predecir la lotería y qué resultados dio hasta hoy. Sin humo: lo que no aguanta la prueba, se dice.</p></section>
+<h2>Las reglas del juego</h2>
+<ul>
+<li><strong>Dos tramos del historial.</strong> Cada idea se busca en el 60% más viejo de los días y solo cuenta si se repite en el 40% más nuevo, que no se tocó mientras se buscaba.</li>
+<li><strong>Más ideas, más exigencia.</strong> Cuantas más ideas se prueban, más fácil es que alguna parezca buena por pura casualidad. Por eso la vara para confirmar sube con el número de candidatas.</li>
+<li><strong>Un control con datos inventados.</strong> Corremos exactamente la misma prueba con sorteos generados al azar, para ver cuántas "candidatas" aparecen solas.</li>
+<li><strong>Después, en vivo.</strong> Lo que pase todo eso todavía tiene que aguantar semanas de sorteos nuevos antes de creerle.</li>
+</ul>
+<h2>Lo que probamos con los ${real.n} días de historial completo</h2>
+<p class="sub">Ideas nuevas: terminaciones y decenas según el día de la semana en cada lotería, y la idea de que los números de ayer vuelven hoy en la misma lotería. Historial dividido así: ${real.corte} días para buscar y ${real.n - real.corte} para confirmar.</p>
+<div class="tabla"><table><tr><th>Qué se probó</th><th>Ideas probadas</th><th>Brillaron en la búsqueda</th><th>Se confirmaron</th></tr>
+${fila('Terminación o decena según el día de la semana', real.porFam.dia)}${fila('Los números de ayer vuelven hoy', real.porFam.repite)}
+<tr><td><strong>Total con datos reales</strong></td><td><strong>${fmt(real.total)}</strong></td><td><strong>${real.candidatas}</strong></td><td><strong>${real.confirmadas.length}</strong></td></tr>
+<tr><td><strong>Control con datos inventados</strong></td><td>${fmt(sim.total)}</td><td>${sim.candidatas}</td><td>${sim.confirmadas.length}</td></tr></table></div>
+${conf}
+<p>${sim.candidatas > 0 ? `Mira la última fila: en un mundo donde todo es azar puro, igual aparecen ${sim.candidatas} idea(s) que "brillan" en la búsqueda. Eso es exactamente lo que pasa con los métodos milagrosos: se escogen mirando el pasado y parecen funcionar.` : 'Mira la última fila: con datos inventados al azar, esta vez ninguna idea brilló. Pero con miles de ideas probadas, a veces alguna parece buena por pura casualidad, y por eso se exige confirmar.'}</p>
+${mejores ? `<h2>Las que más brillaron y qué les pasó después</h2>
+<div class="tabla"><table><tr><th>Idea</th><th>Aciertos en la búsqueda</th><th>Aciertos en la confirmación</th><th>Resultado</th></tr>${mejores}</table></div>
+<p class="leyenda">Cuando una idea "brilla" en una parte del historial y se apaga en la otra, es casi siempre casualidad.</p>` : ''}
+<h2>Lo que ya habíamos probado</h2>
+<ul>
+<li>Un <strong>Explorador</strong> que cruza las 20 loterías entre sí (qué sale en una y qué sale en otra, hoy o ayer) con transformaciones como equivalentes y espejos. En su revisión del 19 de noviembre de 2026, con más de 4,600 ideas probadas, ninguna de las candidatas se confirmó. Se vuelve a correr cada semana.</li>
+<li>Un laboratorio con <strong>12 métodos populares</strong> (calientes, atrasados, jaladeras, espejos, efemérides y más) medidos día por día contra el azar: ninguno le ganó.</li>
+<li>Un <strong>detector de sesgos</strong> por lotería: ninguna lotería sacó números de forma desigual más allá de lo que explica el azar.</li>
+<li>Nuestras <strong>cinco jugadas diarias del Radar</strong>, que aciertan casi lo mismo que acertaría un número escogido al azar. Puedes ver el marcador en <a href="${url('/jugadas/')}">Jugadas</a>.</li>
+</ul>
+<h2>Qué sigue</h2>
+<p>Dejamos fijadas unas pocas hipótesis con los datos hasta el 21 de noviembre de 2026 y las seguimos hacia adelante con una banca virtual, sin dinero real. Si alguna aguanta con evidencia fuerte, lo vamos a decir aquí. Si no, también.</p>
+<p>La lotería es entretenimiento, no una inversión. Más en <a href="${url('/lectura/numero-atrasado-chance/')}">¿Un número atrasado tiene más chance?</a> y <a href="${url('/lectura/probamos-4672-ideas-ninguna-le-gano-al-azar/')}">Probamos 4,672 ideas: ninguna le ganó al azar</a>.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/laboratorio/', titulo: `El laboratorio: ¿hay algo que le gane al azar en la lotería? | ${NOMBRE_SITIO}`, descripcion: 'Cómo probamos ideas para predecir la lotería con reglas estrictas y qué resultados dieron: ninguna le ganó al azar.', cuerpo });
 }
 function paginaGuiaAnguila(series) {
   const ang = LOTERIAS.filter(l => l.slug.startsWith('anguila'));
@@ -1090,6 +1179,7 @@ async function main() {
   guardar('/guias/leidsa/', paginaGuiaLeidsa(series));
   guardar('/guias/loteka/', paginaGuiaLoteka(series));
   guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
+  guardar('/laboratorio/', paginaLaboratorio(dias));
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
   const hoy = fechaRD();
