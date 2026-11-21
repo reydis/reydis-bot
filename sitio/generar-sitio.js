@@ -759,6 +759,8 @@ function paginaGuias() {
     ['/guias/horarios-loterias-dominicanas/', 'Horarios de las loterías dominicanas', 'A qué hora sortea cada lotería y quiniela, de la mañana a la noche.'],
     ['/guias/loteria-nacional/', 'Lotería Nacional: sorteos, horarios y resultados', 'Gana Más y Lotería Nacional, cuándo juegan y dónde ver lo que salió anoche.'],
     ['/guias/anguila/', 'Anguila: sorteos y resultados', 'Los cuatro sorteos de Anguila al día y sus últimos números.'],
+    ['/guias/leidsa/', 'Leidsa: horario y resultados de la Quiniela Palé', 'A qué hora sortea Leidsa, el cambio del domingo y lo que salió en los últimos sorteos.'],
+    ['/guias/loteka/', 'Loteka: horario y resultados de la quiniela', 'A qué hora sortea Loteka y los últimos números que salieron.'],
     ['/guias/preguntas-frecuentes/', 'Preguntas frecuentes', 'Respuestas cortas a lo que más se pregunta sobre las loterías.'],
   ];
   const cuerpo = `<section class="hero"><h1>Guías de la lotería dominicana</h1>
@@ -828,6 +830,48 @@ ${pieGuia()}`;
   return pagina({ ruta: '/guias/loteria-nacional/', titulo: `Lotería Nacional hoy: horario, sorteos y resultados de anoche | ${NOMBRE_SITIO}`, descripcion: 'Horario de Gana Más y Lotería Nacional, qué salió en el último sorteo y cómo ver los resultados de días anteriores.', cuerpo });
 }
 
+function paginaGuiaLeidsa(series) {
+  const l = lotPorSlug('leidsa');
+  const sn = series[l.clave] || [];
+  const ult = sn[sn.length - 1];
+  const desde = sn[0];
+  const cuerpo = `${migasGuia('Leidsa')}<h1>Leidsa: horario y resultados de la Quiniela Palé</h1>
+<p class="sub">Cómo encontrar rápido el resultado de la Quiniela Palé de Leidsa y a qué hora sale.</p>
+<h2>Qué es</h2>
+<p>Leidsa es una de las loterías privadas más conocidas de República Dominicana y tiene varios juegos. Aquí nos fijamos en su sorteo de <strong>Quiniela Palé</strong>, que saca tres números del 00 al 99, igual que las demás quinielas.</p>
+<h2>A qué hora juega</h2>
+<p>De lunes a sábado, la Quiniela Palé de Leidsa sortea a las <strong>${esc(l.hora)}</strong> de la noche. Los <strong>domingos</strong> sortea más temprano, a las <strong>${esc(HORA_DOMINGO.leidsa)}</strong>. En días feriados el horario puede cambiar, así que confírmalo con la lotería.</p>
+<h2>Lo que salió en Leidsa</h2>
+${ult ? `<p>El último sorteo registrado fue el ${esc(fechaLarga(ult.fecha))}: ${bolas(ult.nums)}</p>` : ''}
+${tablaUltimos(series, l.clave, 10)}
+<p>Para ver cualquier otro día usa el <a href="${url('/resultados/')}">historial por fecha</a>. ${desde ? `Nuestro archivo de Leidsa empieza el ${esc(fechaLarga(desde.fecha))} y crece todos los días.` : ''}</p>
+<h2>Cómo se juega</h2>
+<p>Las jugadas son las mismas de toda quiniela: quiniela, palé y tripleta. Si no las tienes claras, lee la <a href="${url('/guias/como-jugar-quiniela-pale-tripleta/')}">guía de cómo se juega</a>. Y recuerda que cada sorteo es independiente: lo que salió ayer no cambia lo que sale hoy.</p>
+<p>Más datos en la página de ${enlaceLoteria(l)}: mapa de números, más salidos, menos salidos y atrasados.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/leidsa/', titulo: `Leidsa hoy: horario de la Quiniela Palé y resultados | ${NOMBRE_SITIO}`, descripcion: 'Horario de la Quiniela Palé de Leidsa (incluido el cambio del domingo), últimos resultados y cómo ver días anteriores.', cuerpo });
+}
+function paginaGuiaLoteka(series) {
+  const l = lotPorSlug('loteka');
+  const sn = series[l.clave] || [];
+  const ult = sn[sn.length - 1];
+  const desde = sn[0];
+  const cuerpo = `${migasGuia('Loteka')}<h1>Loteka: horario y resultados de la quiniela</h1>
+<p class="sub">A qué hora sortea Loteka y dónde ver lo que salió en los últimos sorteos.</p>
+<h2>Qué es</h2>
+<p>Loteka es una de las loterías privadas de República Dominicana. Su quiniela saca tres números del 00 al 99, y se juega con las mismas jugadas de siempre: quiniela, palé y tripleta.</p>
+<h2>A qué hora juega</h2>
+<p>La quiniela de Loteka sortea a las <strong>${esc(l.hora)}</strong> de la noche. Según las fuentes que revisamos, sortea a la misma hora el domingo. En días feriados el horario puede cambiar, así que confírmalo con la lotería.</p>
+<h2>Lo que salió en Loteka</h2>
+${ult ? `<p>El último sorteo registrado fue el ${esc(fechaLarga(ult.fecha))}: ${bolas(ult.nums)}</p>` : ''}
+${tablaUltimos(series, l.clave, 10)}
+<p>Para ver cualquier otro día usa el <a href="${url('/resultados/')}">historial por fecha</a>. ${desde ? `Nuestro archivo de Loteka empieza el ${esc(fechaLarga(desde.fecha))} y crece todos los días.` : ''}</p>
+<h2>Cómo se juega</h2>
+<p>Consulta la <a href="${url('/guias/como-jugar-quiniela-pale-tripleta/')}">guía de cómo se juega</a> para entender cada jugada y qué tan probable es. Cada sorteo es independiente: un número no está "atrasado" ni "caliente" por lo que pasó antes.</p>
+<p>Más datos en la página de ${enlaceLoteria(l)}: mapa de números, más salidos, menos salidos y atrasados.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/loteka/', titulo: `Loteka hoy: horario de la quiniela y resultados | ${NOMBRE_SITIO}`, descripcion: 'Horario de la quiniela de Loteka, últimos resultados y cómo ver días anteriores.', cuerpo });
+}
 function paginaGuiaAnguila(series) {
   const ang = LOTERIAS.filter(l => l.slug.startsWith('anguila'));
   const bloques = ang.map(l => { const sr = series[l.clave] || []; const u = sr[sr.length - 1]; return `<h3>${enlaceLoteria(l)} · ${esc(l.hora)}</h3>${u ? `<p>Último resultado (${esc(fechaLarga(u.fecha))}): ${bolas(u.nums)}</p>` : ''}`; }).join('');
@@ -1043,6 +1087,8 @@ async function main() {
   guardar('/guias/horarios-loterias-dominicanas/', paginaGuiaHorarios());
   guardar('/guias/loteria-nacional/', paginaGuiaNacional(series));
   guardar('/guias/anguila/', paginaGuiaAnguila(series));
+  guardar('/guias/leidsa/', paginaGuiaLeidsa(series));
+  guardar('/guias/loteka/', paginaGuiaLoteka(series));
   guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
