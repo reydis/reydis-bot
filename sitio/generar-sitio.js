@@ -502,6 +502,21 @@ function seguimientoVirtual(dias) {
       filas.push({ ...h, lot: l.nombre, sorteos: post.length, gastado, ganado, aciertos, esperados: post.length * 3 * h.nums.length / 100 });
     }
   }
+  // 7.ª hipótesis (salió del laboratorio, fijada con los sorteos anteriores a SEGUIMIENTO_DESDE): LoteDom, solo domingos, los 10 terminados en 5
+  { const l = LOTERIAS.find(x => x.clave === 'lotedom');
+    if (l) {
+      const domingo = f => dUTC(f).getUTCDay() === 0;
+      const lista = f => dias.filter(d => domingo(d.fecha) && f(d.fecha)).map(d => d.quinielas.lotedom).filter(x => Array.isArray(x) && x.length === 3);
+      const pre = lista(f => f < SEGUIMIENTO_DESDE), post = lista(f => f >= SEGUIMIENTO_DESDE);
+      if (pre.length >= 20) {
+        const nums = Array.from({ length: 10 }, (_, k) => k * 10 + 5);
+        const hitsPre = pre.reduce((t, x) => t + x.filter(n => n % 10 === 5).length, 0);
+        let gastado = 0, ganado = 0, aciertos = 0;
+        for (const x of post) { gastado += 1; for (const n of nums) { const pos = x.indexOf(n); if (pos >= 0) { ganado += (1 / nums.length) * PAGOS_QUINIELA[pos]; aciertos++; } } }
+        filas.push({ clave: 'lotedom', tipo: 'unidad (solo domingos)', etiqueta: 'terminados en 5', nums, antes: `${hitsPre} veces en ${pre.length} domingos, esperaba ${(pre.length * 0.3).toFixed(1)}`, lot: l.nombre, sorteos: post.length, gastado, ganado, aciertos, esperados: post.length * 3 * nums.length / 100 });
+      }
+    }
+  }
   return filas;
 }
 
@@ -522,7 +537,7 @@ function paginaSesgos(dias) {
   const pesos = x => 'RD$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const filasSeg = seg.map(f => `<tr><td>${esc(f.lot)}</td><td>${esc(f.tipo)}: ${esc(f.etiqueta)}<br><small class="leyenda">hasta el ${esc(fechaMini(SEGUIMIENTO_DESDE))}: ${esc(f.antes)}</small></td><td>${f.sorteos}</td><td>${f.aciertos} <small class="leyenda">(azar ${f.esperados.toFixed(1)})</small></td><td>${pesos(f.gastado)}</td><td>${pesos(f.ganado)}</td><td>${pesos(f.ganado - f.gastado)}</td></tr>`).join('');
   const seguimiento = seg.length ? `<h2>💵 Cartera virtual de ${pesos(BANCA_VIRTUAL)}</h2>
-<p>Las hipótesis (el número, la decena y el dígito final más desviados de Florida Día y New York Noche) se escogieron con los sorteos <strong>anteriores al ${esc(fechaMini(SEGUIMIENTO_DESDE))}</strong>. Desde esa fecha el sistema "juega" cada una en papel: RD$1 por sorteo por hipótesis (repartido en partes iguales entre sus números) y paga ${PAGOS_QUINIELA.join(' / ')} por peso a 1.er, 2.º y 3.er premio. Solo cuentan sorteos que no se usaron para escogerlas.</p>
+<p>Las hipótesis (el número, la decena y el dígito final más desviados de Florida Día y New York Noche) se escogieron con los sorteos <strong>anteriores al ${esc(fechaMini(SEGUIMIENTO_DESDE))}</strong>. Desde esa fecha el sistema "juega" cada una en papel: RD$1 por sorteo por hipótesis (repartido en partes iguales entre sus números) y paga ${PAGOS_QUINIELA.join(' / ')} por peso a 1.er, 2.º y 3.er premio. Solo cuentan sorteos que no se usaron para escogerlas. La séptima salió del <a href="${url('/laboratorio/')}">laboratorio</a>: LoteDom, solo los domingos, los 10 números terminados en 5.</p>
 <p><strong>Saldo virtual: ${pesos(saldo)}</strong> de ${pesos(BANCA_VIRTUAL)} (gastado ${pesos(gastoT)}, ganado ${pesos(ganT)}).${gastoT ? ` Devolvió ${(100 * ganT / gastoT).toFixed(0)}% de lo gastado; sin ninguna ventaja, la quiniela devuelve en promedio ${PAGOS_QUINIELA.reduce((a, b) => a + b, 0)}%.` : ' Todavía no hay sorteos desde esa fecha: empieza a llenarse con el primero.'}</p>
 <div class="tabla"><table><tr><th>Lotería</th><th>Hipótesis</th><th>Sorteos</th><th>Aciertos</th><th>Gastado</th><th>Ganado</th><th>Balance</th></tr>${filasSeg}</table></div>
 <p class="leyenda">Cómo leerlo: si no hay ventaja real, lo normal es que se gaste más de lo que se gana: la quiniela devuelve en promedio 72 de cada 100 pesos jugados, así que perder cerca del 28% es el azar. Solo si dentro de muchas semanas la cartera devuelve más del 100% de lo gastado, de forma sostenida y con muchos sorteos, habría algo que investigar. Con pocos sorteos, cualquier resultado es suerte.</p>` : '';
