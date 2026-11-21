@@ -26,5 +26,17 @@ module.exports = function (url) {
   { slug: 'que-hacer-si-sacas-un-premio', titulo: 'Qué hacer si te sacas un premio', resumen: 'Verifica el resultado oficial, guarda tu recibo y pregunta las reglas de cobro.', cuerpo: `<p>Si crees que ganaste, lo primero es la calma. Revisa el resultado en la fuente oficial de la lotería, no solo en una página o un mensaje, y compara con tu recibo número por número.</p>
 <p>Guarda el recibo en un lugar seguro. Cada lotería y cada banca tiene sus propias reglas y plazos para cobrar, así que pregunta con tiempo cómo es el proceso del premio que te tocó.</p>
 <p>Y recuerda que esta página es informativa: nuestros resultados sirven para consultar rápido, pero el resultado oficial es el que manda. Más sobre esto en <a href="${url('/lectura/guarda-tu-recibo/')}">guarda tu recibo y verifica el resultado oficial</a>.</p>` },
+  { slug: 'probamos-4672-ideas-ninguna-le-gano-al-azar', titulo: 'Probamos 4,672 ideas para predecir la lotería: ninguna le ganó al azar', resumen: 'Más de 11 meses de resultados, miles de métodos probados y una conclusión honesta: nada supera al azar.', cuerpo: `<p>Reydis Radar nació con una pregunta simple: ¿hay alguna forma de ver venir los números de la lotería? En lugar de creerlo o descartarlo, decidimos medirlo con los resultados de más de 11 meses de sorteos de las loterías dominicanas.</p>
+<h2>Qué probamos</h2>
+<p>Armamos un laboratorio que prueba ideas contra los datos reales: números calientes y fríos, atrasados, repetidos, patrones por terminación, por decena, por día de la semana, por hora, combinaciones entre loterías y muchas variantes más. En total fueron <b>4,672 ideas</b>.</p>
+<h2>Cómo se prueba de forma justa</h2>
+<p>Una idea que "funcionó en el pasado" no vale nada si fue escogida mirando ese mismo pasado. Por eso cada método se evalúa avanzando día por día: solo puede usar lo que se sabía antes de cada sorteo y se compara con lo que daría el puro azar. Además, cuando se prueban miles de ideas, algunas parecen buenas por pura casualidad, así que exigimos un nivel de evidencia mucho más estricto.</p>
+<h2>El resultado</h2>
+<p>De las ideas con mejor pinta, <b>ninguna se confirmó</b>. Nuestras cinco jugadas diarias del Radar aciertan casi lo mismo que acertaría un número escogido al azar, y a veces un poquito menos. También revisamos si alguna lotería tiene un sesgo (números que salgan más de lo normal) y ninguna pasó la prueba estricta.</p>
+<h2>Entonces, ¿para qué sirve el Radar?</h2>
+<p>Para ver los datos con claridad: qué ha salido, cuánto y dónde, sin humo. Lo que no hacemos es prometerte que un número va a salir. Si alguien te vende un método infalible, pregúntale cómo lo midió.</p>
+<h2>Seguimos probando, con las reglas claras</h2>
+<p>Dejamos fijadas unas pocas hipótesis con los datos hasta el 21 de noviembre de 2026 y las seguimos hacia adelante con una banca virtual, sin dinero real. Si alguna aguanta con evidencia fuerte, lo diremos. Si no, también.</p>
+<p>La lotería es entretenimiento, no una inversión: juega solo lo que puedas perder. Más en <a href="${url('/lectura/numero-atrasado-chance/')}">¿Un número atrasado tiene más chance?</a> y <a href="${url('/lectura/ley-de-los-grandes-numeros/')}">la ley de los grandes números</a>.</p>` },
   ];
 };
