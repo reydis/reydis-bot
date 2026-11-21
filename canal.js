@@ -47,7 +47,7 @@ function minutosDe(h) {
 function lineaResultado(n) {
   const f2 = x => String(x).padStart(2, '0');
   const etiqueta = n.tipo === 'cuarteta' ? '🎲' : n.tipo === 'especial' ? '🎰' : '✅';
-  return { clave: `${n.nombre}|${n.hora}`, min: minutosDe(n.hora), texto: `${etiqueta} <b>${n.nombre}</b> — <b>${n.numeros.map(f2).join('-')}</b> <i>(${n.hora})</i>` };
+  return { clave: `${n.nombre}|${n.hora}`, min: minutosDe(n.hora), texto: `${etiqueta} <b>${n.nombre}</b> — <b>${n.numeros.map(f2).join('-')}</b>${String(n.nombre).includes(String(n.hora)) ? '' : ` <i>(${n.hora})</i>`}` };
 }
 
 function textoBloque() {
