@@ -362,7 +362,7 @@ function calcularAciertosPorLoteria(dias) {
   const hoy = fechaRD();
   const fin = dias.findIndex(d => d.fecha === hoy) >= 0 ? dias.findIndex(d => d.fecha === hoy) : dias.length;
   const acc = {}; for (const l of LOTERIAS) acc[l.clave] = { l, sorteos: 0, hits: 0, esp: 0, pHits: 0, pEsp: 0 };
-  let ndias = 0; const detalle = [];
+  let ndias = 0; const detalle = []; const regs = [];
   for (let i = 10; i < fin; i++) {
     if (Object.keys(dias[i].quinielas).length < 8) continue; // día incompleto
     ndias++;
@@ -370,14 +370,37 @@ function calcularAciertosPorLoteria(dias) {
     detalle.push({ fecha: dias[i].fecha, top, donde: top.map(n => Object.entries(dias[i].quinielas).filter(([, nums]) => nums.includes(n)).map(([k]) => LOTERIAS.find(l => l.clave === k)).filter(Boolean).sort((a, b) => minLoteria(a.hora) - minLoteria(b.hora))) });
     for (const [k, nums] of Object.entries(dias[i].quinielas)) {
       const a = acc[k]; if (!a) continue;
+      regs.push({ k, n: ndias, hits: top.filter(n => nums.includes(n)).length });
       a.sorteos++; a.hits += top.filter(n => nums.includes(n)).length; a.esp += K_RADAR * PL;
       a.pHits += prs.filter(p => nums.includes(p[0]) && nums.includes(p[1])).length; a.pEsp += prs.length * PARES_PROB;
     }
   }
-  return { ndias, detalle, filas: Object.values(acc).filter(a => a.sorteos > 0) };
+  return { ndias, detalle, regs, filas: Object.values(acc).filter(a => a.sorteos > 0) };
+}
+// 🔁 Prueba de consistencia: ¿lo que se ve en la primera mitad de los días se repite en la segunda?
+function consistenciaAciertos(ndias, regs, filas) {
+  const mid = Math.floor(ndias / 2);
+  const acc = {};
+  for (const r of regs) {
+    const a = acc[r.k] || (acc[r.k] = { s1: 0, h1: 0, s2: 0, h2: 0 });
+    if (r.n <= mid) { a.s1++; a.h1 += r.hits; } else { a.s2++; a.h2 += r.hits; }
+  }
+  const zz = (o, sorteos) => { const e = sorteos * K_RADAR * PL; return e > 0 ? (o - e) / Math.sqrt(e * (1 - PL)) : 0; };
+  const lista = filas.map(f => { const a = acc[f.l.clave]; if (!a) return null; return { l: f.l, z1: zz(a.h1, a.s1), z2: zz(a.h2, a.s2), e1: a.s1 * K_RADAR * PL, e2: a.s2 * K_RADAR * PL, h1: a.h1, h2: a.h2 }; }).filter(Boolean);
+  const n = lista.length;
+  let corr = null;
+  if (n > 2) {
+    const mx = lista.reduce((t, x) => t + x.z1, 0) / n, my = lista.reduce((t, x) => t + x.z2, 0) / n;
+    let sxy = 0, sxx = 0, syy = 0; for (const x of lista) { sxy += (x.z1 - mx) * (x.z2 - my); sxx += (x.z1 - mx) ** 2; syy += (x.z2 - my) ** 2; }
+    corr = sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
+  }
+  const repiten = lista.filter(x => x.z1 >= 1 && x.z2 >= 1).length;
+  const esperadas = lista.length * 0.1587 * 0.1587; // si todo fuera azar: P(z>=1)^2 por lotería
+  return { mid, lista, corr, repiten, esperadas, n };
 }
 function paginaAciertos(dias) {
-  const { ndias, filas, detalle } = calcularAciertosPorLoteria(dias);
+  const { ndias, filas, detalle, regs } = calcularAciertosPorLoteria(dias);
+  const cons = consistenciaAciertos(ndias, regs, filas);
   const z = (o, e) => e > 0 ? (o - e) / Math.sqrt(e * (1 - PL)) : 0;
   const fila = (nombre, hora, a) => `<tr><td>${esc(nombre)}</td><td>${esc(hora)}</td><td>${a.sorteos}</td><td><strong>${a.hits}</strong></td><td>${a.esp.toFixed(1)}</td><td>${a.esp ? (a.hits / a.esp).toFixed(2) : '–'}×</td><td>${z(a.hits, a.esp).toFixed(1)}</td><td>${a.pHits}</td><td>${a.pEsp.toFixed(1)}</td></tr>`;
   const porLot = [...filas].sort((x, y) => z(y.hits, y.esp) - z(x.hits, x.esp)).map(a => fila(a.l.nombre, a.l.hora, a)).join('');
@@ -397,6 +420,10 @@ function paginaAciertos(dias) {
 <div class="tabla"><table>${cab}${franjas}</table></div>
 <h2>Por lotería (de más a menos sobre el azar)</h2>
 <div class="tabla"><table>${cab}${porLot}</table></div>
+<h2>Prueba de consistencia: ¿se repite en la segunda mitad?</h2>
+<p class="sub">Dividimos los ${ndias} días en dos mitades (${cons.mid} y ${ndias - cons.mid}) y miramos cada lotería por separado. Si el Radar tuviera una ventaja real en alguna lotería, debería verse en las dos mitades. Si solo aparece en una, fue casualidad.</p>
+<div class="tabla"><table><tr><th>Lotería</th><th>Aciertos 1.ª mitad</th><th>z 1.ª</th><th>Aciertos 2.ª mitad</th><th>z 2.ª</th><th>¿Se repite?</th></tr>${[...cons.lista].sort((x, y) => (Math.min(y.z1, y.z2)) - (Math.min(x.z1, x.z2))).map(x => `<tr><td>${esc(x.l.nombre)}</td><td>${x.h1} <small class="leyenda">(azar ${x.e1.toFixed(1)})</small></td><td>${x.z1.toFixed(1)}</td><td>${x.h2} <small class="leyenda">(azar ${x.e2.toFixed(1)})</small></td><td>${x.z2.toFixed(1)}</td><td>${x.z1 >= 1 && x.z2 >= 1 ? '<strong>sí (en ambas arriba del azar)</strong>' : 'no'}</td></tr>`).join('')}</table></div>
+<p class="leyenda"><strong>Veredicto de la prueba:</strong> ${cons.repiten} lotería(s) quedaron arriba del azar en las dos mitades; por pura casualidad se esperaban unas ${cons.esperadas.toFixed(1)}. Correlación entre mitades: ${cons.corr === null ? 'sin datos suficientes' : cons.corr.toFixed(2)} (cerca de 0 = lo que se ve en una mitad no predice la otra; una ventaja real daría un valor claramente positivo).</p>
 <p class="leyenda"><strong>Cómo leerlo:</strong> "Números que salieron" cuenta cada vez que uno de los 5 números del día cayó en ese sorteo. "Azar esperaba" es lo que habría salido sin ninguna ventaja (5 números × 3 de 100 por sorteo). "z" mide cuántas desviaciones se alejó del azar: con 20 loterías mirándolas a la vez, es normal que alguna llegue a +2 solo por casualidad, y solo algo muy por encima y sostenido merece atención. Los palés son casi todos 0 o 1 por lotería, así que no dicen nada todavía.</p>`;
   return pagina({ ruta: '/aciertos/', titulo: `Aciertos del Radar por lotería y horario | ${NOMBRE_SITIO}`, descripcion: 'Página privada de análisis.', indexar: false, cuerpo });
 }
