@@ -294,6 +294,8 @@ const PARES_PROB = 3 / 4950; // en un sorteo salen 3 números = 3 parejas posibl
 const paresDe = a => { const o = []; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) o.push([a[i], a[j]]); return o; };
 const parSalio = (par, quin) => Object.entries(quin).filter(([, nums]) => nums.includes(par[0]) && nums.includes(par[1])).map(([k]) => nombreLoteria(k));
 
+const TOP_RADAR = new Map(); // fecha → Set de los números del día del Radar (para marcarlos en verde donde salgan)
+const marcadosRadar = fecha => TOP_RADAR.get(fecha) || new Set();
 function calcularRadar(dias) {
   const hoy = fechaRD();
   const idxHoy = dias.findIndex(d => d.fecha === hoy);
@@ -600,22 +602,23 @@ function paginaInicio(dias, series) {
   const repetidosDe = c => Object.entries(c).filter(([, ks]) => ks.length >= 2).sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
   const tarjetasDe = (d, c) => LOTERIAS.filter(l => series[l.clave].length).map(l => {
     const nums = d && d.quinielas[l.clave];
-    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), c[n] && c[n].length >= 2 ? ' rep' : '')).join('')}</span>` : `<span class="pend">Pendiente</span>`;
+    const marc = d ? marcadosRadar(d.fecha) : new Set();
+    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), marc.has(n) ? ' ya' : (c[n] && c[n].length >= 2 ? ' rep' : ''))).join('')}</span>` : `<span class="pend">Pendiente</span>`;
     return `<div class="tarjeta"><h3><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></h3><div class="hora">${esc(horaHoy(l))}</div><p>${cont}</p></div>`;
   }).join('');
-  const repsDe = (rep, cuando) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
+  const repsDe = (rep, cuando, marc = new Set()) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), marc.has(+n) ? ' ya' : ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
   const conteo = conteoDe(dia);
   const tarjetas = tarjetasDe(dia, conteo);
   const otros = dia && dia.otros.length ? `<h2>Otros juegos</h2><div class="rejilla">${dia.otros.map(o => `<div class="tarjeta"><h3>${esc(o.nombre)}</h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`).join('')}</div>` : '';
-  const reps = repsDe(repetidosDe(conteo), 'hoy');
+  const reps = repsDe(repetidosDe(conteo), 'hoy', marcadosRadar(hoy));
 
   let previo = '';
   if (prev) {
     const ayer = new Date(hoy + 'T12:00:00Z'); ayer.setUTCDate(ayer.getUTCDate() - 1);
     const rotulo = prev.fecha === ayer.toISOString().slice(0, 10) ? 'Resultados de ayer' : 'Últimos resultados publicados';
     const cp = conteoDe(prev);
-    previo = `<h2>${rotulo} · ${esc(fechaLarga(prev.fecha))}</h2><div class="rejilla">${tarjetasDe(prev, cp)}</div>${repsDe(repetidosDe(cp), 'ese día')}`;
+    previo = `<h2>${rotulo} · ${esc(fechaLarga(prev.fecha))}</h2><div class="rejilla">${tarjetasDe(prev, cp)}</div>${repsDe(repetidosDe(cp), 'ese día', marcadosRadar(prev.fecha))}`;
   }
 
   const titulo = `Resultados de la lotería de hoy, ${fechaLarga(hoy)}`;
@@ -623,7 +626,7 @@ function paginaInicio(dias, series) {
 <h1>${esc(titulo)}</h1>
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 ${teaserCelebra(dias)}
-<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
+${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}${previo}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
@@ -841,7 +844,8 @@ ${ctaTelegram()}${avisoHonesto()}
 }
 
 function paginaFecha(dia, anterior, siguiente) {
-  const filas = LOTERIAS.filter(l => dia.quinielas[l.clave]).map(l => `<tr><td><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></td><td>${esc(l.hora)}</td><td>${bolas(dia.quinielas[l.clave])}</td></tr>`).join('');
+  const marc = marcadosRadar(dia.fecha);
+  const filas = LOTERIAS.filter(l => dia.quinielas[l.clave]).map(l => `<tr><td><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></td><td>${esc(l.hora)}</td><td>${marc.size ? `<span class="bolas">${dia.quinielas[l.clave].map(n => bola(f2(n), marc.has(n) ? ' ya' : '')).join('')}</span>` : bolas(dia.quinielas[l.clave])}</td></tr>`).join('');
   const otros = dia.otros.length ? `<h2>Otros juegos</h2><div class="tabla"><table><tr><th>Juego</th><th>Números</th></tr>${dia.otros.map(o => `<tr><td>${esc(o.nombre)}${o.empresa ? ` <span class="leyenda">${esc(o.empresa)}</span>` : ''}</td><td>${numerosJuego(o)}</td></tr>`).join('')}</table></div>` : '';
   const nav = `<p class="chips">${anterior ? `<a href="${url(`/resultados/${anterior}/`)}">← ${esc(fechaCorta(anterior))}</a>` : ''}${siguiente ? `<a href="${url(`/resultados/${siguiente}/`)}">${esc(fechaCorta(siguiente))} →</a>` : ''}</p>`;
   const cuerpo = `<p class="migas"><a href="${url('/resultados/')}">Historial</a> › ${esc(fechaCorta(dia.fecha))}</p>
@@ -1425,6 +1429,7 @@ async function main() {
 
   escribir('estilos.css', CSS.trim());
   escribir('.nojekyll', '');
+  { const rd = calcularRadar(dias); rd.detalle.forEach(x => TOP_RADAR.set(x.fecha, new Set(x.top))); if (rd.hoy.length) TOP_RADAR.set(fechaRD(), new Set(rd.hoy.map(x => x.n))); }
   guardar('/', paginaInicio(dias, series));
   guardar('/loterias/', paginaLoterias(series));
   for (const l of LOTERIAS) if (series[l.clave].length) guardar(`/loterias/${l.slug}/`, paginaLoteria(l, series[l.clave]));
