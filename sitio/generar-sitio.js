@@ -1090,4 +1090,239 @@ ${seccionEspeciales(dias)}
 <li>Nuestras <strong>cinco jugadas diarias del Radar</strong>, que aciertan casi lo mismo que acertaría un número escogido al azar. Puedes ver el marcador en <a href="${url('/jugadas/')}">Jugadas</a>.</li>
 </ul>
 <h2>Qué sigue</h2>
-<p>Dejamos fijadas unas pocas hipótesis con los datos hasta el 21 de noviembre de 2026 y las seguimos hacia adelante con una banca virtual, sin dinero real.
+<p>Dejamos fijadas unas pocas hipótesis con los datos hasta el 21 de noviembre de 2026 y las seguimos hacia adelante con una banca virtual, sin dinero real. Si alguna aguanta con evidencia fuerte, lo vamos a decir aquí. Si no, también.</p>
+<p>La lotería es entretenimiento, no una inversión. Más en <a href="${url('/lectura/numero-atrasado-chance/')}">¿Un número atrasado tiene más chance?</a> y <a href="${url('/lectura/probamos-4672-ideas-ninguna-le-gano-al-azar/')}">Probamos 4,672 ideas: ninguna le ganó al azar</a>.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/laboratorio/', titulo: `El laboratorio: ¿hay algo que le gane al azar en la lotería? | ${NOMBRE_SITIO}`, descripcion: 'Cómo probamos ideas para predecir la lotería con reglas estrictas y qué resultados dieron: ninguna le ganó al azar.', cuerpo });
+}
+function paginaGuiaAnguila(series) {
+  const ang = LOTERIAS.filter(l => l.slug.startsWith('anguila'));
+  const bloques = ang.map(l => { const sr = series[l.clave] || []; const u = sr[sr.length - 1]; return `<h3>${enlaceLoteria(l)} · ${esc(l.hora)}</h3>${u ? `<p>Último resultado (${esc(fechaLarga(u.fecha))}): ${bolas(u.nums)}</p>` : ''}`; }).join('');
+  const cuerpo = `${migasGuia('Anguila')}<h1>Anguila: sorteos y resultados</h1>
+<p class="sub">Anguila es una de las quinielas de afuera que más se juegan en las bancas dominicanas. Aquí están sus horarios y sus últimos números.</p>
+<h2>Cuántos sorteos tiene</h2>
+<p>Anguila tiene <strong>${ang.length} sorteos al día</strong>: ${ang.map(l => esc(l.hora)).join(', ')}. Cada sorteo saca tres números del 00 al 99, igual que las demás quinielas, y se juega con las mismas jugadas: quiniela, palé y tripleta. Consulta nuestra <a href="${url('/guias/como-jugar-quiniela-pale-tripleta/')}">guía de cómo se juega</a>.</p>
+<h2>Últimos resultados de cada sorteo</h2>
+${bloques}
+<p>Si tu número sale en un sorteo de Anguila y también en otra lotería el mismo día, lo verás marcado en la sección de repetidos de los <a href="${url('/')}">resultados de hoy</a>.</p>
+<p class="leyenda">Las loterías de afuera se juegan en las bancas dominicanas, pero no las organiza ni las respalda este sitio. Confirma siempre el resultado y las condiciones con tu banca.</p>
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/anguila/', titulo: `Anguila lotería hoy: horarios y resultados de los 4 sorteos | ${NOMBRE_SITIO}`, descripcion: 'Horarios de los sorteos de Anguila (10:00 AM, 1:00 PM, 6:00 PM y 9:00 PM) y últimos resultados de cada uno.', cuerpo });
+}
+
+function paginaGuiaFAQ() {
+  const q = [
+    ['¿Cuántos números salen en cada sorteo?', 'Tres, del 00 al 99: el primer, el segundo y el tercer premio. Pueden repetirse en el mismo sorteo.'],
+    ['¿A qué hora salen los resultados?', `Cada lotería sortea a su hora, desde las 10:00 de la mañana hasta las 10:30 de la noche. Mira la <a href="${url('/guias/horarios-loterias-dominicanas/')}">tabla de horarios</a>.`],
+    ['¿Los resultados de esta página son oficiales?', 'Los publicamos tal como los dan las fuentes, pero el resultado oficial es siempre el de cada lotería. Si hay una diferencia, vale el de la lotería.'],
+    ['¿Se puede predecir qué número va a salir?', 'No. Cada sorteo es independiente. Probamos 12 métodos populares contra datos reales y ninguno le ganó al azar. Más detalle en <a href="' + url('/como-funciona/') + '">Cómo funciona</a>.'],
+    ['¿Qué significa un número atrasado?', 'Que lleva muchos sorteos sin salir. No tiene más posibilidades de salir: las bolas no tienen memoria.'],
+    ['¿Cuánto paga cada jugada?', 'Depende de la lotería y de la banca donde juegues. Pregunta antes de jugar y guarda tu recibo.'],
+    ['¿Cómo veo lo que salió otro día?', `En el <a href="${url('/resultados/')}">historial por fecha</a> puedes abrir cualquier día guardado y ver todas las loterías.`],
+    ['¿Venden boletos o reciben apuestas?', 'No. Este sitio solo informa. No vendemos boletos, no recibimos apuestas y no tenemos relación con ninguna lotería o banca.'],
+  ];
+  const cuerpo = `${migasGuia('Preguntas frecuentes')}<h1>Preguntas frecuentes sobre la lotería</h1>
+${q.map(([a, b]) => `<h2>${esc(a)}</h2><p>${b}</p>`).join('')}
+${pieGuia()}`;
+  return pagina({ ruta: '/guias/preguntas-frecuentes/', titulo: `Preguntas frecuentes sobre la lotería dominicana | ${NOMBRE_SITIO}`, descripcion: 'Respuestas claras a las preguntas más comunes sobre la lotería dominicana: cuántos números salen, horarios, resultados oficiales y juego responsable.', cuerpo });
+}
+
+function paginaSobre() {
+  const cuerpo = `<h1>Sobre ${NOMBRE_SITIO}</h1>
+<p>${NOMBRE_SITIO} es un proyecto independiente hecho en República Dominicana por un desarrollador dominicano. Empezó como una herramienta personal para llevar el historial de las loterías y hoy lo ponemos al alcance de todos.</p>
+<h2>Qué hacemos</h2>
+<p>Publicamos los resultados de las loterías y quinielas que se juegan en las bancas dominicanas, los guardamos en un historial y calculamos estadísticas sencillas: qué números han salido más, cuáles menos y cuánto llevan sin salir.</p>
+<h2>Qué no hacemos</h2>
+<p>No vendemos boletos, no recibimos apuestas, no tenemos relación con ninguna lotería ni banca y no prometemos números ganadores. Nuestro laboratorio probó 12 métodos populares contra datos reales y ninguno le ganó al azar. Por eso nuestra regla es simple: <strong>vendemos claridad, no esperanza</strong>.</p>
+<h2>De dónde salen los datos</h2>
+<p>Los resultados se toman de fuentes públicas y se publican tal como las dan. Ante cualquier duda, el resultado oficial es el de cada lotería. Si ves un error, avísanos desde <a href="${url('/contacto/')}">Contacto</a>.</p>
+<h2>Cómo se financia</h2>
+<p>El sitio es gratuito. Más adelante puede mostrar anuncios para cubrir sus costos. Nunca recibirás de nosotros promesas de premios.</p>
+${avisoHonesto()}
+<p class="leyenda">Solo para mayores de 18 años. Juega con responsabilidad.</p>`;
+  return pagina({ ruta: '/sobre-nosotros/', titulo: `Sobre ${NOMBRE_SITIO} | ${NOMBRE_SITIO}`, descripcion: `Quiénes somos y qué hace ${NOMBRE_SITIO}: resultados y estadísticas de la lotería dominicana, sin promesas.`, cuerpo });
+}
+
+function paginaContacto() {
+  const via = CONTACTO_EMAIL
+    ? `<p>Escríbenos a <a href="mailto:${esc(CONTACTO_EMAIL)}">${esc(CONTACTO_EMAIL)}</a>.</p>`
+    : `<p>Estamos habilitando nuestro correo de contacto. Vuelve pronto.</p>`;
+  const cuerpo = `<h1>Contacto</h1>
+<p>¿Viste un resultado equivocado, tienes una sugerencia o una duda sobre el sitio? Cuéntanos.</p>
+${via}
+<p>Para errores en un resultado, indica la lotería, la fecha y lo que ves en la página, para revisarlo más rápido.</p>
+<p class="leyenda">No podemos ayudar con reclamos de premios ni con apuestas: eso se hace directamente con la lotería o con tu banca.</p>`;
+  return pagina({ ruta: '/contacto/', titulo: `Contacto | ${NOMBRE_SITIO}`, descripcion: `Cómo contactar a ${NOMBRE_SITIO}: errores en resultados, sugerencias y consultas.`, cuerpo });
+}
+
+function paginaTerminos() {
+  const cuerpo = `<h1>Términos de uso</h1>
+<p>Al usar ${NOMBRE_SITIO} aceptas estos términos.</p>
+<h2>Solo información</h2>
+<p>Este sitio ofrece resultados y estadísticas de loterías con fines informativos y de entretenimiento. No es una casa de apuestas, no vende boletos y no recibe apuestas. No tiene relación con ninguna lotería, banca o institución de sorteos.</p>
+<h2>Resultados</h2>
+<p>Los resultados se publican tal como los dan las fuentes y pueden tener errores o retrasos. El resultado oficial es siempre el de cada lotería. No nos hacemos responsables de decisiones tomadas con base en lo que muestra el sitio.</p>
+<h2>Estadísticas</h2>
+<p>Las estadísticas describen lo que ya pasó y no predicen lo que va a salir. Cada sorteo es independiente. Nada en este sitio garantiza ganancias.</p>
+<h2>Mayores de 18 años</h2>
+<p>El sitio es solo para mayores de 18 años. Juega con responsabilidad y solo lo que puedas perder.</p>
+<h2>Contenido</h2>
+<p>El texto, el diseño y los cálculos de este sitio son propios. Puedes citar una parte indicando la fuente y un enlace. No está permitido copiar el sitio completo.</p>
+<h2>Cambios</h2>
+<p>Podemos actualizar estos términos. La versión vigente es la publicada aquí. Más sobre privacidad en la <a href="${url('/privacidad/')}">política de privacidad</a>.</p>
+<p class="leyenda">Última actualización: ${esc(fechaLarga(fechaRD()))}.</p>`;
+  return pagina({ ruta: '/terminos/', titulo: `Términos de uso | ${NOMBRE_SITIO}`, descripcion: `Términos de uso de ${NOMBRE_SITIO}: sitio informativo, sin venta de boletos ni apuestas.`, cuerpo });
+}
+
+// ── Lectura del día + dato del día ─────────────────────────────────────────
+const LECTURAS = [
+  { slug: 'numero-atrasado-chance', titulo: '¿Un número atrasado tiene más chance de salir?', resumen: 'No: las bolas no recuerdan lo que pasó en los sorteos anteriores.', cuerpo: `<p>Mucha gente piensa que si un número lleva semanas sin salir, "ya le toca". Esa idea tiene nombre: la falacia del jugador, y es de las creencias más comunes sobre el azar.</p>
+<p>No funciona porque cada sorteo es un hecho nuevo. Las bolas no saben qué salió ayer ni hace un mes. Si el 37 llevaba 150 sorteos sin salir, su chance de salir hoy sigue siendo la de siempre: casi 3% en un sorteo de tres números.</p>
+<p>Lo que sí pasa es que, con 100 números, siempre hay alguno que lleva mucho tiempo sin aparecer, por pura casualidad. Ver un número atrasado es normal. Esperar que por eso salga, no.</p>
+<p>En nuestras páginas verás la lista de "más atrasados" como un dato curioso, no como una pista.</p>` },
+  { slug: 'por-que-el-azar-parece-tener-patrones', titulo: 'Por qué el azar parece tener patrones', resumen: 'Las rachas, las repeticiones y las escaleras de números son normales.', cuerpo: `<p>Si lanzas una moneda 20 veces, es muy común ver tramos de 4 o más caras seguidas. A simple vista parece una "racha", pero es lo que hace el azar de verdad.</p>
+<p>Con la lotería pasa igual. Ver dos números seguidos como el 12 y el 13, un número que sale dos días seguidos o parejas de números gemelos no significa que haya un truco. Con cientos de resultados cada mes, esas cosas tienen que aparecer.</p>
+<p>Nuestro cerebro está hecho para buscar patrones, y muchas veces los encuentra donde no los hay. Por eso es buena idea contrastar lo que "se ve" con lo que el azar esperaría, que es justo lo que hacemos en la página de <a href="${url('/jugadas/')}">Jugadas</a>.</p>` },
+  { slug: 'por-que-unos-numeros-no-salen', titulo: 'Con 100 números, siempre hay unos que no salen', resumen: 'En 90 sorteos, lo normal es que unos 6 o 7 números no salgan ni una vez.', cuerpo: `<p>En cada sorteo salen tres números del 00 al 99. En 90 sorteos de una misma lotería, cada número "debería" salir unas 2.7 veces, pero eso es solo el promedio.</p>
+<p>En la práctica, el azar reparte desigual. Haciendo la cuenta, lo normal es que unos 6 o 7 números de los 100 no salgan ni una sola vez en esos 90 sorteos, y que alrededor de 2 salgan 7 veces o más.</p>
+<p>Por eso, cuando veas en el <a href="${url('/numeros/')}">mapa de números</a> uno en rojo y otro en azul, no es un misterio: es la forma normal en que se ve una lotería honesta. Con muchos más sorteos, las diferencias se van achicando en proporción.</p>` },
+  { slug: 'numero-repetido-mismo-sorteo', titulo: '¿Por qué a veces un número sale dos veces en el mismo sorteo?', resumen: 'Pasa en cerca de 3 de cada 100 sorteos, y es normal.', cuerpo: `<p>Seguramente lo has visto: resultados como 34-96-34, donde un número aparece dos veces. ¿Es un error? No.</p>
+<p>Cada uno de los tres números del sorteo sale de forma independiente, así que puede repetirse. Haciendo la cuenta, la probabilidad de que los tres sean distintos es 0.99 × 0.98, o sea 97%. Lo contrario, que se repita al menos uno, ocurre en casi 3 de cada 100 sorteos.</p>
+<p>Con unos 20 sorteos al día, ver un número repetido dentro de un sorteo cada pocos días es lo esperado. En el <a href="${url('/resultados/')}">historial</a> puedes buscar ejemplos.</p>` },
+  { slug: 'como-ponerte-un-limite', titulo: 'Cómo ponerte un límite antes de jugar', resumen: 'Decidir cuánto vas a gastar antes de empezar protege tu bolsillo.', cuerpo: `<p>La lotería es entretenimiento, y como cualquier entretenimiento tiene que tener un tope. Lo más útil es decidirlo antes de jugar, no mientras estás jugando.</p>
+<ul><li>Define una cantidad que puedas perder sin que afecte la comida, el alquiler, las cuentas ni a tu familia.</li>
+<li>Sepárala del resto del dinero desde el principio.</li>
+<li>Cuando se acabe, se acabó. No la repongas y no pidas prestado para seguir.</li>
+<li>No intentes recuperar lo perdido apostando más: es el camino más rápido a perder más.</li></ul>
+<p>Si ganas, también ayuda decidir de antemano qué parte guardas. Y recuerda que es solo para mayores de 18 años.</p>` },
+  { slug: 'cuanto-paga-contra-que-tan-probable', titulo: 'Lo que paga una jugada contra lo probable que es', resumen: 'Si una jugada paga menos de lo que su probabilidad pide, a la larga se pierde.', cuerpo: `<p>Hay una idea sencilla para entender cualquier juego de azar: comparar lo que paga con lo difícil que es ganar.</p>
+<p>Un ejemplo con números inventados, solo para explicar: si una jugada tiene 1 chance entre 100 de ganar y pagara 50 veces lo apostado, por cada 100 pesos jugados recibirías en promedio 50. A la larga pierdes la mitad. Para que el juego fuera "justo", tendría que pagar 100 veces.</p>
+<p>Por eso la banca y las loterías ganan con el tiempo: pagan menos de lo que la probabilidad pediría. Cuánto paga cada jugada en la vida real depende de la lotería y de la banca, así que pregunta antes de jugar.</p>
+<p>No es para asustar a nadie: es para jugar sabiendo que el azar no regala, y que lo que se juega es diversión.</p>` },
+  { slug: 'numero-popular-o-numero-raro', titulo: '¿Conviene más jugar un número popular o uno raro?', resumen: 'Depende del juego: en los que el premio se reparte, importa que no lo juegue mucha gente.', cuerpo: `<p>Si una jugada paga un monto fijo por cada peso apostado, no importa si el número es popular o raro: la probabilidad de que salga es la misma.</p>
+<p>En cambio, en los juegos donde el premio se reparte entre todos los ganadores, sí hay una diferencia. Si sale una combinación que muchísima gente jugó, el premio se divide en más partes. Por eso, en esos juegos, elegir combinaciones poco comunes (no solo fechas de cumpleaños o números "bonitos") no te hace ganar más seguido, pero sí puede hacer que, si ganas, compartas menos.</p>
+<p>Ninguna combinación tiene más chance que otra. Antes de jugar, confirma con tu banca cómo se paga cada juego.</p>` },
+  { slug: 'senales-de-que-el-juego-se-te-va-de-las-manos', titulo: 'Señales de que el juego se te está yendo de las manos', resumen: 'Reconocerlas a tiempo ayuda a parar antes de que haga daño.', cuerpo: `<p>Jugar de vez en cuando por diversión es una cosa. Estas señales indican que ya es un problema:</p>
+<ul><li>Juegas más dinero o más seguido de lo que habías pensado.</li>
+<li>Pides prestado o dejas de pagar algo para poder jugar.</li>
+<li>Intentas recuperar lo perdido jugando más.</li>
+<li>Escondes a tu familia cuánto juegas o gastas.</li>
+<li>Piensas en la lotería casi todo el día, o te pones de mal humor cuando no puedes jugar.</li></ul>
+<p>Si te reconoces en alguna, no estás solo y tiene solución. Habla con alguien de confianza y, si puedes, con un profesional de salud mental. Dar el primer paso es lo más difícil, y también lo más importante.</p>` },
+  { slug: 'como-leer-el-mapa-de-numeros', titulo: 'Cómo leer el mapa de números de cada lotería', resumen: 'Qué significan los colores, los números chiquitos y el "rango normal".', cuerpo: `<p>En la página de cada lotería verás un mapa con los 100 números del 00 al 99. Cada casilla muestra el número y, abajo, cuántas veces salió en los últimos sorteos.</p>
+<p>El color va de azul (salió menos) a rojo (salió más). Pero ojo: el azar nunca reparte parejo, así que siempre habrá azules y rojos. Para eso incluimos el <strong>rango normal</strong>, que marca hasta dónde llega la variación esperada solo por casualidad.</p>
+<p>Solo si un número se sale mucho de ese rango vale la pena fijarse, y aun así, con 100 números, unos 5 se salen por pura casualidad. El mapa es para informarte, no para predecir.</p>
+<p>Puedes ver el mapa de todas las loterías juntas en la página de <a href="${url('/numeros/')}">Números</a>.</p>` },
+  { slug: 'guarda-tu-recibo', titulo: 'Guarda tu recibo y verifica el resultado oficial', resumen: 'Dos hábitos sencillos que te evitan problemas.', cuerpo: `<p>Cuando juegas en una banca, el recibo es tu comprobante. Guárdalo hasta que salga el resultado, y revisa que tenga bien el número, la lotería y el sorteo.</p>
+<p>Al verificar si ganaste, usa el resultado oficial de la lotería. Nosotros publicamos los resultados tal como los dan las fuentes, pero pueden tener errores o retrasos, y el que vale es el oficial.</p>
+<p>Si tienes dudas sobre un premio o un reclamo, se resuelven con la banca o con la propia lotería. Este sitio no puede ayudar con cobros ni reclamos. Y nunca des tu recibo ni tus datos a personas que te escriban ofreciéndote "ayuda" para cobrar.</p>` },
+  { slug: 'suenos-y-numeros-tradicion', titulo: 'Los sueños y los números: una tradición popular', resumen: 'Una costumbre muy viva en la cultura dominicana, aunque no predice nada.', cuerpo: `<p>En la cultura popular dominicana, los sueños y los números de la lotería están muy ligados. Mucha gente despierta, recuerda lo que soñó y lo traduce a un número para jugar. Es una costumbre que se pasa de familia en familia.</p>
+<p>Es una tradición bonita y parte de la vida cotidiana, pero no hay ninguna evidencia de que los sueños predigan lo que va a salir. Cada sorteo es independiente de lo que se sueñe, se piense o se desee.</p>
+<p>Si disfrutas de la tradición, tómala como lo que es: parte del entretenimiento, y juega solo lo que puedas perder. Por ahora no publicamos listas de "significados", porque no tenemos una fuente confiable para ellas.</p>` },
+  { slug: 'que-son-los-numeros-del-dia', titulo: 'Qué son los "números del día" y por qué no son una predicción', resumen: 'Cómo se calculan y cuánto aciertan comparados con el azar.', cuerpo: `<p>En la página de <a href="${url('/jugadas/')}">Jugadas</a> mostramos 5 "números del día". Salen de un cálculo simple: damos más peso a los números que salieron como primer premio en los últimos 30 días, y menos a los de segundo y tercer premio.</p>
+<p>Eso describe lo que ya pasó, no lo que va a pasar. Para que se vea con honestidad, publicamos un marcador: cuántos de esos 5 números salieron cada día en alguna lotería, comparado con lo que el azar esperaba.</p>
+<p>Como hay unas 20 loterías al día, casi cualquier número aparece en alguna la mitad de los días solo por casualidad. Por eso nos importa más comparar contra el azar que contar aciertos sueltos.</p>
+<p>El marcador está ahí para que juzgues tú: si algún día supera al azar de forma clara y sostenida, lo verás. Mientras tanto, es entretenimiento.</p>` },
+].concat(require('./lecturas-extra.js')(url));
+function lecturaDeHoy() {
+  const dia = Math.floor(Date.parse(fechaRD() + 'T00:00:00Z') / 86400000);
+  return LECTURAS[((dia % LECTURAS.length) + LECTURAS.length) % LECTURAS.length];
+}
+
+function datoDelDia(dias) {
+  const hoy = fechaRD();
+  const d = [...dias].reverse().find(x => x.fecha < hoy && Object.keys(x.quinielas).length >= 8);
+  if (!d) return '';
+  const cont = {};
+  let dup = null;
+  for (const [k, nums] of Object.entries(d.quinielas)) {
+    for (const n of new Set(nums)) (cont[n] = cont[n] || []).push(k);
+    if (!dup && new Set(nums).size < nums.length) dup = { k, n: nums.find((x, i) => nums.indexOf(x) !== i) };
+  }
+  const max = Math.max(...Object.values(cont).map(a => a.length));
+  const tops = Object.entries(cont).filter(([, a]) => a.length === max).map(([n]) => f2(n));
+  const L = Object.keys(d.quinielas).length;
+  const rep = max >= 2 ? `El número que más se repitió entre loterías fue el ${tops.slice(0, 3).join(', ')}, en ${max} loterías.` : 'Ningún número se repitió entre loterías.';
+  const dupTxt = dup ? ` En ${esc(nombreLoteria(dup.k))} el ${f2(dup.n)} salió dos veces en el mismo sorteo.` : '';
+  return `<strong>📊 Dato del día.</strong> Ayer (${esc(fechaLarga(d.fecha))}) se registraron ${L} sorteos. ${rep}${dupTxt} <span class="leyenda">Es solo un dato, no una señal.</span>`;
+}
+
+function tarjetaLectura(dias) {
+  const l = lecturaDeHoy();
+  const dato = datoDelDia(dias);
+  return `<h2>📖 Lectura del día</h2>
+<div class="tarjeta lectura"><h3><a href="${url(`/lectura/${l.slug}/`)}">${esc(l.titulo)}</a></h3><p class="hora">${esc(l.resumen)}</p><p><a href="${url(`/lectura/${l.slug}/`)}">Leer →</a> · <a href="${url('/lectura/')}">Ver todas las lecturas</a></p></div>
+${dato ? `<p class="dato">${dato}</p>` : ''}`;
+}
+
+function paginaLecturas() {
+  const hoy = lecturaDeHoy();
+  const cuerpo = `<section class="hero"><h1>Lecturas cortas sobre la lotería</h1>
+<p class="sub">Temas breves y claros sobre el azar, las probabilidades y el juego responsable. La de hoy aparece primero.</p></section>
+<div class="rejilla">${[hoy, ...LECTURAS.filter(x => x !== hoy)].map(l => `<a class="tarjeta" href="${url(`/lectura/${l.slug}/`)}"><h3>${esc(l.titulo)}</h3><p class="hora">${esc(l.resumen)}</p></a>`).join('')}</div>
+${avisoHonesto()}`;
+  return pagina({ ruta: '/lectura/', titulo: `Lecturas cortas sobre la lotería, el azar y el juego responsable | ${NOMBRE_SITIO}`, descripcion: 'Lecturas breves sobre la lotería dominicana: cómo funciona el azar, probabilidades, mitos comunes y juego responsable.', cuerpo });
+}
+
+function paginaLectura(l, i) {
+  const ant = LECTURAS[(i - 1 + LECTURAS.length) % LECTURAS.length], sig = LECTURAS[(i + 1) % LECTURAS.length];
+  const cuerpo = `<p class="migas"><a href="${url('/lectura/')}">Lecturas</a> › ${esc(l.titulo)}</p>
+<h1>${esc(l.titulo)}</h1>
+${l.cuerpo}
+<p class="leyenda">Solo informativo. Mayores de 18 años. Juega con responsabilidad y solo lo que puedas perder.</p>
+<p>← <a href="${url(`/lectura/${ant.slug}/`)}">${esc(ant.titulo)}</a><br>→ <a href="${url(`/lectura/${sig.slug}/`)}">${esc(sig.titulo)}</a></p>`;
+  return pagina({ ruta: `/lectura/${l.slug}/`, titulo: `${l.titulo} | ${NOMBRE_SITIO}`, descripcion: l.resumen, cuerpo });
+}
+
+// ── Principal ───────────────────────────────────────────────────────────────
+async function main() {
+  const t0 = Date.now();
+  const filas = DEMO ? datosDemo() : await leerSupabase();
+  const { dias, series } = preparar(filas);
+  if (!dias.length) throw new Error('No hay días con resultados válidos en historico.');
+
+  fs.rmSync(SALIDA, { recursive: true, force: true });
+  fs.mkdirSync(SALIDA, { recursive: true });
+  const rutas = [];
+  const guardar = (ruta, html) => { escribir(path.join(ruta, 'index.html'), html); rutas.push(ruta); };
+
+  escribir('estilos.css', CSS.trim());
+  escribir('.nojekyll', '');
+  guardar('/', paginaInicio(dias, series));
+  guardar('/loterias/', paginaLoterias(series));
+  for (const l of LOTERIAS) if (series[l.clave].length) guardar(`/loterias/${l.slug}/`, paginaLoteria(l, series[l.clave]));
+  guardar('/jugadas/', paginaJugadas(dias, series));
+  escribir(path.join('/aciertos/', 'index.html'), paginaAciertos(dias)); // privada
+  escribir(path.join('/sesgos/', 'index.html'), paginaSesgos(dias)); // privada: sin enlace, noindex y fuera del sitemap // privada: sin enlace, noindex y fuera del sitemap
+  guardar('/numeros/', paginaNumeros(series));
+  for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
+  guardar('/resultados/', paginaHistorial(dias));
+  dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
+  guardar('/como-funciona/', paginaComoFunciona());
+  guardar('/privacidad/', paginaPrivacidad());
+  guardar('/sobre-nosotros/', paginaSobre());
+  guardar('/contacto/', paginaContacto());
+  guardar('/terminos/', paginaTerminos());
+  guardar('/guias/', paginaGuias());
+  guardar('/lectura/', paginaLecturas());
+  LECTURAS.forEach((l, i) => guardar(`/lectura/${l.slug}/`, paginaLectura(l, i)));
+  guardar('/guias/como-jugar-quiniela-pale-tripleta/', paginaGuiaJugar());
+  guardar('/guias/horarios-loterias-dominicanas/', paginaGuiaHorarios());
+  guardar('/guias/loteria-nacional/', paginaGuiaNacional(series));
+  guardar('/guias/anguila/', paginaGuiaAnguila(series));
+  guardar('/guias/leidsa/', paginaGuiaLeidsa(series));
+  guardar('/guias/loteka/', paginaGuiaLoteka(series));
+  guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
+  guardar('/laboratorio/', paginaLaboratorio(dias));
+
+  escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
+  const hoy = fechaRD();
+  escribir('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rutas.map(r => `<url><loc>${SITE_URL}${r}</loc><lastmod>${/\/resultados\/\d{4}/.test(r) ? r.slice(12, 22) : hoy}</lastmod></url>`).join('\n')}\n</urlset>\n`);
+  { const rd = calcularRadar(dias); if (rd.hoy.length) escribir('radar-hoy.json', JSON.stringify({ fecha: hoy, numeros: rd.hoy.map(x => x.n), pales: rd.pales.map(x => x.p) })); }
+  escribir('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+  if (ADSENSE_CLIENT) escribir('ads.txt', `google.com, ${ADSENSE_CLIENT.replace(/^ca-/, '')}, DIRECT, f08c47fec0942fa0\n`);
+
+  console.log(`✅ ${rutas.length} páginas en ${SALIDA} · ${dias.length} días (${dias[0].fecha} → ${dias[dias.length - 1].fecha}) · ${((Date.now() - t0) / 1000).toFixed(1)}s${DEMO ? ' · MODO DEMO' : ''}`);
+}
+
+main().catch(e => { console.error('❌', e.message); process.exit(1); });
