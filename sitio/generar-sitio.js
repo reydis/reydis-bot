@@ -994,19 +994,24 @@ function evaluarEspeciales(dias) {
   for (const j of [...juegos.values()].sort((a, b) => b.lista.length - a.lista.length)) {
     idx++;
     const largos = {}; for (const s of j.lista) largos[s.length] = (largos[s.length] || 0) + 1;
-    const k = +Object.entries(largos).sort((a, b) => b[1] - a[1])[0][0];
-    const lista = j.lista.filter(s => s.length === k);
+    let k = +Object.entries(largos).sort((a, b) => b[1] - a[1])[0][0];
+    let lista = j.lista.filter(s => s.length === k);
     if (lista.length < 60) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
-    const repl = /^pega/.test(j.tipo) || lista.some(s => new Set(s).size < s.length);
-    let lo, hi;
-    if (/^pega/.test(j.tipo)) { lo = 0; hi = 9; } else { lo = Math.min(...lista.map(s => Math.min(...s))); hi = Math.max(...lista.map(s => Math.max(...s))); }
+    const dup = s => new Set(s).size < s.length;
+    let bonus = false;
+    // Si solo se repite cuando se cuenta la última bola, esa última es una bola extra de otro bolillero: se prueba sin ella.
+    if (!/^pega/.test(j.tipo) && k > 2 && lista.some(dup) && lista.every(s => !dup(s.slice(0, -1)))) { lista = lista.map(s => s.slice(0, -1)); k -= 1; bonus = true; }
+    const repl = /^pega/.test(j.tipo) || lista.some(dup);
+    // El rango sale de lo que realmente ha salido (no se supone): solo se completa a 0-9 o 00-99 cuando es claro.
+    let lo = Math.min(...lista.map(s => Math.min(...s))), hi = Math.max(...lista.map(s => Math.max(...s)));
+    if (/^pega/.test(j.tipo) && hi <= 9) { lo = 0; hi = 9; } else if (lo <= 9 && hi >= 90 && hi <= 99) { lo = 0; hi = 99; }
     const N = hi - lo + 1;
     if (N < 5 || k >= N) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
     const norm = lista.map(s => s.map(x => x - lo));
     const real = analizarEspecial(norm, N, k, repl, mulberry32(20261124 + idx));
     const rc = mulberry32(777000 + idx);
     const control = analizarEspecial(norm.map(() => muestraEsp(rc, N, k, repl)), N, k, repl, mulberry32(555000 + idx));
-    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, real, control });
+    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control });
   }
   return { salida, pocos };
 }
@@ -1019,7 +1024,7 @@ function seccionEspeciales(dias) {
   const filas = ev.salida.map(s => {
     const r = s.real, ps = [r.pU, r.pR, r.pC, r.pA];
     const lectura = ps.some(p => p < alfa) ? '<strong>Revisar y confirmar con datos nuevos</strong>' : (ps.some(p => p < 0.05) ? 'Algo "cerca", normal por casualidad' : 'Como el azar');
-    return `<tr><td>${esc(s.nombre)}</td><td>${r.n}</td><td>${r.k} de ${r.N}${r.repl ? ' (pueden repetirse)' : ''}</td><td>${fp(r.pU)}${marca(r.pU)}</td><td>${fp(r.pR)}${marca(r.pR)}</td><td>${fp(r.pC)}${marca(r.pC)}</td><td>${fp(r.pA)}${marca(r.pA)}</td><td>${lectura}</td></tr>`;
+    return `<tr><td>${esc(s.nombre)}</td><td>${r.n}</td><td>${r.k} de ${r.N}${s.bonus ? ' + bola extra' : ''}${r.repl ? ' (pueden repetirse)' : ''}</td><td>${fp(r.pU)}${marca(r.pU)}</td><td>${fp(r.pR)}${marca(r.pR)}</td><td>${fp(r.pC)}${marca(r.pC)}</td><td>${fp(r.pA)}${marca(r.pA)}</td><td>${lectura}</td></tr>`;
   }).join('');
   const pruebas = ev.salida.reduce((t, s) => t + 4, 0);
   const bajoReal = ev.salida.reduce((t, s) => t + [s.real.pU, s.real.pR, s.real.pC, s.real.pA].filter(p => p < 0.05).length, 0);
