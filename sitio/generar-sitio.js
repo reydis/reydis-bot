@@ -240,6 +240,10 @@ footer .in{max-width:1120px;margin:auto;padding:28px 18px}
 .radar{text-align:center;min-height:0}.radar p{margin:.6em 0 0}.radar .bola{width:3.2em;height:3.2em;font-size:1.15rem}
 .radar-cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:16px 18px;margin:30px 0}
 details{margin:12px 0}summary{cursor:pointer;color:var(--acento);font-weight:700;padding:10px 0}
+.chips .chip,.mn-fila .chip,button.chip{background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:8px 16px;color:var(--texto);font:inherit;cursor:pointer}button.chip[aria-pressed=true]{border-color:var(--acento);color:var(--acento)}
+a.boton{display:inline-block;background:linear-gradient(135deg,var(--acento),var(--acento2));color:#04121c;font-weight:800;padding:10px 18px;border-radius:999px}a.boton:hover{text-decoration:none;filter:brightness(1.08)}
+.mn-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:600px;margin:12px 0}.mn-grid button{aspect-ratio:1;border-radius:8px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto);font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;padding:0}.mn-grid button[aria-pressed=true]{background:radial-gradient(circle at 32% 28%,#fde68a,#f59e0b);color:#1a1200;border-color:var(--ojo)}.mn-grid button.hoy{outline:2px solid var(--bien);outline-offset:-2px}
+.mn-tarj{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:14px 16px;margin:12px 0}.mn-cab{display:flex;gap:14px;align-items:center;margin-bottom:8px}.mn-resumen{font-weight:700;margin:14px 0}.mn-fila{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -626,6 +630,7 @@ ${ctaTelegram()}
 <h2>Busca tu número</h2>
 <form class="buscar" onsubmit="var n=parseInt(this.n.value,10);if(n>=0&&n<=99){location.href='${url('/numeros/')}'+String(n).padStart(2,'0')+'/'}return false"><input name="n" inputmode="numeric" maxlength="2" placeholder="Ej: 27" aria-label="Número del 00 al 99"><button>Ver</button></form>
 <p class="leyenda">Te dice cuándo salió por última vez en cada lotería y cuántas veces ha salido.</p>
+<p><a class="boton" href="${url('/mis-numeros/')}">⭐ Sigue tus propios números</a></p>
 ${avisoHonesto()}`;
   return pagina({ ruta: '/', titulo: `${titulo} | ${NOMBRE_SITIO}`, descripcion: `Resultados de hoy de Leidsa, Loteka, Nacional, Real, La Primera, LoteDom, Anguila, King Lottery, New York y Florida, con estadísticas reales y sin promesas.`, cuerpo });
 }
@@ -697,15 +702,142 @@ ${avisoHonesto()}${ctaTelegram()}`;
   return pagina({ ruta: `/numeros/${nn}/`, titulo: `Número ${nn}: cuándo salió por última vez en cada lotería | ${NOMBRE_SITIO}`, descripcion: `¿Cuándo salió el ${nn}? Última fecha y veces que ha salido el ${nn} en Leidsa, Loteka, Nacional, Real, La Primera, LoteDom, Anguila y más.`, cuerpo });
 }
 
+// ── Mapa de calor honesto y "Mis números" ─────────────────────────────────────
+const JS_MAPA = String.raw`(function(){
+var D=JSON.parse(document.getElementById('mapa-datos').textContent);
+var cont=document.getElementById('mapa-calor'),txt=document.getElementById('mapa-texto'),bs=document.querySelectorAll('[data-per]');
+function pintar(k){
+  var P=D[k]; if(!P||!P.tot){return;}
+  var p=1-Math.pow(0.99,3),E=P.tot*p,sd=Math.sqrt(P.tot*p*(1-p)),lo=Math.round(E-2*sd),hi=Math.round(E+2*sd),fuera=0,html='';
+  for(var n=0;n<100;n++){
+    var v=P.v[n],z=sd?(v-E)/sd:0,bg,col='#fff';
+    if(z>=2){fuera++;bg='hsl('+Math.max(8,28-Math.round((z-2)*14))+' 85% 42%)';}
+    else if(z<=-2){fuera++;bg='hsl(212 75% 36%)';}
+    else{bg='hsl(222 24% '+(20+Math.round(Math.max(-1,Math.min(1,z/2))*4))+'%)';}
+    var s=(n<10?'0':'')+n;
+    html+='<a href="'+D.base+s+'/" style="background:'+bg+';color:'+col+'" title="'+s+': '+v+' veces (lo normal: '+lo+' a '+hi+')">'+s+'<small>'+v+'</small></a>';
+  }
+  cont.innerHTML=html;
+  txt.textContent='En estos '+P.tot+' sorteos, cada número debería salir unas '+E.toFixed(1)+' veces; entre '+lo+' y '+hi+' es lo normal por azar. '+fuera+' de 100 números quedaron fuera de ese rango (naranja = más de lo normal, azul = menos). Por pura casualidad se esperan unos 4 o 5, así que no significa que vayan a salir más ni menos.';
+  for(var i=0;i<bs.length;i++){bs[i].setAttribute('aria-pressed',bs[i].getAttribute('data-per')===k?'true':'false');}
+}
+for(var i=0;i<bs.length;i++){bs[i].addEventListener('click',function(){pintar(this.getAttribute('data-per'));});}
+pintar('p90');
+})();`;
+
+const JS_MIS_NUMEROS = String.raw`(function(){
+var D=JSON.parse(document.getElementById('mn-datos').textContent),MAX=10,KEY='reydis_mis_numeros';
+var grid=document.getElementById('mn-grid'),res=document.getElementById('mn-res'),cnt=document.getElementById('mn-cont'),borrar=document.getElementById('mn-borrar');
+var sel=[];
+function f2(n){return (n<10?'0':'')+n;}
+function cargar(){
+  var h=(location.hash||'').replace('#','');
+  if(h){sel=h.split(',').map(function(x){return parseInt(x,10);}).filter(function(x){return x>=0&&x<=99;});}
+  else{try{var r=localStorage.getItem(KEY);if(r){sel=JSON.parse(r).filter(function(x){return x>=0&&x<=99;});}}catch(e){}}
+  var u=[];sel.forEach(function(x){if(u.indexOf(x)<0&&u.length<MAX){u.push(x);}});sel=u;
+}
+function guardar(){
+  try{localStorage.setItem(KEY,JSON.stringify(sel));}catch(e){}
+  try{history.replaceState(null,'',sel.length?'#'+sel.join(','):location.pathname+location.search);}catch(e){}
+}
+function hace(d){return d===0?'hoy':(d===1?'ayer':'hace '+d+' días');}
+function dibujaGrid(){
+  var h='';
+  for(var n=0;n<100;n++){
+    var on=sel.indexOf(n)>=0,hoy=D.t[n]&&D.t[n].length;
+    h+='<button type="button" data-n="'+n+'" aria-pressed="'+on+'" class="'+(hoy?'hoy':'')+'" aria-label="Número '+f2(n)+'">'+f2(n)+'</button>';
+  }
+  grid.innerHTML=h;
+  cnt.textContent='Elegidos: '+sel.length+' de '+MAX;
+  borrar.style.display=sel.length?'inline-block':'none';
+}
+function card(n){
+  var salio=D.t[n]||[],tot=0,filas=[],sorteos=0,i;
+  for(i=0;i<D.l.length;i++){
+    var c=D.c[i][n],d=D.d[i][n];sorteos+=D.n[i];
+    if(c>0){tot+=c;filas.push({l:D.l[i],c:c,d:d});}
+  }
+  filas.sort(function(a,b){return a.d-b.d||b.c-a.c;});
+  var esp=sorteos*(1-Math.pow(0.99,3));
+  var div=document.createElement('div');div.className='mn-tarj';
+  var cab='<div class="mn-cab"><span class="bola'+(salio.length?' ya':'')+'">'+f2(n)+'</span><div>';
+  cab+=salio.length?'<strong>Hoy salió en:</strong> '+salio.map(function(i){return D.l[i];}).join(', '):'<strong>Hoy todavía no ha salido.</strong>';
+  cab+='<br><span class="leyenda">En el historial guardado: '+tot+' veces en '+sorteos+' sorteos (por azar se esperan unas '+esp.toFixed(0)+').</span></div></div>';
+  var tabla='<table><tr><th>Lotería</th><th>Veces</th><th>Última vez</th></tr>';
+  filas.slice(0,8).forEach(function(f){tabla+='<tr><td>'+f.l+'</td><td>'+f.c+'</td><td>'+hace(f.d)+'</td></tr>';});
+  tabla+='</table>';
+  div.innerHTML=cab+(filas.length?'<div class="tabla">'+tabla+'</div>':'<p class="leyenda">Todavía no ha salido en las loterías guardadas.</p>');
+  return div;
+}
+function dibujaRes(){
+  res.innerHTML='';
+  if(!sel.length){var p=document.createElement('p');p.className='leyenda';p.textContent='Toca hasta 10 números arriba. Se guardan en este teléfono, sin crear cuenta.';res.appendChild(p);return;}
+  var hoy=sel.filter(function(n){return D.t[n]&&D.t[n].length;});
+  var r=document.createElement('p');r.className='mn-resumen';
+  r.textContent=hoy.length?'Hoy ya salieron '+hoy.length+' de tus '+sel.length+' números: '+hoy.map(f2).join(', ')+'.':'Hoy todavía no ha salido ninguno de tus '+sel.length+' números.';
+  res.appendChild(r);
+  sel.slice().sort(function(a,b){return a-b;}).forEach(function(n){res.appendChild(card(n));});
+}
+grid.addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b){return;}
+  var n=parseInt(b.getAttribute('data-n'),10),i=sel.indexOf(n);
+  if(i>=0){sel.splice(i,1);}else if(sel.length<MAX){sel.push(n);}
+  guardar();dibujaGrid();dibujaRes();
+});
+borrar.addEventListener('click',function(){sel=[];guardar();dibujaGrid();dibujaRes();});
+cargar();dibujaGrid();dibujaRes();
+})();`;
+
+function jsonSeguro(o) { return JSON.stringify(o).replace(/</g, '\\u003c'); }
+
 function paginaNumeros(series) {
-  const veces = Array(100).fill(0);
-  let tot = 0;
-  for (const l of LOTERIAS) { const s = series[l.clave]; if (!s.length) continue; const e = estadisticas(s); e.veces.forEach((v, n) => (veces[n] += v)); tot += e.N; }
-  const max = Math.max(...veces);
+  const hoy = fechaRD();
+  const corte = dias => new Date(dUTC(hoy) - dias * 86400000).toISOString().slice(0, 10);
+  const periodos = { p30: corte(30), p90: corte(90), todo: '0000-00-00' };
+  const datos = { base: url('/numeros/'), p30: { tot: 0, v: Array(100).fill(0) }, p90: { tot: 0, v: Array(100).fill(0) }, todo: { tot: 0, v: Array(100).fill(0) } };
+  for (const l of LOTERIAS) for (const s of (series[l.clave] || [])) {
+    for (const [k, desde] of Object.entries(periodos)) {
+      if (s.fecha < desde) continue;
+      datos[k].tot++; new Set(s.nums).forEach(n => datos[k].v[n]++);
+    }
+  }
+  const tot = datos.todo.tot, veces = datos.todo.v, max = Math.max(...veces);
   const mapa = veces.map((v, n) => `<a href="${url(`/numeros/${f2(n)}/`)}" style="background:${colorMapa(v, max)}" title="${f2(n)}: ${v} veces">${f2(n)}<small>${v}</small></a>`).join('');
-  const cuerpo = `<h1>Números del 00 al 99</h1><p class="sub">Veces que salió cada número sumando todas las loterías (${tot} sorteos). Toca uno para ver su detalle.</p>
-<div class="mapa">${mapa}</div><p class="leyenda">Lo esperado por azar: ~${(tot * (1 - Math.pow(0.99, 3))).toFixed(0)} veces cada número.</p>${avisoHonesto()}`;
-  return pagina({ ruta: '/numeros/', titulo: `Números más salidos en la lotería dominicana (00-99) | ${NOMBRE_SITIO}`, descripcion: 'Mapa de los 100 números de la quiniela con las veces que ha salido cada uno en todas las loterías. Datos reales.', cuerpo });
+  const cuerpo = `<h1>Números del 00 al 99</h1><p class="sub">Veces que salió cada número sumando todas las loterías. Toca uno para ver su detalle.</p>
+<p class="chips"><button type="button" class="chip" data-per="p30" aria-pressed="false">Últimos 30 días</button><button type="button" class="chip" data-per="p90" aria-pressed="true">Últimos 90 días</button><button type="button" class="chip" data-per="todo" aria-pressed="false">Todo el historial</button></p>
+<div class="mapa" id="mapa-calor">${mapa}</div>
+<p class="leyenda" id="mapa-texto">En total hay ${tot} sorteos guardados. Lo esperado por azar: ~${(tot * (1 - Math.pow(0.99, 3))).toFixed(0)} veces cada número.</p>
+<p><a class="boton" href="${url('/mis-numeros/')}">⭐ Sigue tus propios números</a></p>${avisoHonesto()}
+<script type="application/json" id="mapa-datos">${jsonSeguro(datos)}</script><script>${JS_MAPA}</script>`;
+  return pagina({ ruta: '/numeros/', titulo: `Mapa de calor de los números de la lotería dominicana (00-99) | ${NOMBRE_SITIO}`, descripcion: 'Mapa de los 100 números de la quiniela con las veces que ha salido cada uno en los últimos 30 días, 90 días o todo el historial, y cuánto varía por puro azar.', cuerpo });
+}
+
+function paginaMisNumeros(dias, series) {
+  const hoy = fechaRD();
+  const lots = LOTERIAS.filter(l => (series[l.clave] || []).length);
+  const D = { l: lots.map(l => l.nombre), n: [], c: [], d: [], t: {} };
+  lots.forEach((l, i) => {
+    const s = series[l.clave], c = Array(100).fill(0), d = Array(100).fill(-1);
+    D.n.push(s.length);
+    for (const x of s) {
+      const dd = Math.round((dUTC(hoy) - dUTC(x.fecha)) / 86400000);
+      new Set(x.nums).forEach(n => { c[n]++; if (d[n] < 0 || dd < d[n]) d[n] = dd; });
+    }
+    D.c.push(c); D.d.push(d.map(v => v < 0 ? 9999 : v));
+  });
+  const hd = dias.find(x => x.fecha === hoy);
+  for (let n = 0; n < 100; n++) D.t[n] = [];
+  if (hd) lots.forEach((l, i) => { const q = hd.quinielas[l.clave]; if (q) new Set(q).forEach(n => D.t[n].push(i)); });
+  const cuerpo = `<h1>Mis números</h1>
+<p class="sub">Marca hasta 10 números y mira si salieron hoy, cuántas veces han salido y cuándo fue la última vez en cada lotería. Se guardan en este teléfono: sin cuenta, sin contraseña.</p>
+<p class="mn-fila"><span id="mn-cont" class="leyenda">Elegidos: 0 de 10</span> <button type="button" id="mn-borrar" class="chip" style="display:none">Borrar todos</button></p>
+<div class="mn-grid" id="mn-grid"></div>
+<p class="leyenda">El borde verde marca los números que ya salieron hoy en alguna lotería.</p>
+<div id="mn-res"></div>
+<p class="leyenda">Esto describe lo que ya pasó: que un número salga seguido o lleve días sin salir no cambia su chance en el próximo sorteo. Para que te avisemos cuando sale cada resultado, únete al canal de Telegram.</p>
+${ctaTelegram()}${avisoHonesto()}
+<script type="application/json" id="mn-datos">${jsonSeguro(D)}</script><script>${JS_MIS_NUMEROS}</script>`;
+  return pagina({ ruta: '/mis-numeros/', titulo: `Mis números: sigue tus números de la lotería | ${NOMBRE_SITIO}`, descripcion: 'Marca hasta 10 números y mira si salieron hoy, cuántas veces han salido y cuándo fue la última vez en cada lotería dominicana. Sin cuenta, se guarda en tu teléfono.', cuerpo });
 }
 
 function paginaFecha(dia, anterior, siguiente) {
@@ -1300,6 +1432,7 @@ async function main() {
   escribir(path.join('/aciertos/', 'index.html'), paginaAciertos(dias)); // privada
   escribir(path.join('/sesgos/', 'index.html'), paginaSesgos(dias)); // privada: sin enlace, noindex y fuera del sitemap // privada: sin enlace, noindex y fuera del sitemap
   guardar('/numeros/', paginaNumeros(series));
+  guardar('/mis-numeros/', paginaMisNumeros(dias, series));
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
   dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
