@@ -244,6 +244,7 @@ details{margin:12px 0}summary{cursor:pointer;color:var(--acento);font-weight:700
 a.boton{display:inline-block;background:linear-gradient(135deg,var(--acento),var(--acento2));color:#04121c;font-weight:800;padding:10px 18px;border-radius:999px}a.boton:hover{text-decoration:none;filter:brightness(1.08)}
 .mn-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:600px;margin:12px 0}.mn-grid button{aspect-ratio:1;border-radius:8px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto);font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;padding:0}.mn-grid button[aria-pressed=true]{background:radial-gradient(circle at 32% 28%,#fde68a,#f59e0b);color:#1a1200;border-color:var(--ojo)}.mn-grid button.hoy{outline:2px solid var(--bien);outline-offset:-2px}
 .mn-tarj{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:14px 16px;margin:12px 0}.mn-cab{display:flex;gap:14px;align-items:center;margin-bottom:8px}.mn-resumen{font-weight:700;margin:14px 0}.mn-fila{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.gen-form{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:16px;margin:14px 0;display:grid;gap:12px;max-width:640px}.gen-form label{display:grid;gap:6px;font-size:.9rem}.gen-form label.chk{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--suave)}.gen-form select,.gen-form input[type=number]{background:var(--panel2);border:1px solid var(--borde);border-radius:10px;padding:10px 12px;color:var(--texto);font:inherit;width:100%}.gen-tk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:10px 14px;margin:8px 0;max-width:640px}.gen-tk .gen-n{color:var(--suave);font-size:.8rem;min-width:26px}.gen-acc{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.gen-nota{max-width:640px}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -791,6 +792,57 @@ borrar.addEventListener('click',function(){sel=[];guardar();dibujaGrid();dibujaR
 cargar();dibujaGrid();dibujaRes();
 })();`;
 
+const JS_GENERADOR = String.raw`(function(){
+var D=JSON.parse(document.getElementById('gen-datos').textContent);
+var sel=document.getElementById('gen-juego'),tam=document.getElementById('gen-tam'),cant=document.getElementById('gen-cant'),pop=document.getElementById('gen-pop');
+var btn=document.getElementById('gen-go'),out=document.getElementById('gen-out'),nota=document.getElementById('gen-nota'),acc=document.getElementById('gen-acc'),info=document.getElementById('gen-info');
+var chips=document.querySelectorAll('#gen-modos .chip'),modo='azar',ult=[];
+function rnd(n){var a=new Uint32Array(1),lim=Math.floor(4294967296/n)*n;do{crypto.getRandomValues(a);}while(a[0]>=lim);return a[0]%n;}
+function fmt(g,x){return g.hi>9?(x<10?'0'+x:''+x):''+x;}
+function fp(p){return p<0.001?'menor a 0.001':p.toFixed(3);}
+function muestra(g,pool,m){var r=[],b=pool.slice(),i,j,t;
+  if(g.repl){for(i=0;i<m;i++)r.push(pool[rnd(pool.length)]);return r;}
+  for(i=0;i<m;i++){j=i+rnd(b.length-i);t=b[i];b[i]=b[j];b[j]=t;r.push(b[i]);}
+  return r;}
+function popular(g,t){if(g.repl||t.length<3)return false;var s=t.slice().sort(function(a,b){return a-b;}),run=1,i;
+  for(i=1;i<s.length;i++){run=(s[i]===s[i-1]+1)?run+1:1;if(run>=3)return true;}
+  if(g.hi>31&&s[s.length-1]<=31)return true;return false;}
+function juego(){return D[+sel.value];}
+function texto(){var g=juego(),t;
+  if(modo==='azar')return 'Al azar puro: toda combinación tiene exactamente la misma probabilidad de salir. Es la forma más honesta de jugar.';
+  if(modo==='calientes'){
+    if(!g.vent)return 'Calientes con los últimos '+g.W+' sorteos. Todavía hay pocos sorteos guardados ('+g.n+') para probar si esto funciona; úsalo solo como criterio personal.';
+    if(g.pasa)return 'Calientes con ventana de '+g.W+' sorteos. Pasó la prueba con sorteos no vistos (p = '+fp(g.wfp)+'). Es una señal que seguimos confirmando; no garantiza premios.';
+    return 'Calientes con los últimos '+g.W+' sorteos. En la prueba con sorteos no vistos no le ganó al azar (p = '+fp(g.wfp)+'). Úsalo solo como criterio personal.';}
+  if(g.pa<g.alfa)return 'Atrasados: el laboratorio vio algo raro (p = '+fp(g.pa)+') que hay que confirmar con datos nuevos. No garantiza premios.';
+  return 'Atrasados: en el laboratorio no le ganó al azar (p = '+fp(g.pa)+'). Que un número lleve tiempo sin salir no cambia su probabilidad.';}
+function actualizar(){var g=juego(),mx=g.k;
+  tam.max=mx;var d=Math.min(g.k,10);if(!tam.dataset.tocado||+tam.value>mx)tam.value=d;
+  info.textContent='Del '+fmt(g,g.lo)+' al '+fmt(g,g.hi)+(g.repl?' · los números pueden repetirse':' · sin repetir')+' · en cada sorteo salen '+g.k+(g.bonus?' (más una bola extra, que aquí no se genera)':'')+'. Revisa las reglas del juego oficial para saber cuántos números juega un ticket.';
+  nota.textContent=texto();}
+function generar(){var g=juego(),m=Math.max(1,Math.min(g.k,parseInt(tam.value,10)||1)),c=Math.max(1,Math.min(10,parseInt(cant.value,10)||1)),todos=[],x,i;
+  for(x=g.lo;x<=g.hi;x++)todos.push(x);
+  var rank=modo==='calientes'?g.cal:(modo==='atrasados'?g.atr:null);
+  var pool=rank?rank.slice(0,Math.min(todos.length,Math.max(m*2,g.repl?6:m*2))):todos;
+  ult=[];
+  for(i=0;i<c;i++){var t,n=0;
+    do{t=(rank&&i===0)?rank.slice(0,m):muestra(g,pool,m);n++;}while(pop.checked&&popular(g,t)&&n<60);
+    if(!g.repl)t.sort(function(a,b){return a-b;});
+    ult.push(t);}
+  var h='';
+  ult.forEach(function(t,i){h+='<div class="gen-tk"><span class="gen-n">#'+(i+1)+'</span><span class="bolas">'+t.map(function(v){return '<span class="bola">'+fmt(g,v)+'</span>';}).join('')+'</span></div>';});
+  out.innerHTML=h;acc.style.display='flex';nota.textContent=texto();}
+function plano(){var g=juego();return g.nombre+' ('+modo+')\n'+ult.map(function(t,i){return (i+1)+': '+t.map(function(v){return fmt(g,v);}).join('-');}).join('\n')+'\nreydis.github.io/reydis-bot/generador/';}
+chips.forEach(function(b){b.addEventListener('click',function(){modo=b.getAttribute('data-modo');chips.forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});nota.textContent=texto();});});
+sel.addEventListener('change',function(){tam.dataset.tocado='';out.innerHTML='';acc.style.display='none';actualizar();});
+tam.addEventListener('input',function(){tam.dataset.tocado='1';});
+btn.addEventListener('click',generar);
+document.getElementById('gen-copiar').addEventListener('click',function(){var t=plano(),b=this;
+  function ok(){b.textContent='¡Copiado!';setTimeout(function(){b.textContent='Copiar';},1500);}
+  try{navigator.clipboard.writeText(t).then(ok);}catch(e){var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok();}catch(e2){}document.body.removeChild(a);}});
+document.getElementById('gen-wa').addEventListener('click',function(){window.open('https://wa.me/?text='+encodeURIComponent(plano()),'_blank');});
+actualizar();
+})();`;
 function jsonSeguro(o) { return JSON.stringify(o).replace(/</g, '\\u003c'); }
 
 function paginaNumeros(series) {
@@ -810,7 +862,7 @@ function paginaNumeros(series) {
 <p class="chips"><button type="button" class="chip" data-per="p30" aria-pressed="false">Últimos 30 días</button><button type="button" class="chip" data-per="p90" aria-pressed="true">Últimos 90 días</button><button type="button" class="chip" data-per="todo" aria-pressed="false">Todo el historial</button></p>
 <div class="mapa" id="mapa-calor">${mapa}</div>
 <p class="leyenda" id="mapa-texto">En total hay ${tot} sorteos guardados. Lo esperado por azar: ~${(tot * (1 - Math.pow(0.99, 3))).toFixed(0)} veces cada número.</p>
-<p><a class="boton" href="${url('/mis-numeros/')}">⭐ Sigue tus propios números</a></p>${avisoHonesto()}
+<p><a class="boton" href="${url('/mis-numeros/')}">⭐ Sigue tus propios números</a> <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a></p>${avisoHonesto()}
 <script type="application/json" id="mapa-datos">${jsonSeguro(datos)}</script><script>${JS_MAPA}</script>`;
   return pagina({ ruta: '/numeros/', titulo: `Mapa de calor de los números de la lotería dominicana (00-99) | ${NOMBRE_SITIO}`, descripcion: 'Mapa de los 100 números de la quiniela con las veces que ha salido cada uno en los últimos 30 días, 90 días o todo el historial, y cuánto varía por puro azar.', cuerpo });
 }
@@ -841,6 +893,40 @@ function paginaMisNumeros(dias, series) {
 ${ctaTelegram()}${avisoHonesto()}
 <script type="application/json" id="mn-datos">${jsonSeguro(D)}</script><script>${JS_MIS_NUMEROS}</script>`;
   return pagina({ ruta: '/mis-numeros/', titulo: `Mis números: sigue tus números de la lotería | ${NOMBRE_SITIO}`, descripcion: 'Marca hasta 10 números y mira si salieron hoy, cuántas veces han salido y cuándo fue la última vez en cada lotería dominicana. Sin cuenta, se guarda en tu teléfono.', cuerpo });
+}
+
+function paginaGenerador(dias) {
+  const ev = evaluarEspeciales(dias), G = ev.salida.length, alfa = 0.05 / (Math.max(G, 1) * 4);
+  const prioridad = nombre => (/kino/i.test(nombre) ? 0 : /loto ?5/i.test(nombre) ? 1 : 2);
+  const juegos = [...ev.salida].sort((a, b) => prioridad(a.nombre) - prioridad(b.nombre) || b.real.n - a.real.n);
+  if (!juegos.length) return pagina({ ruta: '/generador/', titulo: `Generador de tickets de juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Generador de tickets para Kino, Loto 5 y otros juegos especiales de la lotería dominicana.', cuerpo: `<h1>Generador de tickets</h1><p>Todavía no hay suficientes sorteos guardados de los juegos especiales. Cuando los haya, podrás generar tickets aquí.</p>${avisoHonesto()}` });
+  const D = juegos.map(s => ({ nombre: s.nombre, lo: s.lo, hi: s.hi, k: s.k, repl: s.repl, bonus: s.bonus, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) }));
+  const opciones = juegos.map((s, i) => `<option value="${i}">${esc(s.nombre)}</option>`).join('');
+  const cuerpo = `<h1>Generador de tickets · juegos especiales</h1>
+<p class="sub">Genera combinaciones para Kino, Loto 5 y otros juegos especiales. Elige el juego y el modo. Sin cuenta, sin promesas.</p>
+<div class="gen-form">
+<label>Juego <select id="gen-juego">${opciones}</select></label>
+<p class="leyenda" id="gen-info"></p>
+<div class="chips" id="gen-modos"><button type="button" class="chip" data-modo="azar" aria-pressed="true">🎲 Al azar</button><button type="button" class="chip" data-modo="calientes" aria-pressed="false">🔥 Calientes</button><button type="button" class="chip" data-modo="atrasados" aria-pressed="false">⏳ Atrasados</button></div>
+<label>Números por ticket <input type="number" id="gen-tam" min="1" max="20" value="5" inputmode="numeric"></label>
+<label>Cantidad de tickets (hasta 10) <input type="number" id="gen-cant" min="1" max="10" value="3" inputmode="numeric"></label>
+<label class="chk"><input type="checkbox" id="gen-pop"> Evitar combinaciones populares (secuencias y solo fechas hasta 31)</label>
+<button type="button" id="gen-go" class="boton">Generar tickets</button>
+</div>
+<div id="gen-out"></div>
+<div class="gen-acc" id="gen-acc" style="display:none"><button type="button" class="chip" id="gen-copiar">Copiar</button><button type="button" class="chip" id="gen-wa">Enviar por WhatsApp</button></div>
+<p class="leyenda gen-nota" id="gen-nota"></p>
+<h2>Cómo funcionan los modos</h2>
+<ul>
+<li><strong>Al azar:</strong> el modo principal. Cada combinación tiene exactamente la misma probabilidad que cualquier otra.</li>
+<li><strong>Calientes:</strong> el primer ticket usa los números que más han salido en la ventana de sorteos que mejor nos ha funcionado en el laboratorio (30 si ninguna pasó la prueba); los demás se sacan al azar entre los más calientes.</li>
+<li><strong>Atrasados:</strong> igual, pero con los números que más llevan sin salir.</li>
+<li><strong>Evitar combinaciones populares</strong> no sube la probabilidad de ganar. Solo reduce la chance de compartir el premio con más gente si sale una combinación que muchos juegan, como 1-2-3-4-5 o solo fechas de cumpleaños.</li>
+</ul>
+<p>El <a href="${url('/laboratorio/')}">laboratorio</a> prueba estos criterios con sorteos reales, contra el azar. Si algún día encuentra algo que funcione de verdad, aparecerá allí con su valor p, antes que en ninguna promesa.</p>
+${ctaTelegram()}${avisoHonesto()}
+<script type="application/json" id="gen-datos">${jsonSeguro(D)}</script><script>${JS_GENERADOR}</script>`;
+  return pagina({ ruta: '/generador/', titulo: `Generador de tickets de Kino, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Genera tickets al azar, con los números calientes o con los atrasados para Kino, Loto 5 y otros juegos especiales dominicanos, con el resultado honesto del laboratorio.', cuerpo });
 }
 
 function paginaFecha(dia, anterior, siguiente) {
@@ -1118,7 +1204,51 @@ function analizarEspecial(sorteos, N, k, repl, rnd) {
   const expectedPerDraw = repl ? k * (1 - Math.pow(1 - 1 / N, k)) : k * k / N;
   return { n, k, N, repl, pU, pR: pNormal2(zR), pC: pNormal2(zDe(hC, T, mu, vr)), pA: pNormal2(zDe(hA, T, mu, vr)), T, hC, hA, esperado: T * expectedPerDraw, sobreR: ov, esperadoR: (n - 1) * muR };
 }
+// ── Ventanas de "calientes": ¿hay una ventana que funcione? Se elige con el pasado y se evalúa con sorteos NO vistos ──
+const VENTANAS = [5, 7, 10, 15, 20, 30, 60];
+function analizarVentanas(sorteos, N, k, repl) {
+  const W0 = 60, CALENTAR = 30;
+  if (sorteos.length > 1500) sorteos = sorteos.slice(-1500);
+  const n = sorteos.length;
+  if (n < W0 + CALENTAR + 20) return null;
+  const conj = sorteos.map(x => new Set(x));
+  let mu, vr;
+  if (repl) { const q = 1 - Math.pow(1 - 1 / N, k); mu = k * q; vr = k * q * (1 - q); }
+  else { mu = k * k / N; vr = N > 1 ? k * (k / N) * (1 - k / N) * ((N - k) / (N - 1)) : 0; }
+  const idx = Array.from({ length: N }, (_, x) => x);
+  const h = VENTANAS.map(() => new Array(n).fill(0));
+  for (let i = W0; i < n; i++) VENTANAS.forEach((W, wi) => {
+    const c = new Array(N).fill(0);
+    for (let j = i - W; j < i; j++) for (const x of conj[j]) c[x]++;
+    const top = idx.slice().sort((a, b) => c[b] - c[a] || a - b).slice(0, k);
+    let g = 0; for (const x of top) if (conj[i].has(x)) g++;
+    h[wi][i] = g;
+  });
+  const zDe = (suma, T) => (T > 0 && vr > 0) ? (suma - T * mu) / Math.sqrt(T * vr) : 0;
+  const T = n - W0;
+  const ventanas = VENTANAS.map((W, wi) => { let suma = 0; for (let i = W0; i < n; i++) suma += h[wi][i]; const z = zDe(suma, T); return { W, hits: suma, z, p: pNormal2(z) }; });
+  // Camino en vivo: cada día se escoge la ventana que mejor le fue ANTES de ese día y se mide qué tal le va ESE día.
+  const acum = VENTANAS.map(() => 0), elegidas = {}; let hits = 0, Twf = 0;
+  for (let i = W0; i < n; i++) {
+    if (i >= W0 + CALENTAR) {
+      let mejor = VENTANAS.length - 1;
+      for (let wi = VENTANAS.length - 1; wi >= 0; wi--) if (acum[wi] > acum[mejor]) mejor = wi;
+      hits += h[mejor][i]; Twf++; elegidas[VENTANAS[mejor]] = (elegidas[VENTANAS[mejor]] || 0) + 1;
+    }
+    VENTANAS.forEach((W, wi) => { acum[wi] += h[wi][i]; });
+  }
+  const zw = zDe(hits, Twf);
+  let Wmas = 30, mx = -1; for (const [W, v] of Object.entries(elegidas)) if (v > mx || (v === mx && +W > Wmas)) { mx = v; Wmas = +W; }
+  return { n, T, ventanas, wf: { T: Twf, hits, esperado: Twf * mu, z: zw, p: pNormal2(zw) }, Wmas, mejorW: ventanas.slice().sort((a, b) => b.z - a.z)[0].W };
+}
+let _memoEsp = null;
 function evaluarEspeciales(dias) {
+  if (_memoEsp && _memoEsp.dias === dias) return _memoEsp.val;
+  const val = evaluarEspeciales0(dias);
+  _memoEsp = { dias, val };
+  return val;
+}
+function evaluarEspeciales0(dias) {
   const juegos = new Map();
   for (const d of dias) for (const o of d.otros) {
     if (/loto.*m[aá]s|s[uú]per ?m[aá]s/i.test(o.nombre + ' ' + o.clave)) continue; // bolas de rangos distintos: no se puede probar como un solo bolillero
@@ -1146,10 +1276,48 @@ function evaluarEspeciales(dias) {
     const norm = lista.map(s => s.map(x => x - lo));
     const real = analizarEspecial(norm, N, k, repl, mulberry32(20261124 + idx));
     const rc = mulberry32(777000 + idx);
-    const control = analizarEspecial(norm.map(() => muestraEsp(rc, N, k, repl)), N, k, repl, mulberry32(555000 + idx));
-    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control });
+    const controlNorm = norm.map(() => muestraEsp(rc, N, k, repl));
+    const control = analizarEspecial(controlNorm, N, k, repl, mulberry32(555000 + idx));
+    const vent = analizarVentanas(norm, N, k, repl), ventC = analizarVentanas(controlNorm, N, k, repl);
+    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control, vent, ventC, norm, N, k, repl });
+  }
+  // Veredicto de la prueba con sorteos no vistos (una por juego) y datos para el generador
+  const G = salida.length;
+  for (const s of salida) {
+    const pasa = v => !!v && v.wf.z > 0 && v.wf.p < 0.05 / G;
+    s.pasa = pasa(s.vent); s.pasaC = pasa(s.ventC);
+    s.W = s.pasa ? s.vent.Wmas : 30;
+    const cuenta = new Array(s.N).fill(0);
+    for (const x of s.norm.slice(-s.W)) for (const b of new Set(x)) cuenta[b]++;
+    const orden = Array.from({ length: s.N }, (_, x) => x);
+    s.cal = orden.slice().sort((a, b) => cuenta[b] - cuenta[a] || a - b).map(x => x + s.lo);
+    const ult = new Array(s.N).fill(-1); s.norm.forEach((x, i) => { for (const b of x) ult[b] = i; });
+    s.atr = orden.slice().sort((a, b) => ult[a] - ult[b] || a - b).map(x => x + s.lo);
   }
   return { salida, pocos };
+}
+function seccionVentanas(ev) {
+  const G = ev.salida.length, conV = ev.salida.filter(s => s.vent);
+  if (!conV.length) return `<h3>¿Y si buscamos la ventana de "calientes" que mejor funcione?</h3><p>Para probar varias ventanas con sorteos que todavía no se han visto hacen falta al menos 110 sorteos de un juego. Todavía ningún juego llega a esa cantidad; cuando llegue, aparecerá aquí.</p>`;
+  const alfaV = 0.05 / (conV.length * VENTANAS.length), fp = p => p < 0.001 ? '&lt;0.001' : p.toFixed(3);
+  const celda = v => `<td>${fp(v.p)}${v.z > 0 ? ' ↑' : ' ↓'}${v.p < alfaV && v.z > 0 ? ' 🚨' : (v.p < 0.05 && v.z > 0 ? ' 👀' : '')}</td>`;
+  const filas = ev.salida.map(s => {
+    if (!s.vent) return `<tr><td>${esc(s.nombre)}</td><td colspan="${VENTANAS.length + 2}">Pocos sorteos para esta prueba (${s.real.n}; hacen falta 110)</td></tr>`;
+    const w = s.vent.wf;
+    return `<tr><td>${esc(s.nombre)}</td>${s.vent.ventanas.map(celda).join('')}<td>${w.hits} aciertos vs ${w.esperado.toFixed(0)} esperados · p=${fp(w.p)}</td><td>${s.pasa ? '<strong>Señal: seguir confirmando</strong>' : 'Sin ventaja comprobada'}</td></tr>`;
+  }).join('');
+  const bajoR = conV.reduce((t, s) => t + s.vent.ventanas.filter(v => v.p < 0.05 && v.z > 0).length, 0);
+  const bajoC = conV.reduce((t, s) => t + (s.ventC ? s.ventC.ventanas.filter(v => v.p < 0.05 && v.z > 0).length : 0), 0);
+  const pasanR = conV.filter(s => s.pasa).length, pasanC = conV.filter(s => s.pasaC).length;
+  return `<h3>¿Y si buscamos la ventana de "calientes" que mejor funcione?</h3>
+<p>Los "calientes" de arriba usan los últimos 30 sorteos. Probamos también ventanas de ${VENTANAS.join(', ')} sorteos. Ojo con la trampa: si escogemos la ventana que mejor le atinó al pasado, siempre habrá una que se ve bien por pura suerte. Por eso hacemos dos cosas:</p>
+<ul>
+<li>Cada ventana se mide con una vara más estricta, porque son más pruebas: solo cuenta (🚨) lo que baja de ${alfaV.toFixed(4)}. La flecha ↑ dice que acertó más que el azar y ↓ que acertó menos.</li>
+<li><strong>Prueba con sorteos no vistos:</strong> el laboratorio juega "en vivo". Cada día escoge la ventana que mejor le había ido hasta el día anterior y mide cómo le va ese día. Los primeros 90 sorteos solo sirven para calentar. Si una ventana solo funciona mirando atrás, aquí se cae.</li>
+</ul>
+<div class="tabla"><table><tr><th>Juego</th>${VENTANAS.map(W => `<th>${W}</th>`).join('')}<th>Prueba con sorteos no vistos</th><th>Lectura</th></tr>${filas}</table></div>
+<p><strong>Contra el control:</strong> con datos reales, ${bajoR} ventanas dieron p menor a 0.05 a favor de los calientes y ${pasanR} de ${conV.length} juegos pasaron la prueba con sorteos no vistos. Con sorteos inventados al azar dieron ${bajoC} y ${pasanC}. Si los números reales se parecen a los del control, es azar.</p>
+<p><a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets de juegos especiales</a></p>`;
 }
 function seccionEspeciales(dias) {
   const ev = evaluarEspeciales(dias);
@@ -1179,6 +1347,7 @@ function seccionEspeciales(dias) {
 <div class="tabla"><table><tr><th>Juego</th><th>Sorteos</th><th>Cómo se saca</th><th>Reparto</th><th>Repite</th><th>Calientes</th><th>Atrasados</th><th>Lectura</th></tr>${filas}</table></div>
 <p><strong>Cómo se ve contra un control:</strong> de las ${pruebas} pruebas con datos reales, ${bajoReal} dieron p menor a 0.05 y ${fuertes} pasaron la vara estricta. Con sorteos inventados al azar, con el mismo número de sorteos y bolas, dieron p menor a 0.05 ${bajoCtrl} de ${pruebas}. Por pura casualidad se esperan unas ${(pruebas * 0.05).toFixed(1)}.</p>
 <p class="leyenda">Cómo se hizo: se supone que todas las bolas de un sorteo salen del mismo bolillero, del menor al mayor número que ha salido. Si un juego mezcla bolillas distintas (por ejemplo una extra), la prueba puede salir rara por eso y no por un sesgo. Loto Más y Súper Más no se prueban por ese motivo. El p de "Reparto" se calcula simulando el juego al azar 500 veces.</p>
+${seccionVentanas(ev)}
 ${pocos}`;
 }
 
@@ -1438,6 +1607,7 @@ async function main() {
   escribir(path.join('/sesgos/', 'index.html'), paginaSesgos(dias)); // privada: sin enlace, noindex y fuera del sitemap // privada: sin enlace, noindex y fuera del sitemap
   guardar('/numeros/', paginaNumeros(series));
   guardar('/mis-numeros/', paginaMisNumeros(dias, series));
+  guardar('/generador/', paginaGenerador(dias));
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
   dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
