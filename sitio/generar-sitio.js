@@ -245,6 +245,7 @@ a.boton{display:inline-block;background:linear-gradient(135deg,var(--acento),var
 .mn-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:600px;margin:12px 0}.mn-grid button{aspect-ratio:1;border-radius:8px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto);font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;padding:0}.mn-grid button[aria-pressed=true]{background:radial-gradient(circle at 32% 28%,#fde68a,#f59e0b);color:#1a1200;border-color:var(--ojo)}.mn-grid button.hoy{outline:2px solid var(--bien);outline-offset:-2px}
 .mn-tarj{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:14px 16px;margin:12px 0}.mn-cab{display:flex;gap:14px;align-items:center;margin-bottom:8px}.mn-resumen{font-weight:700;margin:14px 0}.mn-fila{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .gen-form{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:16px;margin:14px 0;display:grid;gap:12px;max-width:640px}.gen-form label{display:grid;gap:6px;font-size:.9rem}.gen-form label.chk{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--suave)}.gen-form select,.gen-form input[type=number]{background:var(--panel2);border:1px solid var(--borde);border-radius:10px;padding:10px 12px;color:var(--texto);font:inherit;width:100%}.gen-tk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:10px 14px;margin:8px 0;max-width:640px}.gen-tk .gen-n{color:var(--suave);font-size:.8rem;min-width:26px}.gen-acc{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.gen-nota{max-width:640px}
+.pales{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.pal{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:4px 10px 4px 5px}.pal .bola{min-width:2em;height:2em;font-size:.82rem}.pal.medio{border-color:#10b981}.pal.completo{border-color:var(--ojo);box-shadow:0 0 14px rgba(251,191,36,.4);background:rgba(251,191,36,.08)}.pal small{color:var(--suave);font-size:.72rem}.pal.completo small{color:var(--ojo);font-weight:700}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -317,7 +318,7 @@ function calcularRadar(dias) {
     const esp = K_RADAR * (1 - Math.pow(1 - PL, L));
     sumHits += hits.length; sumEsp += esp;
     const prs = paresDe(top); palesHits += prs.filter(p => parSalio(p, dias[i].quinielas).length).length; palesEsp += prs.length * (1 - Math.pow(1 - PARES_PROB, L));
-    detalle.push({ fecha: dias[i].fecha, top, hits, esp });
+    detalle.push({ fecha: dias[i].fecha, top, hits, esp, pales: prs.map(p => ({ p, salio: parSalio(p, dias[i].quinielas) })).filter(x => x.salio.length) });
   }
   return { hoy: picks, pales, palesHits, palesEsp, dias: detalle.length, sumHits, sumEsp, detalle };
 }
@@ -335,13 +336,22 @@ function calcularJaladeras(series) {
   return Array.from({ length: 100 }, (_, a) => ({ a, M: M[a], top: sig[a].map((c, b) => ({ b, c })).sort((x, y) => y.c - x.c || x.b - y.b).slice(0, 3) }));
 }
 
+const palFichas = (pales, picks) => {
+  const sale = new Set((picks || []).filter(h => h.yaSalio.length).map(h => h.n));
+  return '<div class="pales">' + pales.map(x => {
+    const [a, b] = x.p, completo = x.salio.length > 0, medio = !completo && sale.has(a) && sale.has(b);
+    const nota = completo ? '✅ ' + x.salio.map(esc).join(', ') : (medio ? 'salieron, pero separados' : '');
+    return '<span class="pal' + (completo ? ' completo' : (medio ? ' medio' : '')) + '">' + bola(f2(a), sale.has(a) ? ' ya' : '') + bola(f2(b), sale.has(b) ? ' ya' : '') + (nota ? '<small>' + nota + '</small>' : '') + '</span>';
+  }).join('') + '</div>';
+};
+const palLeyenda = '<p class="leyenda">Verde: el número ya salió hoy en alguna lotería. <strong style="color:var(--ojo)">Borde dorado ✅</strong>: el palé completo salió junto, en el mismo sorteo (eso es lo que paga).</p>';
 const palTxtLista = (pales, grande) => pales.map(x => { const t = f2(x.p[0]) + '-' + f2(x.p[1]); return x.salio.length ? `<strong style="color:#34d399;white-space:nowrap">${t} ✅</strong>` : `<strong style="white-space:nowrap">${t}</strong>`; }).join(', ');
 function teaserRadar(dias) {
   const r = calcularRadar(dias);
   if (!r.hoy.length) return '';
   const acert = r.pales.filter(x => x.salio.length);
   const acertTxt = acert.length ? acert.map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ') : 'ninguno todavía';
-  const palesHtml = r.pales.length ? `<div style="flex-basis:100%"><strong>🎲 Palés del día</strong><div style="font-size:1.05rem;line-height:1.9">${palTxtLista(r.pales)}</div><small class="leyenda">Palés acertados hoy: ${acertTxt}</small></div>` : '';
+  const palesHtml = r.pales.length ? `<div style="flex-basis:100%"><strong>🎲 Palés del día</strong>${palFichas(r.pales, r.hoy)}<small class="leyenda">Palés acertados hoy: ${acertTxt}</small></div>` : '';
   return `<div class="radar-cta"><strong>🎯 Números del día</strong><span class="bolas">${r.hoy.map(x => bola(f2(x.n), x.yaSalio.length ? ' ya' : '')).join('')}</span><a href="${url('/jugadas/')}">Ver jugadas y marcador →</a>${palesHtml}</div>`;
 }
 // 🎉 Celebración: avisa cuando alguno de los números del día ya salió hoy (sin prometer nada)
@@ -566,21 +576,21 @@ function paginaJugadas(dias, series) {
     : Math.abs(prom - esp) < 0.2 ? 'Prácticamente igual que el azar.'
     : prom > esp ? 'Un poco por encima del azar, aunque con tan pocos días puede ser casualidad.'
     : 'Un poco por debajo del azar.';
-  const filasDia = [...r.detalle].reverse().slice(0, 14).map(d => `<tr><td>${esc(fechaMini(d.fecha))}</td><td><span class="bolas">${d.top.map(n => bola(f2(n), d.hits.includes(n) ? ' ya' : '')).join('')}</span></td><td>${d.hits.length}</td><td>${d.esp.toFixed(1)}</td></tr>`).join('');
+  const filasDia = [...r.detalle].reverse().slice(0, 14).map(d => `<tr><td>${esc(fechaMini(d.fecha))}</td><td><span class="bolas">${d.top.map(n => bola(f2(n), d.hits.includes(n) ? ' ya' : '')).join('')}</span></td><td>${d.hits.length}</td><td>${d.esp.toFixed(1)}</td><td>${d.pales.length ? d.pales.map(x => `<strong style="color:#34d399;white-space:nowrap">${f2(x.p[0])}-${f2(x.p[1])} ✅</strong>`).join(', ') : '<span class="leyenda">ninguno</span>'}</td></tr>`).join('');
   const filasJal = jal.map(j => `<tr><td>${bola(f2(j.a))}</td><td><span class="bolas">${j.top.map(t => `${bola(f2(t.b))}<small class="leyenda">${t.c}×</small>`).join(' ')}</span></td><td>${j.M}</td></tr>`).join('');
   const cuerpo = `<section class="hero"><h1>Números del día y jaladeras</h1>
 <p class="sub">Lo que dicen las estadísticas del Radar para hoy, sin dividir por lotería. Es información y entretenimiento: <strong>no es una ventaja</strong>, y abajo te mostramos cuánto le ha ido contra el azar.</p></section>
 <h2>🎯 Números del día</h2>
 ${r.hoy.length ? `<div class="rejilla">${tarjetas}</div><p class="leyenda">Son los 5 números con más peso en los últimos ${VENT_RADAR} días (el 1.er premio pesa más que el 2.º y el 3.º). En verde, los que ya salieron hoy en alguna lotería: si no salió en una, puede salir en otra.</p>` : '<p>Todavía no hay suficientes días de historial para calcularlos.</p>'}
 ${r.pales.length ? `<h2>🎲 Palés con los números del día</h2>
-<p>Un palé son dos números que salen juntos en el mismo sorteo. Con los 5 números del día se arman 10 parejas. En verde, las que ya salieron hoy.</p>
-<p style="font-size:1.35rem;line-height:2">${palTxtLista(r.pales)}</p>
+<p>Un palé son dos números que salen juntos en el mismo sorteo. Con los 5 números del día se arman 10 parejas. </p>
+${palFichas(r.pales, r.hoy)}${palLeyenda}
 <p class="leyenda">${r.pales.some(x => x.salio.length) ? `Ya salió hoy: ${r.pales.filter(x => x.salio.length).map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join(' · ')}. ` : 'Todavía no ha salido ninguna pareja hoy. '}Por azar, una pareja concreta sale en un sorteo concreto 1 de cada 1,650 veces: paga mucho cuando sale, pero sale muy pocas veces.</p>` : ''}
 <h2>¿Qué tan bien le ha ido?</h2>
 <p>${r.dias ? `En los últimos <strong>${r.dias}</strong> días completos, los 5 números del Radar salieron en promedio <strong>${prom.toFixed(2)}</strong> por día. El azar esperaba <strong>${esp.toFixed(2)}</strong>. ${veredicto}` : veredicto}</p>
 ${r.dias ? `<p>Con los palés pasa igual: de <strong>${r.dias * 10}</strong> parejas armadas en esos días, salieron <strong>${r.palesHits}</strong> veces y el azar esperaba <strong>${r.palesEsp.toFixed(1)}</strong>.</p>` : ''}
 <p class="leyenda">Con unas 20 loterías al día, cualquier número sale en alguna casi la mitad de los días solo por azar. Por eso el marcador compara contra eso y no contra cero. Cada día se calcula usando solo los días anteriores.</p>
-${r.dias ? `<div class="tabla"><table><tr><th>Día</th><th>Números del Radar</th><th>Salieron</th><th>Azar esperaba</th></tr>${filasDia}</table></div>` : ''}
+${r.dias ? `<div class="tabla"><table><tr><th>Día</th><th>Números del Radar</th><th>Salieron</th><th>Azar esperaba</th><th>Palés salidos</th></tr>${filasDia}</table></div>` : ''}
 <h2>🔗 Jaladeras</h2>
 <p>La jaladera es la idea de que un número "jala" a otro. Esto es lo que dicen los datos: cuando un número sale en una lotería, lo que más salió en el siguiente sorteo de esa misma lotería (al día siguiente).</p>
 <p class="leyenda">Cuidado al leerlo: por azar, cada número aparece en el siguiente sorteo unas 3 de cada 100 veces. Con tan pocas repeticiones, casi todo lo que se ve aquí es casualidad.</p>
@@ -1265,8 +1275,8 @@ function evaluarEspeciales0(dias) {
   const juegos = new Map();
   for (const d of dias) for (const o of d.otros) {
     if (/loto.*m[aá]s|s[uú]per ?m[aá]s/i.test(o.nombre + ' ' + o.clave)) continue; // bolas de rangos distintos: no se puede probar como un solo bolillero
-    if (!juegos.has(o.clave)) juegos.set(o.clave, { clave: o.clave, nombre: o.nombre, tipo: o.tipo, empresa: o.empresa, lista: [] });
-    juegos.get(o.clave).lista.push(o.numeros);
+    if (!juegos.has(o.clave)) juegos.set(o.clave, { clave: o.clave, nombre: o.nombre, tipo: o.tipo, empresa: o.empresa, lista: [], fechas: [] });
+    juegos.get(o.clave).lista.push(o.numeros); juegos.get(o.clave).fechas.push(d.fecha);
   }
   const salida = [], pocos = [];
   let idx = 0;
@@ -1275,6 +1285,7 @@ function evaluarEspeciales0(dias) {
     const largos = {}; for (const s of j.lista) largos[s.length] = (largos[s.length] || 0) + 1;
     let k = +Object.entries(largos).sort((a, b) => b[1] - a[1])[0][0];
     let lista = j.lista.filter(s => s.length === k);
+    let fl = j.fechas.filter((_, i) => j.lista[i].length === k);
     if (lista.length < 60) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
     const dup = s => new Set(s).size < s.length;
     let bonus = false;
@@ -1283,11 +1294,12 @@ function evaluarEspeciales0(dias) {
     const repl = /^pega/.test(j.tipo) || lista.some(dup);
     // Si conocemos la regla oficial del juego, el rango es el oficial y los sorteos con números fuera de ese rango (error de la fuente) se descartan.
     const regla = reglaDe(j.nombre);
-    let fuera = 0;
+    let fuera = 0, fueraFechas = [];
     let lo = Math.min(...lista.map(s => Math.min(...s))), hi = Math.max(...lista.map(s => Math.max(...s)));
     if (regla) {
-      const dentro = lista.filter(s => s.every(x => x >= regla.lo && x <= regla.hi));
-      fuera = lista.length - dentro.length; lista = dentro; lo = regla.lo; hi = regla.hi;
+      const bien = lista.map(s => s.every(x => x >= regla.lo && x <= regla.hi));
+      fueraFechas = fl.filter((_, i) => !bien[i]);
+      fuera = fueraFechas.length; lista = lista.filter((_, i) => bien[i]); fl = fl.filter((_, i) => bien[i]); lo = regla.lo; hi = regla.hi;
       if (lista.length < 60) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
     } else {
       // Sin regla conocida el rango sale de lo que realmente ha salido: solo se completa a 0-9 o 00-99 cuando es claro.
@@ -1301,7 +1313,7 @@ function evaluarEspeciales0(dias) {
     const controlNorm = norm.map(() => muestraEsp(rc, N, k, repl));
     const control = analizarEspecial(controlNorm, N, k, repl, mulberry32(555000 + idx));
     const vent = analizarVentanas(norm, N, k, repl), ventC = analizarVentanas(controlNorm, N, k, repl);
-    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control, vent, ventC, norm, N, k, repl, regla, fuera });
+    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control, vent, ventC, norm, N, k, repl, regla, fuera, fueraFechas, porDia: fl.length / Math.max(1, Math.round((dUTC(fl[fl.length - 1]) - dUTC(fl[0])) / 86400000) + 1) });
   }
   // Veredicto de la prueba con sorteos no vistos (una por juego) y datos para el generador
   const G = salida.length;
@@ -1326,7 +1338,8 @@ function seccionVentanas(ev) {
   const filas = ev.salida.map(s => {
     if (!s.vent) return `<tr><td>${esc(s.nombre)}</td><td colspan="${VENTANAS.length + 2}">Pocos sorteos para esta prueba (${s.real.n}; hacen falta 110)</td></tr>`;
     const w = s.vent.wf;
-    return `<tr><td>${esc(s.nombre)}</td>${s.vent.ventanas.map(celda).join('')}<td>${w.hits} aciertos vs ${w.esperado.toFixed(0)} esperados · p=${fp(w.p)}</td><td>${s.pasa ? '<strong>Señal: seguir confirmando</strong>' : 'Sin ventaja comprobada'}</td></tr>`;
+    const dps = s.porDia > 0 ? 1 / s.porDia : 1;
+    return `<tr><td>${esc(s.nombre)}<br><small class="leyenda">1 sorteo ≈ ${dps < 1.15 ? '1 día' : dps.toFixed(1).replace(/\.0$/, '') + ' días'}</small></td>${s.vent.ventanas.map(celda).join('')}<td>${w.hits} aciertos vs ${w.esperado.toFixed(0)} esperados · p=${fp(w.p)}</td><td>${s.pasa ? '<strong>Señal: seguir confirmando</strong>' : 'Sin ventaja comprobada'}</td></tr>`;
   }).join('');
   const bajoR = conV.reduce((t, s) => t + s.vent.ventanas.filter(v => v.p < 0.05 && v.z > 0).length, 0);
   const bajoC = conV.reduce((t, s) => t + (s.ventC ? s.ventC.ventanas.filter(v => v.p < 0.05 && v.z > 0).length : 0), 0);
@@ -1357,7 +1370,7 @@ function seccionEspeciales(dias) {
   const bajoCtrl = ev.salida.reduce((t, s) => t + [s.control.pU, s.control.pR, s.control.pC, s.control.pA].filter(p => p < 0.05).length, 0);
   const fuertes = ev.salida.reduce((t, s) => t + [s.real.pU, s.real.pR, s.real.pC, s.real.pA].filter(p => p < alfa).length, 0);
   const descartados = ev.salida.filter(x => x.fuera > 0);
-  const avisoFuera = descartados.length ? `<p class="leyenda">Se descartaron sorteos con números fuera del rango oficial del juego (casi seguro un error de la fuente): ${descartados.map(x => `${esc(x.nombre)} (${x.fuera})`).join(', ')}. La prueba usa el rango oficial de cada juego.</p>` : '';
+  const avisoFuera = descartados.length ? `<p class="leyenda">Se descartaron sorteos con números fuera del rango oficial del juego (casi seguro un error de la fuente): ${descartados.map(x => `${esc(x.nombre)} (${x.fuera})`).join(', ')}. La prueba usa el rango oficial de cada juego.</p>${descartados.map(x => `<details><summary>Ver las fechas descartadas de ${esc(x.nombre)}</summary><p class="leyenda">${x.fueraFechas.slice(-80).join(', ')}</p></details>`).join('')}` : '';
   const pocos = ev.pocos.length ? `<p class="leyenda">Todavía con pocos sorteos guardados (menos de 60) y por eso sin probar: ${ev.pocos.map(p => `${esc(p.nombre)} (${p.n})`).join(', ')}.</p>` : '';
   return `<h2>Los juegos especiales: Kino, Loto, Loto 5 y compañía</h2>
 <p>Además de las quinielas, el Radar guarda juegos de bolillas como Super Kino TV, Loto, Loto 5, Pega 3 Más, las cuartetas y los Loto Pool. A cada uno le hacemos cuatro pruebas contra el azar puro:</p>
