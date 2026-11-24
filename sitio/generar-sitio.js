@@ -794,21 +794,19 @@ cargar();dibujaGrid();dibujaRes();
 
 const JS_GENERADOR = String.raw`(function(){
 var D=JSON.parse(document.getElementById('gen-datos').textContent);
-var sel=document.getElementById('gen-juego'),tam=document.getElementById('gen-tam'),cant=document.getElementById('gen-cant'),pop=document.getElementById('gen-pop');
+var sel=document.getElementById('gen-juego'),cant=document.getElementById('gen-cant'),pop=document.getElementById('gen-pop');
 var btn=document.getElementById('gen-go'),out=document.getElementById('gen-out'),nota=document.getElementById('gen-nota'),acc=document.getElementById('gen-acc'),info=document.getElementById('gen-info');
+var exl=document.getElementById('gen-extra-l'),ex=document.getElementById('gen-extra');
 var chips=document.querySelectorAll('#gen-modos .chip'),modo='azar',ult=[];
 function rnd(n){var a=new Uint32Array(1),lim=Math.floor(4294967296/n)*n;do{crypto.getRandomValues(a);}while(a[0]>=lim);return a[0]%n;}
 function fmt(g,x){return g.hi>9?(x<10?'0'+x:''+x):''+x;}
 function fp(p){return p<0.001?'menor a 0.001':p.toFixed(3);}
-function muestra(g,pool,m){var r=[],b=pool.slice(),i,j,t;
-  if(g.repl){for(i=0;i<m;i++)r.push(pool[rnd(pool.length)]);return r;}
-  for(i=0;i<m;i++){j=i+rnd(b.length-i);t=b[i];b[i]=b[j];b[j]=t;r.push(b[i]);}
-  return r;}
-function popular(g,t){if(g.repl||t.length<3)return false;var s=t.slice().sort(function(a,b){return a-b;}),run=1,i;
+function muestra(pool,m){var r=[],b=pool.slice(),i,j,t;for(i=0;i<m;i++){j=i+rnd(b.length-i);t=b[i];b[i]=b[j];b[j]=t;r.push(b[i]);}return r;}
+function popular(g,t){if(t.length<3)return false;var s=t.slice().sort(function(a,b){return a-b;}),run=1,i;
   for(i=1;i<s.length;i++){run=(s[i]===s[i-1]+1)?run+1:1;if(run>=3)return true;}
   if(g.hi>31&&s[s.length-1]<=31)return true;return false;}
 function juego(){return D[+sel.value];}
-function texto(){var g=juego(),t;
+function texto(){var g=juego();
   if(modo==='azar')return 'Al azar puro: toda combinación tiene exactamente la misma probabilidad de salir. Es la forma más honesta de jugar.';
   if(modo==='calientes'){
     if(!g.vent)return 'Calientes con los últimos '+g.W+' sorteos. Todavía hay pocos sorteos guardados ('+g.n+') para probar si esto funciona; úsalo solo como criterio personal.';
@@ -816,26 +814,26 @@ function texto(){var g=juego(),t;
     return 'Calientes con los últimos '+g.W+' sorteos. En la prueba con sorteos no vistos no le ganó al azar (p = '+fp(g.wfp)+'). Úsalo solo como criterio personal.';}
   if(g.pa<g.alfa)return 'Atrasados: el laboratorio vio algo raro (p = '+fp(g.pa)+') que hay que confirmar con datos nuevos. No garantiza premios.';
   return 'Atrasados: en el laboratorio no le ganó al azar (p = '+fp(g.pa)+'). Que un número lleve tiempo sin salir no cambia su probabilidad.';}
-function actualizar(){var g=juego(),mx=g.k;
-  tam.max=mx;var d=Math.min(g.k,10);if(!tam.dataset.tocado||+tam.value>mx)tam.value=d;
-  info.textContent='Del '+fmt(g,g.lo)+' al '+fmt(g,g.hi)+(g.repl?' · los números pueden repetirse':' · sin repetir')+' · en cada sorteo salen '+g.k+(g.bonus?' (más una bola extra, que aquí no se genera)':'')+'. Revisa las reglas del juego oficial para saber cuántos números juega un ticket.';
+function actualizar(){var g=juego();
+  info.textContent=g.nota+(g.oficial?'':' (Regla no verificada: revisa con tu agencia.)');
+  exl.style.display=g.extra?'flex':'none';if(g.extra)document.getElementById('gen-extra-t').textContent='Incluir el bolo adicional del '+g.extra.nombre+' ('+fmt({hi:99},g.extra.lo)+' al '+fmt({hi:99},g.extra.hi)+')';
   nota.textContent=texto();}
-function generar(){var g=juego(),m=Math.max(1,Math.min(g.k,parseInt(tam.value,10)||1)),c=Math.max(1,Math.min(10,parseInt(cant.value,10)||1)),todos=[],x,i;
+function generar(){var g=juego(),m=g.pick,c=Math.max(1,Math.min(10,parseInt(cant.value,10)||1)),todos=[],x,i;
   for(x=g.lo;x<=g.hi;x++)todos.push(x);
   var rank=modo==='calientes'?g.cal:(modo==='atrasados'?g.atr:null);
-  var pool=rank?rank.slice(0,Math.min(todos.length,Math.max(m*2,g.repl?6:m*2))):todos;
+  var pool=rank?rank.slice(0,Math.min(todos.length,Math.max(m*2,6))):todos;
   ult=[];
   for(i=0;i<c;i++){var t,n=0;
-    do{t=(rank&&i===0)?rank.slice(0,m):muestra(g,pool,m);n++;}while(pop.checked&&popular(g,t)&&n<60);
-    if(!g.repl)t.sort(function(a,b){return a-b;});
-    ult.push(t);}
+    do{t=(rank&&i===0)?rank.slice(0,m):muestra(pool,m);n++;}while(pop.checked&&popular(g,t)&&n<60);
+    t.sort(function(a,b){return a-b;});
+    var b=null;if(g.extra&&ex.checked)b=g.extra.lo+rnd(g.extra.hi-g.extra.lo+1);
+    ult.push({t:t,b:b});}
   var h='';
-  ult.forEach(function(t,i){h+='<div class="gen-tk"><span class="gen-n">#'+(i+1)+'</span><span class="bolas">'+t.map(function(v){return '<span class="bola">'+fmt(g,v)+'</span>';}).join('')+'</span></div>';});
+  ult.forEach(function(u,i){h+='<div class="gen-tk"><span class="gen-n">#'+(i+1)+'</span><span class="bolas">'+u.t.map(function(v){return '<span class="bola">'+fmt(g,v)+'</span>';}).join('')+'</span>'+(u.b!==null?'<span class="gen-n">+ '+g.extra.nombre+'</span><span class="bolas"><span class="bola ya">'+fmt({hi:99},u.b)+'</span></span>':'')+'</div>';});
   out.innerHTML=h;acc.style.display='flex';nota.textContent=texto();}
-function plano(){var g=juego();return g.nombre+' ('+modo+')\n'+ult.map(function(t,i){return (i+1)+': '+t.map(function(v){return fmt(g,v);}).join('-');}).join('\n')+'\nreydis.github.io/reydis-bot/generador/';}
+function plano(){var g=juego();return g.nombre+' ('+modo+')\n'+ult.map(function(u,i){return (i+1)+': '+u.t.map(function(v){return fmt(g,v);}).join('-')+(u.b!==null?' + '+g.extra.nombre+' '+fmt({hi:99},u.b):'');}).join('\n')+'\nreydis.github.io/reydis-bot/generador/';}
 chips.forEach(function(b){b.addEventListener('click',function(){modo=b.getAttribute('data-modo');chips.forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});nota.textContent=texto();});});
-sel.addEventListener('change',function(){tam.dataset.tocado='';out.innerHTML='';acc.style.display='none';actualizar();});
-tam.addEventListener('input',function(){tam.dataset.tocado='1';});
+sel.addEventListener('change',function(){out.innerHTML='';acc.style.display='none';actualizar();});
 btn.addEventListener('click',generar);
 document.getElementById('gen-copiar').addEventListener('click',function(){var t=plano(),b=this;
   function ok(){b.textContent='¡Copiado!';setTimeout(function(){b.textContent='Copiar';},1500);}
@@ -900,17 +898,20 @@ function paginaGenerador(dias) {
   const prioridad = nombre => (/kino/i.test(nombre) ? 0 : /loto ?5/i.test(nombre) ? 1 : 2);
   const juegos = [...ev.salida].sort((a, b) => prioridad(a.nombre) - prioridad(b.nombre) || b.real.n - a.real.n);
   if (!juegos.length) return pagina({ ruta: '/generador/', titulo: `Generador de tickets de juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Generador de tickets para Kino, Loto 5 y otros juegos especiales de la lotería dominicana.', cuerpo: `<h1>Generador de tickets</h1><p>Todavía no hay suficientes sorteos guardados de los juegos especiales. Cuando los haya, podrás generar tickets aquí.</p>${avisoHonesto()}` });
-  const D = juegos.map(s => ({ nombre: s.nombre, lo: s.lo, hi: s.hi, k: s.k, repl: s.repl, bonus: s.bonus, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) }));
+  const D = juegos.map(s => {
+    const r = s.regla, pick = r ? r.pick : Math.min(s.k, 10);
+    return { nombre: s.nombre, lo: s.lo, hi: s.hi, pick, oficial: !!r, nota: r ? r.nota : `Eliges ${pick} números del ${s.lo} al ${s.hi}.`, extra: r && r.extra ? r.extra : null, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) };
+  });
   const opciones = juegos.map((s, i) => `<option value="${i}">${esc(s.nombre)}</option>`).join('');
   const cuerpo = `<h1>Generador de tickets · juegos especiales</h1>
-<p class="sub">Genera combinaciones para Kino, Loto 5 y otros juegos especiales. Elige el juego y el modo. Sin cuenta, sin promesas.</p>
+<p class="sub">Genera combinaciones para Kino, Loto 5 y otros juegos especiales. Elige el juego y el modo: el generador ya sabe cuántos números lleva cada ticket y de qué rango. Sin cuenta, sin promesas.</p>
 <div class="gen-form">
-<label>Juego <select id="gen-juego">${opciones}</select></label>
+<label>Juego <select id="gen-juego" autocomplete="off">${opciones}</select></label>
 <p class="leyenda" id="gen-info"></p>
 <div class="chips" id="gen-modos"><button type="button" class="chip" data-modo="azar" aria-pressed="true">🎲 Al azar</button><button type="button" class="chip" data-modo="calientes" aria-pressed="false">🔥 Calientes</button><button type="button" class="chip" data-modo="atrasados" aria-pressed="false">⏳ Atrasados</button></div>
-<label>Números por ticket <input type="number" id="gen-tam" min="1" max="20" value="5" inputmode="numeric"></label>
-<label>Cantidad de tickets (hasta 10) <input type="number" id="gen-cant" min="1" max="10" value="3" inputmode="numeric"></label>
-<label class="chk"><input type="checkbox" id="gen-pop"> Evitar combinaciones populares (secuencias y solo fechas hasta 31)</label>
+<label>Cantidad de tickets (hasta 10) <input type="number" id="gen-cant" min="1" max="10" value="3" inputmode="numeric" autocomplete="off"></label>
+<label class="chk" id="gen-extra-l" style="display:none"><input type="checkbox" id="gen-extra" autocomplete="off"> <span id="gen-extra-t"></span></label>
+<label class="chk"><input type="checkbox" id="gen-pop" autocomplete="off"> Evitar combinaciones populares (secuencias y solo fechas hasta 31)</label>
 <button type="button" id="gen-go" class="boton">Generar tickets</button>
 </div>
 <div id="gen-out"></div>
@@ -923,7 +924,7 @@ function paginaGenerador(dias) {
 <li><strong>Atrasados:</strong> igual, pero con los números que más llevan sin salir.</li>
 <li><strong>Evitar combinaciones populares</strong> no sube la probabilidad de ganar. Solo reduce la chance de compartir el premio con más gente si sale una combinación que muchos juegan, como 1-2-3-4-5 o solo fechas de cumpleaños.</li>
 </ul>
-<p>El <a href="${url('/laboratorio/')}">laboratorio</a> prueba estos criterios con sorteos reales, contra el azar. Si algún día encuentra algo que funcione de verdad, aparecerá allí con su valor p, antes que en ninguna promesa.</p>
+<p>Las reglas de cada juego (cuántos números y de qué rango) vienen de las páginas oficiales de Leidsa, Loteka y La Primera; confírmalas con tu agencia antes de jugar. El <a href="${url('/laboratorio/')}">laboratorio</a> prueba estos criterios con sorteos reales, contra el azar. Si algún día encuentra algo que funcione de verdad, aparecerá allí con su valor p, antes que en ninguna promesa.</p>
 ${ctaTelegram()}${avisoHonesto()}
 <script type="application/json" id="gen-datos">${jsonSeguro(D)}</script><script>${JS_GENERADOR}</script>`;
   return pagina({ ruta: '/generador/', titulo: `Generador de tickets de Kino, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Genera tickets al azar, con los números calientes o con los atrasados para Kino, Loto 5 y otros juegos especiales dominicanos, con el resultado honesto del laboratorio.', cuerpo });
@@ -1241,6 +1242,18 @@ function analizarVentanas(sorteos, N, k, repl) {
   let Wmas = 30, mx = -1; for (const [W, v] of Object.entries(elegidas)) if (v > mx || (v === mx && +W > Wmas)) { mx = v; Wmas = +W; }
   return { n, T, ventanas, wf: { T: Twf, hits, esperado: Twf * mu, z: zw, p: pNormal2(zw) }, Wmas, mejorW: ventanas.slice().sort((a, b) => b.z - a.z)[0].W };
 }
+// Reglas oficiales de cada juego (según las páginas de Leidsa, Loteka y La Primera): cuántos números se juegan y de qué rango.
+const REGLAS_ESPECIALES = [
+  { re: /kino/i, pick: 10, lo: 1, hi: 80, nota: 'Eliges 10 números del 1 al 80. En cada sorteo salen 20.' },
+  { re: /loto ?5/i, pick: 5, lo: 1, hi: 38, extra: { lo: 1, hi: 10, nombre: 'Loto 5+' }, nota: 'Eliges 5 números del 01 al 38. Opcional: el bolo adicional del Loto 5+ (01 al 10), que se paga aparte.' },
+  { re: /loto ?pool.*real/i, pick: 4, lo: 0, hi: 99, nota: 'Eliges 4 números del 00 al 99.' },
+  { re: /loto ?pool/i, pick: 5, lo: 1, hi: 31, nota: 'Eliges 5 números del 01 al 31.' },
+  { re: /pega ?3/i, pick: 3, lo: 0, hi: 50, nota: 'Eliges 3 números del 00 al 50 (tres tómbolas con bolos del 0 al 50).' },
+  { re: /mega ?chance/i, pick: 5, lo: 0, hi: 99, nota: 'Eliges 5 números del 00 al 99.' },
+  { re: /quemaito/i, pick: 1, lo: 0, hi: 99, nota: 'Eliges 1 número del 00 al 99.' },
+  { re: /cuarteta/i, pick: 4, lo: 0, hi: 99, nota: 'Eliges 4 números del 00 al 99.' }
+];
+const reglaDe = nombre => REGLAS_ESPECIALES.find(r => r.re.test(nombre)) || null;
 let _memoEsp = null;
 function evaluarEspeciales(dias) {
   if (_memoEsp && _memoEsp.dias === dias) return _memoEsp.val;
@@ -1268,9 +1281,18 @@ function evaluarEspeciales0(dias) {
     // Si solo se repite cuando se cuenta la última bola, esa última es una bola extra de otro bolillero: se prueba sin ella.
     if (!/^pega/.test(j.tipo) && k > 2 && lista.some(dup) && lista.every(s => !dup(s.slice(0, -1)))) { lista = lista.map(s => s.slice(0, -1)); k -= 1; bonus = true; }
     const repl = /^pega/.test(j.tipo) || lista.some(dup);
-    // El rango sale de lo que realmente ha salido (no se supone): solo se completa a 0-9 o 00-99 cuando es claro.
+    // Si conocemos la regla oficial del juego, el rango es el oficial y los sorteos con números fuera de ese rango (error de la fuente) se descartan.
+    const regla = reglaDe(j.nombre);
+    let fuera = 0;
     let lo = Math.min(...lista.map(s => Math.min(...s))), hi = Math.max(...lista.map(s => Math.max(...s)));
-    if (/^pega/.test(j.tipo) && hi <= 9) { lo = 0; hi = 9; } else if (lo <= 9 && hi >= 90 && hi <= 99) { lo = 0; hi = 99; }
+    if (regla) {
+      const dentro = lista.filter(s => s.every(x => x >= regla.lo && x <= regla.hi));
+      fuera = lista.length - dentro.length; lista = dentro; lo = regla.lo; hi = regla.hi;
+      if (lista.length < 60) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
+    } else {
+      // Sin regla conocida el rango sale de lo que realmente ha salido: solo se completa a 0-9 o 00-99 cuando es claro.
+      if (/^pega/.test(j.tipo) && hi <= 9) { lo = 0; hi = 9; } else if (lo <= 9 && hi >= 90 && hi <= 99) { lo = 0; hi = 99; }
+    }
     const N = hi - lo + 1;
     if (N < 5 || k >= N) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
     const norm = lista.map(s => s.map(x => x - lo));
@@ -1279,7 +1301,7 @@ function evaluarEspeciales0(dias) {
     const controlNorm = norm.map(() => muestraEsp(rc, N, k, repl));
     const control = analizarEspecial(controlNorm, N, k, repl, mulberry32(555000 + idx));
     const vent = analizarVentanas(norm, N, k, repl), ventC = analizarVentanas(controlNorm, N, k, repl);
-    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control, vent, ventC, norm, N, k, repl });
+    salida.push({ nombre: j.nombre, empresa: j.empresa, lo, hi, bonus, real, control, vent, ventC, norm, N, k, repl, regla, fuera });
   }
   // Veredicto de la prueba con sorteos no vistos (una por juego) y datos para el generador
   const G = salida.length;
@@ -1334,6 +1356,8 @@ function seccionEspeciales(dias) {
   const bajoReal = ev.salida.reduce((t, s) => t + [s.real.pU, s.real.pR, s.real.pC, s.real.pA].filter(p => p < 0.05).length, 0);
   const bajoCtrl = ev.salida.reduce((t, s) => t + [s.control.pU, s.control.pR, s.control.pC, s.control.pA].filter(p => p < 0.05).length, 0);
   const fuertes = ev.salida.reduce((t, s) => t + [s.real.pU, s.real.pR, s.real.pC, s.real.pA].filter(p => p < alfa).length, 0);
+  const descartados = ev.salida.filter(x => x.fuera > 0);
+  const avisoFuera = descartados.length ? `<p class="leyenda">Se descartaron sorteos con números fuera del rango oficial del juego (casi seguro un error de la fuente): ${descartados.map(x => `${esc(x.nombre)} (${x.fuera})`).join(', ')}. La prueba usa el rango oficial de cada juego.</p>` : '';
   const pocos = ev.pocos.length ? `<p class="leyenda">Todavía con pocos sorteos guardados (menos de 60) y por eso sin probar: ${ev.pocos.map(p => `${esc(p.nombre)} (${p.n})`).join(', ')}.</p>` : '';
   return `<h2>Los juegos especiales: Kino, Loto, Loto 5 y compañía</h2>
 <p>Además de las quinielas, el Radar guarda juegos de bolillas como Super Kino TV, Loto, Loto 5, Pega 3 Más, las cuartetas y los Loto Pool. A cada uno le hacemos cuatro pruebas contra el azar puro:</p>
@@ -1347,6 +1371,7 @@ function seccionEspeciales(dias) {
 <div class="tabla"><table><tr><th>Juego</th><th>Sorteos</th><th>Cómo se saca</th><th>Reparto</th><th>Repite</th><th>Calientes</th><th>Atrasados</th><th>Lectura</th></tr>${filas}</table></div>
 <p><strong>Cómo se ve contra un control:</strong> de las ${pruebas} pruebas con datos reales, ${bajoReal} dieron p menor a 0.05 y ${fuertes} pasaron la vara estricta. Con sorteos inventados al azar, con el mismo número de sorteos y bolas, dieron p menor a 0.05 ${bajoCtrl} de ${pruebas}. Por pura casualidad se esperan unas ${(pruebas * 0.05).toFixed(1)}.</p>
 <p class="leyenda">Cómo se hizo: se supone que todas las bolas de un sorteo salen del mismo bolillero, del menor al mayor número que ha salido. Si un juego mezcla bolillas distintas (por ejemplo una extra), la prueba puede salir rara por eso y no por un sesgo. Loto Más y Súper Más no se prueban por ese motivo. El p de "Reparto" se calcula simulando el juego al azar 500 veces.</p>
+${avisoFuera}
 ${seccionVentanas(ev)}
 ${pocos}`;
 }
