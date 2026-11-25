@@ -970,10 +970,11 @@ function juegosDe(dias) {
   const orden = n => (/kino/i.test(n) ? 0 : /loto ?5/i.test(n) ? 1 : /^loto\b|loto pool|pega/i.test(n) ? 2 : 3);
   return [...m.values()].sort((a, b) => orden(a.nombre) - orden(b.nombre) || b.sorteos.length - a.sorteos.length);
 }
+const principalesDe = (reg, nums) => (reg && reg.extra && nums.length > reg.pick ? nums.slice(0, reg.pick) : nums); // sin la bola extra (Loto 5+)
 // Jugada del día de un juego especial (números calientes + récord real contra el azar). Devuelve '' si no hay datos suficientes.
 function jugadaDeJuego(j, dias, h2) {
   const reg = reglaDe(j.nombre);
-  const validos = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
   if (!reg || validos.length < 40) return '';
 
     const evj = evaluarEspeciales(dias).salida.find(x => x.nombre === j.nombre);
@@ -1024,7 +1025,7 @@ function paginaJuego(j, todos, dias) {
   const fuera = reg ? j.sorteos.filter(x => x.numeros.some(n => n < reg.lo || n > reg.hi)).length : 0;
   const filas = recientes.map(x => { const h = x.fecha === hoy; return `<tr${h ? ' class="fila-hoy"' : ''}><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a>${h ? '<span class="insignia">HOY</span>' : ''}</td><td>${h ? numerosJuegoHoy(x.o) : numerosJuego(x.o)}</td></tr>`; }).join('');
   // Frecuencia honesta en los últimos 30 sorteos válidos
-  const validos = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
   const val = validos.slice(-30);
   let frec = '';
   if (reg && val.length >= 10) {
