@@ -114,6 +114,7 @@ function datosDemo() {
     const especiales = i === 0 ? {} : {
       loto: { nombre: 'Loto', empresa: 'LEIDSA', hora: '9:00 PM', tipo: 'loto', numeros: Array.from({ length: 6 }, () => 1 + rnd(40)) },
       pega3mas: { nombre: 'Pega 3 Más', empresa: 'LEIDSA', hora: '9:00 PM', tipo: 'pega3', numeros: [rnd(10), rnd(10), rnd(10)] },
+      superkino: { nombre: 'Super Kino TV', empresa: 'LEIDSA', hora: '8:55 PM', tipo: 'kino', numeros: (() => { const R = fecha >= '2026-09-20' ? 84 : 80, set = new Set(); while (set.size < 20) set.add(1 + rnd(R)); return [...set]; })() }, // 80 bolas antes del 20 sept, 84 después
     };
     filas.push({ fecha, sorteos, cuartetas: {}, especiales });
   }
@@ -988,7 +989,7 @@ const principalesDe = (reg, nums) => (reg && reg.extra && nums.length > reg.pick
 // Jugada del día de un juego especial (números calientes + récord real contra el azar). Devuelve '' si no hay datos suficientes.
 function jugadaDeJuego(j, dias, h2) {
   const reg = reglaDe(j.nombre);
-  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => enRegla(reg, x));
   if (!reg || validos.length < 40) return '';
 
     const evj = evaluarEspeciales(dias).salida.find(x => x.nombre === j.nombre);
@@ -1009,7 +1010,7 @@ function paginaJugadasEspeciales(dias) {
     const h = jugadaDeJuego(g, dias, false);
     const link = `<a href="${url('/juegos/' + g.slug + '/')}">Ver resultados de ${esc(g.nombre)} →</a>`;
     if (h) return `<div class="tarjeta" style="margin-bottom:14px">${h}<p>${link}</p></div>`;
-    const reg = reglaDe(g.nombre), val = g.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi)).length;
+    const reg = reglaDe(g.nombre), val = g.sorteos.filter(x => enRegla(reg, x)).length;
     return /cuarteta/i.test(g.nombre) || !reg ? '' : `<div class="tarjeta" style="margin-bottom:14px"><h3>${esc(g.nombre)}</h3><p class="leyenda">Todavía no hay suficientes sorteos válidos para probar la jugada (hay ${val}, hacen falta 40).</p><p>${link}</p></div>`;
   }).join('');
   const cuerpo = `<h1>🎯 Jugadas de los juegos especiales</h1>
@@ -1039,7 +1040,7 @@ function paginaJuego(j, todos, dias) {
   const fuera = reg ? j.sorteos.filter(x => x.numeros.some(n => n < reg.lo || n > reg.hi)).length : 0;
   const filas = recientes.map(x => { const h = x.fecha === hoy; return `<tr${h ? ' class="fila-hoy"' : ''}><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a>${h ? '<span class="insignia">HOY</span>' : ''}</td><td>${h ? numerosJuegoHoy(x.o) : numerosJuego(x.o)}</td></tr>`; }).join('');
   // Frecuencia honesta en los últimos 30 sorteos válidos
-  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  const validos = j.sorteos.map(x => ({ ...x, numeros: principalesDe(reg, x.numeros) })).filter(x => enRegla(reg, x));
   const val = validos.slice(-30);
   let frec = '';
   if (reg && val.length >= 10) {
@@ -1049,7 +1050,8 @@ function paginaJuego(j, todos, dias) {
     frec = `<h2>Los que más han salido (últimos ${val.length} sorteos)</h2><p>${top.map(([n, v]) => `<span class="bola">${f2(n)}</span> <small>${v}×</small>`).join(' &nbsp; ')}</p><p class="leyenda">Por azar, cada número salía unas ${esp.toFixed(1)} veces en ese tramo. Que uno haya salido más no lo hace más probable en el próximo sorteo.</p>`;
   }
   const jugada = jugadaDeJuego(j, dias, true);
-  const aviso = fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '';
+  const avisoDesde = reg && reg.desde ? `<p class="leyenda">Desde el ${esc(fechaLarga(reg.desde))} este juego se juega con ${reg.hi} bolas (antes eran menos). Las estadísticas y la jugada del día usan solo los sorteos desde esa fecha, para no mezclar dos bolilleros distintos.</p>` : '';
+  const aviso = avisoDesde + (fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '');
   const cuerpo = `<h1>${esc(j.nombre)}: resultados y últimos sorteos</h1>
 <p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
 <div class="tarjeta${hoyS ? ' hoy' : ''}"><h3>${hoyS ? 'Resultado de hoy <span class="insignia">HOY</span>' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${hoyS ? numerosJuegoHoy(ult.o) : numerosJuego(ult.o)}</p></div>
@@ -1373,7 +1375,7 @@ function analizarVentanas(sorteos, N, k, repl) {
 }
 // Reglas oficiales de cada juego (según las páginas de Leidsa, Loteka y La Primera): cuántos números se juegan y de qué rango.
 const REGLAS_ESPECIALES = [
-  { re: /kino/i, pick: 10, lo: 1, hi: 80, nota: 'Eliges 10 números del 1 al 80. En cada sorteo salen 20.' },
+  { re: /kino/i, pick: 10, lo: 1, hi: 84, desde: '2026-09-20', nota: 'Eliges 10 números del 1 al 84. En cada sorteo salen 20.' }, // desde el 20 de sept. de 2026 el Kino se juega con 84 bolas (antes 80)
   { re: /loto ?5/i, pick: 5, lo: 1, hi: 38, extra: { lo: 1, hi: 10, nombre: 'Loto 5+' }, nota: 'Eliges 5 números del 01 al 38. Opcional: el bolo adicional del Loto 5+ (01 al 10), que se paga aparte.' },
   { re: /loto ?pool.*real/i, pick: 4, lo: 0, hi: 99, nota: 'Eliges 4 números del 00 al 99.' },
   { re: /loto ?pool/i, pick: 5, lo: 1, hi: 31, nota: 'Eliges 5 números del 01 al 31.' },
@@ -1383,6 +1385,7 @@ const REGLAS_ESPECIALES = [
   { re: /cuarteta/i, pick: 4, lo: 0, hi: 99, nota: 'Eliges 4 números del 00 al 99.' }
 ];
 const reglaDe = nombre => REGLAS_ESPECIALES.find(r => r.re.test(nombre)) || null;
+const enRegla = (reg, x) => !reg || ((!reg.desde || x.fecha >= reg.desde) && x.numeros.every(n => n >= reg.lo && n <= reg.hi)); // sorteo válido: del bolillero vigente y dentro del rango oficial
 let _memoEsp = null;
 function evaluarEspeciales(dias) {
   if (_memoEsp && _memoEsp.dias === dias) return _memoEsp.val;
@@ -1405,6 +1408,7 @@ function evaluarEspeciales0(dias) {
     let k = +Object.entries(largos).sort((a, b) => b[1] - a[1])[0][0];
     let lista = j.lista.filter(s => s.length === k);
     let fl = j.fechas.filter((_, i) => j.lista[i].length === k);
+    { const r0 = reglaDe(j.nombre); if (r0 && r0.desde) { const keep = fl.map(f => f >= r0.desde); lista = lista.filter((_, i) => keep[i]); fl = fl.filter((_, i) => keep[i]); } } // solo el bolillero vigente
     if (lista.length < 60) { pocos.push({ nombre: j.nombre, n: lista.length }); continue; }
     const dup = s => new Set(s).size < s.length;
     let bonus = false;
