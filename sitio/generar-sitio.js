@@ -986,7 +986,8 @@ function paginaJuego(j, todos, dias) {
   const fuera = reg ? j.sorteos.filter(x => x.numeros.some(n => n < reg.lo || n > reg.hi)).length : 0;
   const filas = recientes.map(x => `<tr><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a></td><td>${numerosJuego(x.o)}</td></tr>`).join('');
   // Frecuencia honesta en los últimos 30 sorteos válidos
-  const val = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi)).slice(-30);
+  const validos = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  const val = validos.slice(-30);
   let frec = '';
   if (reg && val.length >= 10) {
     const c = new Map(); val.forEach(x => new Set(x.numeros).forEach(n => c.set(n, (c.get(n) || 0) + 1)));
@@ -994,12 +995,25 @@ function paginaJuego(j, todos, dias) {
     const top = [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 8);
     frec = `<h2>Los que más han salido (últimos ${val.length} sorteos)</h2><p>${top.map(([n, v]) => `<span class="bola">${f2(n)}</span> <small>${v}×</small>`).join(' &nbsp; ')}</p><p class="leyenda">Por azar, cada número salía unas ${esp.toFixed(1)} veces en ese tramo. Que uno haya salido más no lo hace más probable en el próximo sorteo.</p>`;
   }
+  // Jugada del día: los números calientes de la ventana que mejor le ha ido al juego (si el laboratorio no encontró ninguna, 30 sorteos), con su récord real contra el azar
+  let jugada = '';
+  if (reg && validos.length >= 40) {
+    const evj = evaluarEspeciales(dias).salida.find(x => x.nombre === j.nombre);
+    const W = evj && evj.pasa && evj.W ? evj.W : 30;
+    const pick = reg.pick, drawn = validos[0].numeros.length, rango = reg.hi - reg.lo + 1;
+    const calientes = (hist, w) => { const c = new Map(); hist.slice(-w).forEach(x => new Set(x.numeros).forEach(n => c.set(n, (c.get(n) || 0) + 1))); return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, pick).map(e => e[0]).sort((a, b) => a - b); };
+    const ticket = calientes(validos, W);
+    let aciertos = 0, n = 0;
+    for (let i = Math.max(W, 20); i < validos.length; i++) { const t = calientes(validos.slice(0, i), W), sal = new Set(validos[i].numeros); aciertos += t.filter(x => sal.has(x)).length; n++; }
+    const prom = n ? aciertos / n : 0, esp = pick * drawn / rango;
+    jugada = `<h2>🎯 Jugada del día (${esc(j.nombre)})</h2><p><span class="bolas">${ticket.map(x => bola(f2(x))).join('')}</span></p><p class="leyenda">Son los ${pick} números que más han salido en los últimos ${W} sorteos. No es una predicción: es información.</p><p>Récord real de este método en los últimos ${n} sorteos: acertó en promedio <strong>${prom.toFixed(2)}</strong> números por sorteo y el azar esperaba <strong>${esp.toFixed(2)}</strong>. ${Math.abs(prom - esp) < 0.15 * esp ? 'Prácticamente igual que el azar.' : (prom > esp * 1.3 ? 'Bastante por encima del azar en este tramo. Eso es raro: antes de confiar, mira si aguanta la prueba honesta del laboratorio.' : prom > esp ? 'Un poco por encima del azar, pero con tan pocos sorteos puede ser casualidad.' : 'Por debajo del azar.')}</p><p><a href="${url('/generador/')}">🎟️ Generar tickets con otros modos</a> · <a href="${url('/laboratorio/')}">🔬 Ver el laboratorio</a></p>`;
+  }
   const aviso = fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '';
   const cuerpo = `<h1>${esc(j.nombre)}: resultados y últimos sorteos</h1>
 <p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
 <div class="tarjeta"><h3>${hoyS ? 'Resultado de hoy' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${numerosJuego(ult.o)}</p></div>
 <h2>Últimos sorteos</h2><div class="tabla"><table><tr><th>Día</th><th>Números</th></tr>${filas}</table></div>
-${frec}${aviso}
+${jugada}${frec}${aviso}
 <p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
   return pagina({ ruta: '/juegos/' + j.slug + '/', titulo: `${j.nombre} hoy: resultados y últimos sorteos | ${NOMBRE_SITIO}`, descripcion: `Resultado de ${j.nombre} de hoy y de los últimos sorteos, con los números que más han salido.`, cuerpo });
 }
