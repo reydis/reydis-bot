@@ -868,6 +868,7 @@ document.getElementById('gen-copiar').addEventListener('click',function(){var t=
   function ok(){b.textContent='¡Copiado!';setTimeout(function(){b.textContent='Copiar';},1500);}
   try{navigator.clipboard.writeText(t).then(ok);}catch(e){var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');ok();}catch(e2){}document.body.removeChild(a);}});
 document.getElementById('gen-wa').addEventListener('click',function(){window.open('https://wa.me/?text='+encodeURIComponent(plano()),'_blank');});
+var h0=(location.hash||'').replace('#','');if(h0){for(var q=0;q<D.length;q++){if(D[q].slug===h0){sel.value=String(q);break;}}}
 actualizar();
 })();`;
 function jsonSeguro(o) { return JSON.stringify(o).replace(/</g, '\\u003c'); }
@@ -929,7 +930,7 @@ function paginaGenerador(dias) {
   if (!juegos.length) return pagina({ ruta: '/generador/', titulo: `Generador de tickets de juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Generador de tickets para Kino, Loto 5 y otros juegos especiales de la lotería dominicana.', cuerpo: `<h1>Generador de tickets</h1><p>Todavía no hay suficientes sorteos guardados de los juegos especiales. Cuando los haya, podrás generar tickets aquí.</p>${avisoHonesto()}` });
   const D = juegos.map(s => {
     const r = s.regla, pick = r ? r.pick : Math.min(s.k, 10);
-    return { nombre: s.nombre, lo: s.lo, hi: s.hi, pick, oficial: !!r, nota: r ? r.nota : `Eliges ${pick} números del ${s.lo} al ${s.hi}.`, extra: r && r.extra ? r.extra : null, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) };
+    return { nombre: s.nombre, slug: slugJuego(s.nombre), lo: s.lo, hi: s.hi, pick, oficial: !!r, nota: r ? r.nota : `Eliges ${pick} números del ${s.lo} al ${s.hi}.`, extra: r && r.extra ? r.extra : null, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) };
   });
   const opciones = juegos.map((s, i) => `<option value="${i}">${esc(s.nombre)}</option>`).join('');
   const cuerpo = `<h1>Generador de tickets · juegos especiales</h1>
@@ -986,7 +987,7 @@ function jugadaDeJuego(j, dias, h2) {
     let aciertos = 0, n = 0;
     for (let i = Math.max(W, 20); i < validos.length; i++) { const t = calientes(validos.slice(0, i), W), sal = new Set(validos[i].numeros); aciertos += t.filter(x => sal.has(x)).length; n++; }
     const prom = n ? aciertos / n : 0, esp = pick * drawn / rango;
-    return `${h2 ? `<h2>🎯 Jugada del día (${esc(j.nombre)})</h2>` : `<h3>${esc(j.nombre)}</h3>`}<p><span class="bolas">${ticket.map(x => bola(f2(x))).join('')}</span></p><p class="leyenda">Son los ${pick} números que más han salido en los últimos ${W} sorteos. No es una predicción: es información.</p><p>Récord real de este método en los últimos ${n} sorteos: acertó en promedio <strong>${prom.toFixed(2)}</strong> números por sorteo y el azar esperaba <strong>${esp.toFixed(2)}</strong>. ${Math.abs(prom - esp) < 0.15 * esp ? 'Prácticamente igual que el azar.' : (prom > esp * 1.3 ? 'Bastante por encima del azar en este tramo. Eso es raro: antes de confiar, mira si aguanta la prueba honesta del laboratorio.' : prom > esp ? 'Un poco por encima del azar, pero con tan pocos sorteos puede ser casualidad.' : 'Por debajo del azar.')}</p><p><a href="${url('/generador/')}">🎟️ Generar tickets con otros modos</a> · <a href="${url('/laboratorio/')}">🔬 Ver el laboratorio</a></p>`;
+    return `${h2 ? `<h2>🎯 Jugada del día (${esc(j.nombre)})</h2>` : `<h3>${esc(j.nombre)}</h3>`}<p><span class="bolas">${ticket.map(x => bola(f2(x))).join('')}</span></p><p class="leyenda">${pick === 1 ? 'Es el número que más ha salido' : `Son los ${pick} números que más han salido`} en los últimos ${W} sorteos. No es una predicción: es información.</p><p>Récord real de este método en los últimos ${n} sorteos: acertó en promedio <strong>${prom.toFixed(2)}</strong> números por sorteo y el azar esperaba <strong>${esp.toFixed(2)}</strong>. ${Math.abs(prom - esp) < 0.15 * esp ? 'Prácticamente igual que el azar.' : (prom > esp * 1.3 ? 'Bastante por encima del azar en este tramo. Eso es raro: antes de confiar, mira si aguanta la prueba honesta del laboratorio.' : prom > esp ? 'Un poco por encima del azar, pero con tan pocos sorteos puede ser casualidad.' : 'Por debajo del azar.')}</p><p><a href="${url('/generador/')}#${slugJuego(j.nombre)}">🎟️ Generar tickets con otros modos</a> · <a href="${url('/laboratorio/')}">🔬 Ver el laboratorio</a></p>`;
   return '';
 }
 function paginaJugadasEspeciales(dias) {
@@ -1042,7 +1043,7 @@ function paginaJuego(j, todos, dias) {
 <div class="tarjeta${hoyS ? ' hoy' : ''}"><h3>${hoyS ? 'Resultado de hoy <span class="insignia">HOY</span>' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${hoyS ? numerosJuegoHoy(ult.o) : numerosJuego(ult.o)}</p></div>
 <h2>Últimos sorteos</h2><div class="tabla"><table><tr><th>Día</th><th>Números</th></tr>${filas}</table></div>
 ${jugada}${frec}${aviso}
-<p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
+<p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}#${slugJuego(j.nombre)}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
   return pagina({ ruta: '/juegos/' + j.slug + '/', titulo: `${j.nombre} hoy: resultados y últimos sorteos | ${NOMBRE_SITIO}`, descripcion: `Resultado de ${j.nombre} de hoy y de los últimos sorteos, con los números que más han salido.`, cuerpo });
 }
 
