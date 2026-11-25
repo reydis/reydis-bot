@@ -245,6 +245,7 @@ a.boton{display:inline-block;background:linear-gradient(135deg,var(--acento),var
 .mn-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px;max-width:600px;margin:12px 0}.mn-grid button{aspect-ratio:1;border-radius:8px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto);font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;padding:0}.mn-grid button[aria-pressed=true]{background:radial-gradient(circle at 32% 28%,#fde68a,#f59e0b);color:#1a1200;border-color:var(--ojo)}.mn-grid button.hoy{outline:2px solid var(--bien);outline-offset:-2px}
 .mn-tarj{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:14px 16px;margin:12px 0}.mn-cab{display:flex;gap:14px;align-items:center;margin-bottom:8px}.mn-resumen{font-weight:700;margin:14px 0}.mn-fila{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .gen-form{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:16px;margin:14px 0;display:grid;gap:12px;max-width:640px}.gen-form label{display:grid;gap:6px;font-size:.9rem}.gen-form label.chk{display:flex;gap:8px;align-items:center;font-size:.85rem;color:var(--suave)}.gen-form select,.gen-form input[type=number]{background:var(--panel2);border:1px solid var(--borde);border-radius:10px;padding:10px 12px;color:var(--texto);font:inherit;width:100%}.gen-tk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:10px 14px;margin:8px 0;max-width:640px}.gen-tk .gen-n{color:var(--suave);font-size:.8rem;min-width:26px}.gen-acc{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.gen-nota{max-width:640px}
+.bola.nuevo{background:linear-gradient(135deg,#38bdf8,#0284c7);color:#04121f;border-color:#7dd3fc;box-shadow:0 0 12px rgba(56,189,248,.45)}.tarjeta.hoy{border-color:#38bdf8;box-shadow:0 0 18px rgba(56,189,248,.25)}.insignia{display:inline-block;background:#38bdf8;color:#04121f;font-size:.7rem;font-weight:800;border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle}tr.fila-hoy td{background:rgba(56,189,248,.08)}
 .pales{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.pal{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--borde);border-radius:999px;padding:4px 10px 4px 5px}.pal .bola{min-width:2em;height:2em;font-size:.82rem}.pal.medio{border-color:#10b981}.pal.completo{border-color:var(--ojo);box-shadow:0 0 14px rgba(251,191,36,.4);background:rgba(251,191,36,.08)}.pal small{color:var(--suave);font-size:.72rem}.pal.completo small{color:var(--ojo);font-weight:700}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -623,7 +624,7 @@ function paginaInicio(dias, series) {
   const kinoClave = (() => { for (let i = dias.length - 1; i >= 0; i--) { const o = dias[i].otros.find(x => /kino/i.test(x.nombre)); if (o) return o; } return null; })();
   const tarjetaKino = kinoClave ? (() => {
     const hoyK = dia && dia.otros.find(x => x.clave === kinoClave.clave);
-    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuego(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
+    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuegoHoy(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
   })() : '';
   const tarjetas = tarjetasDe(dia, conteo) + tarjetaKino;
   const esKino = o => /kino/i.test(o.nombre);
@@ -668,6 +669,8 @@ function numerosJuego(o) {
   if (o.tipo === 'pega3' || o.tipo === 'pega4') return `<span class="bolas">${o.numeros.map(n => bola(n)).join('')}</span>`;
   return bolas(o.numeros);
 }
+
+const numerosJuegoHoy = o => `<span class="bolas">${o.numeros.map(n => bola(o.tipo === 'pega3' || o.tipo === 'pega4' ? n : f2(n), ' nuevo')).join('')}</span>`;
 
 function paginaLoterias(series) {
   const filas = LOTERIAS.filter(l => series[l.clave].length).map(l => {
@@ -972,7 +975,7 @@ function paginaJuegos(dias) {
   if (!juegos.length) return pagina({ ruta: '/juegos/', titulo: `Resultados de Kino, Loto y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más y otros juegos especiales de la lotería dominicana.', cuerpo: '<h1>Kino y juegos especiales</h1><p>Todavía no hay resultados guardados de estos juegos.</p>' + avisoHonesto() });
   const tarjetas = juegos.map(j => {
     const u = j.sorteos[j.sorteos.length - 1], hoyS = u.fecha === hoy;
-    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + j.slug + '/')}">${esc(j.nombre)}</a></h3><div class="hora">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}</div><p>${hoyS ? numerosJuego(u.o) : '<span class="pend">Pendiente hoy</span>'}</p>${hoyS ? '' : `<div class="hora">Último: ${esc(fechaCorta(u.fecha))}</div>`}<p><a href="${url('/juegos/' + j.slug + '/')}">Ver resultados →</a></p></div>`;
+    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + j.slug + '/')}">${esc(j.nombre)}</a></h3><div class="hora">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}</div><p>${hoyS ? numerosJuegoHoy(u.o) : '<span class="pend">Pendiente hoy</span>'}</p>${hoyS ? '' : `<div class="hora">Último: ${esc(fechaCorta(u.fecha))}</div>`}<p><a href="${url('/juegos/' + j.slug + '/')}">Ver resultados →</a></p></div>`;
   }).join('');
   const cuerpo = `<h1>Kino y juegos especiales</h1>
 <p class="sub">Los resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más, las cuartetas y los demás juegos de bolillas, con su historial. Toca un juego para ver los últimos sorteos.</p>
@@ -984,7 +987,7 @@ function paginaJuego(j, todos, dias) {
   const hoy = fechaRD(), ult = j.sorteos[j.sorteos.length - 1], hoyS = ult.fecha === hoy;
   const reg = reglaDe(j.nombre), recientes = j.sorteos.slice(-60).reverse();
   const fuera = reg ? j.sorteos.filter(x => x.numeros.some(n => n < reg.lo || n > reg.hi)).length : 0;
-  const filas = recientes.map(x => `<tr><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a></td><td>${numerosJuego(x.o)}</td></tr>`).join('');
+  const filas = recientes.map(x => { const h = x.fecha === hoy; return `<tr${h ? ' class="fila-hoy"' : ''}><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a>${h ? '<span class="insignia">HOY</span>' : ''}</td><td>${h ? numerosJuegoHoy(x.o) : numerosJuego(x.o)}</td></tr>`; }).join('');
   // Frecuencia honesta en los últimos 30 sorteos válidos
   const validos = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
   const val = validos.slice(-30);
@@ -1011,7 +1014,7 @@ function paginaJuego(j, todos, dias) {
   const aviso = fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '';
   const cuerpo = `<h1>${esc(j.nombre)}: resultados y últimos sorteos</h1>
 <p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
-<div class="tarjeta"><h3>${hoyS ? 'Resultado de hoy' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${numerosJuego(ult.o)}</p></div>
+<div class="tarjeta${hoyS ? ' hoy' : ''}"><h3>${hoyS ? 'Resultado de hoy <span class="insignia">HOY</span>' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${hoyS ? numerosJuegoHoy(ult.o) : numerosJuego(ult.o)}</p></div>
 <h2>Últimos sorteos</h2><div class="tabla"><table><tr><th>Día</th><th>Números</th></tr>${filas}</table></div>
 ${jugada}${frec}${aviso}
 <p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
