@@ -149,7 +149,8 @@ function preparar(filas) {
         if (!j || !Array.isArray(j.numeros) || !j.numeros.length) continue;
         const nums = j.numeros.map(x => parseInt(x, 10)).filter(Number.isInteger);
         if (!nums.length) continue;
-        otros.push({ clave: k, nombre: j.nombre || k, empresa: j.empresa || '', hora: j.hora || '', tipo: j.tipo || grupo, numeros: nums });
+        const horaReal = /kino|pega ?3/i.test(j.nombre || k) ? '8:55 PM' : (j.hora || ''); // horas oficiales de Leidsa
+        otros.push({ clave: k, nombre: j.nombre || k, empresa: j.empresa || '', hora: horaReal, tipo: j.tipo || grupo, numeros: nums });
       }
     }
     if (Object.keys(quinielas).length || otros.length) dias.push({ fecha: f.fecha, quinielas, otros });
