@@ -620,12 +620,19 @@ function paginaInicio(dias, series) {
   const repsDe = (rep, cuando, marc = new Set()) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), marc.has(+n) ? ' ya' : ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
   const conteo = conteoDe(dia);
-  const tarjetas = tarjetasDe(dia, conteo);
+  const kinoClave = (() => { for (let i = dias.length - 1; i >= 0; i--) { const o = dias[i].otros.find(x => /kino/i.test(x.nombre)); if (o) return o; } return null; })();
+  const tarjetaKino = kinoClave ? (() => {
+    const hoyK = dia && dia.otros.find(x => x.clave === kinoClave.clave);
+    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuego(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
+  })() : '';
+  const tarjetas = tarjetasDe(dia, conteo) + tarjetaKino;
+  const esKino = o => /kino/i.test(o.nombre);
   const otros = (() => {
     const hechos = new Set(dia ? dia.otros.map(o => o.clave) : []);
+    const otrosHoy = dia ? dia.otros.filter(o => !esKino(o)) : [];
     const desde = dias.slice(-14), vistos = new Map();
-    desde.forEach(d => d.otros.forEach(o => { if (!hechos.has(o.clave) && !vistos.has(o.clave)) vistos.set(o.clave, o); }));
-    const hechas = dia ? dia.otros.map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`) : [];
+    desde.forEach(d => d.otros.forEach(o => { if (!esKino(o) && !hechos.has(o.clave) && !vistos.has(o.clave)) vistos.set(o.clave, o); }));
+    const hechas = otrosHoy.map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`);
     const pend = [...vistos.values()].filter(o => o.tipo !== 'cuarteta' && !/cuarteta/i.test(o.nombre)).map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p><span class="pend">Pendiente</span></p></div>`);
     const todas = hechas.concat(pend);
     return todas.length ? `<h2>Otros juegos</h2><div class="rejilla">${todas.join('')}</div><p><a href="${url('/juegos/')}">Ver todos los juegos (Kino, Loto 5 y más) →</a></p>` : '';
