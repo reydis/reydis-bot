@@ -1034,6 +1034,97 @@ function paginaJuegos(dias) {
 <p><a class="boton" href="${url('/jugadas-especiales/')}">🎯 Jugadas de Kino y Loto 5</a> <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a> <a class="boton" href="${url('/laboratorio/')}">🔬 ¿Le ganan al azar?</a></p>${avisoHonesto()}`;
   return pagina({ ruta: '/juegos/', titulo: `Resultados de Súper Kino TV, Loto, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de hoy y últimos sorteos de Súper Kino TV, Loto, Loto 5, Pega 3 Más, Loto Pool y las cuartetas de la lotería dominicana.', cuerpo });
 }
+// ── Página extra del Kino: estadísticas contra el azar, calculadora y revisar ticket ──
+const KINO_PAGOS = { 0: 80, 5: 60, 6: 300, 7: 1000, 8: 10000, 9: 150000, 10: 25000000 };
+const KINO_PRECIO = 25;
+const JS_KINO = String.raw`(function(){
+var D=window.KD,P=window.KP,PRECIO=window.KPRECIO,HI=window.KHI;
+function $(i){return document.getElementById(i);}
+function f2(n){return (n<10?'0':'')+n;}
+function fc(f){var p=f.split('-');return p[2]+'/'+p[1];}
+function nums(t){var m=(t||'').match(/\d+/g)||[];return m.map(Number);}
+function premio(k){return P[k]||0;}
+function dinero(n){return 'RD$ '+n.toLocaleString('es-DO');}
+$('k-buscar').addEventListener('click',function(){
+  var n=nums($('k-n').value)[0],o=$('k-res-n');
+  if(!n||n<1||n>HI){o.innerHTML='<p class="leyenda">Escribe un número del 1 al '+HI+'.</p>';return;}
+  var veces=0,v30=0,ult=[],desde=-1;
+  for(var i=D.length-1;i>=0;i--){if(D[i][1].indexOf(n)>=0){veces++;if(D.length-1-i<30)v30++;if(ult.length<5)ult.push(D[i][0]);if(desde<0)desde=D.length-1-i;}}
+  var esp=D.length*20/HI,esp30=Math.min(30,D.length)*20/HI;
+  o.innerHTML='<div class="tarjeta"><h3><span class="bola">'+f2(n)+'</span> en el Kino</h3><p>Salió <strong>'+veces+'</strong> veces en '+D.length+' sorteos (por azar: unas '+esp.toFixed(1)+'). En los últimos '+Math.min(30,D.length)+': <strong>'+v30+'</strong> (esperado '+esp30.toFixed(1)+').</p><p>'+(desde<0?'No ha salido en ninguno de los sorteos guardados.':(desde===0?'Salió en el último sorteo.':'Lleva '+desde+' sorteos sin salir.'))+(ult.length?' Últimas veces: '+ult.map(fc).join(', ')+'.':'')+'</p><p class="leyenda">Que lleve mucho sin salir no lo hace más probable: la tómbola no tiene memoria.</p></div>';
+});
+$('k-revisar').addEventListener('click',function(){
+  var a=nums($('k-t').value),o=$('k-res-t'),u={},bad=false;
+  a.forEach(function(x){if(x<1||x>HI||u[x])bad=true;u[x]=1;});
+  if(a.length!==10||bad){o.innerHTML='<p class="leyenda">Escribe 10 números distintos entre 1 y '+HI+' (separados por espacio o coma). Llevas '+a.length+'.</p>';return;}
+  var filas='',tot=0,mejor=0,ult=D.slice(-10).reverse();
+  ult.forEach(function(d){
+    var h=a.filter(function(x){return d[1].indexOf(x)>=0;}),p=premio(h.length);tot+=p;if(h.length>mejor)mejor=h.length;
+    filas+='<tr><td>'+fc(d[0])+'</td><td><span class="bolas" style="display:flex;flex-wrap:wrap;gap:4px;max-width:340px">'+d[1].map(function(x){return '<span class="bola'+(a.indexOf(x)>=0?' acierto':'')+'" style="'+(a.indexOf(x)>=0?'outline:2px solid var(--bien)':'opacity:.55')+'">'+f2(x)+'</span>';}).join('')+'</span></td><td><strong>'+h.length+'</strong></td><td>'+(p?dinero(p):'—')+'</td></tr>';
+  });
+  var gasto=ult.length*PRECIO;
+  o.innerHTML='<div class="tabla" style="overflow-x:auto"><table><tr><th>Sorteo</th><th>Números (en verde, tus aciertos)</th><th>Aciertos</th><th>Premio</th></tr>'+filas+'</table></div><p>En estos '+ult.length+' sorteos habrías gastado '+dinero(gasto)+' y recibido '+dinero(tot)+'. Mejor resultado: '+mejor+' aciertos.</p><p class="leyenda">Los premios son los de nuestra tabla (ver abajo); confirma siempre con Leidsa. No guardamos tus números.</p>';
+});
+$('k-calc').addEventListener('click',function(){
+  var t=Math.max(1,Math.floor(+$('k-tk').value||1)),d=Math.max(1,Math.floor(+$('k-dias').value||1)),rtp=window.KRTP;
+  var gasto=t*d*PRECIO;
+  $('k-res-c').innerHTML='<p>Jugando '+t+' ticket'+(t>1?'s':'')+' por sorteo durante '+d+' día'+(d>1?'s':'')+': gastas <strong>'+dinero(gasto)+'</strong> y, en promedio, recuperas <strong>'+dinero(Math.round(gasto*rtp))+'</strong> (pérdida esperada: '+dinero(Math.round(gasto*(1-rtp)))+'). El promedio no garantiza nada: puedes ganar más o mucho menos.</p>';
+});
+})();`;
+
+function kinoExtra(validos, reg) {
+  const HI = reg.hi, K = 20, S = reg.pick;
+  const D = validos.map(x => ({ f: x.fecha, n: [...new Set(x.numeros)].sort((a, b) => a - b) })).filter(x => x.n.length === K);
+  if (D.length < 10) return '';
+  const comb = (n, k) => { if (k < 0 || k > n) return 0; let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
+  const total = comb(HI, S);
+  const prob = k => comb(K, k) * comb(HI - K, S - k) / total;
+  let rtp = 0;
+  const filasP = [];
+  for (let k = S; k >= 0; k--) {
+    const p = prob(k), pago = KINO_PAGOS[k] || 0;
+    rtp += p * pago / KINO_PRECIO;
+    if (pago || k >= 5) filasP.push(`<tr><td>${k} aciertos</td><td>${pago ? 'RD$ ' + pago.toLocaleString('es-DO') : '—'}</td><td>1 de ${Math.round(1 / p).toLocaleString('es-DO')}</td><td>${(p * 100).toFixed(p < 0.0001 ? 7 : 3)} %</td></tr>`);
+  }
+  const ventanas = [{ n: 30, t: 'últimos 30 sorteos' }, { n: 60, t: 'últimos 60 sorteos' }, { n: D.length, t: `todos desde el ${fechaCorta(D[0].f)} (${D.length})` }]
+    .filter((v, i, a) => v.n <= D.length && (i === 2 || v.n < D.length));
+  const ult = new Map(); D.forEach((x, i) => x.n.forEach(n => ult.set(n, i)));
+  const bloqueV = v => {
+    const sub = D.slice(-v.n), c = new Array(HI + 1).fill(0);
+    sub.forEach(x => x.n.forEach(n => c[n]++));
+    const esp = sub.length * K / HI, sd = Math.sqrt(sub.length * (K / HI) * (1 - K / HI));
+    const ord = Array.from({ length: HI }, (_, i) => i + 1).sort((a, b) => c[b] - c[a] || a - b);
+    const li = (arr) => arr.map(n => `<span class="bola">${f2(n)}</span> <small>${c[n]}×</small>`).join(' &nbsp; ');
+    return `<h3>${esc(v.t)}</h3><p><strong>Más salidos:</strong> ${li(ord.slice(0, 8))}</p><p><strong>Menos salidos:</strong> ${li(ord.slice(-8).reverse())}</p><p class="leyenda">Por azar cada número sale unas ${esp.toFixed(1)} veces (±${sd.toFixed(1)} es lo normal). Con ${HI} números, que algunos se alejen del promedio es de esperarse.</p>`;
+  };
+  const atras = Array.from({ length: HI }, (_, i) => i + 1).map(n => ({ n, g: ult.has(n) ? D.length - 1 - ult.get(n) : D.length })).sort((a, b) => b.g - a.g || a.n - b.n).slice(0, 8);
+  const par = D.map(x => x.n.filter(n => n % 2 === 0).length), parProm = par.reduce((s, v) => s + v, 0) / D.length;
+  const nPar = Math.floor(HI / 2), espPar = K * nPar / HI;
+  const suma = D.map(x => x.n.reduce((s, v) => s + v, 0)), sumaProm = suma.reduce((s, v) => s + v, 0) / D.length, espSuma = K * (HI + 1) / 2;
+  const pc = new Map(); D.forEach(x => { for (let i = 0; i < K; i++) for (let j = i + 1; j < K; j++) { const k = x.n[i] * 100 + x.n[j]; pc.set(k, (pc.get(k) || 0) + 1); } });
+  const topPar = [...pc.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 5);
+  const espPareja = D.length * (K * (K - 1)) / (HI * (HI - 1));
+  const datos = JSON.stringify(D.map(x => [x.f, x.n]));
+  return `<h2>Estadísticas del Kino (${HI} bolas)</h2>
+<p class="leyenda">Usamos solo los ${D.length} sorteos desde el ${esc(fechaLarga(D[0].f))}. Junto a cada dato ponemos lo que el azar puro daría, para que veas si algo es raro de verdad.</p>
+${ventanas.map(bloqueV).join('')}
+<h3>Más atrasados (sorteos sin salir)</h3><p>${atras.map(a => `<span class="bola">${f2(a.n)}</span> <small>${a.g}</small>`).join(' &nbsp; ')}</p><p class="leyenda">Con ${K} bolas de ${HI} por sorteo, un número se pierde en promedio ${(HI / K - 1).toFixed(1)} sorteos seguidos y a veces bastantes más. Eso no lo hace "debido".</p>
+<h3>Pares, suma y parejas</h3>
+<ul><li>Pares por sorteo: promedio <strong>${parProm.toFixed(1)}</strong> (azar: ${espPar.toFixed(1)}).</li><li>Suma de los ${K} números: promedio <strong>${Math.round(sumaProm)}</strong> (azar: ${Math.round(espSuma)}).</li><li>Parejas que más se repitieron: ${topPar.map(([k, v]) => `<span class="bola">${f2(Math.floor(k / 100))}</span><span class="bola">${f2(k % 100)}</span> <small>${v}×</small>`).join(' &nbsp; ')} <small>(por azar cada pareja sale ${espPareja.toFixed(1)} veces en ${D.length} sorteos)</small></li></ul>
+<h2>Busca un número</h2>
+<div class="gen-form"><label>Número (1 al ${HI})<input id="k-n" inputmode="numeric" placeholder="Ej: 37" style="padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto)"></label><button class="boton" id="k-buscar" type="button">Buscar</button></div><div id="k-res-n"></div>
+<h2>Revisa tu ticket</h2>
+<p>Escribe los ${S} números de tu ticket y mira cuántos habrías acertado en los últimos 10 sorteos. Sin cuenta, sin guardar nada.</p>
+<div class="gen-form"><label>Tus ${S} números<input id="k-t" placeholder="Ej: 3 12 25 31 40 47 52 66 71 80" style="padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto)"></label><button class="boton" id="k-revisar" type="button">Revisar</button></div><div id="k-res-t"></div>
+<h2>Calculadora de probabilidades y premios</h2>
+<p>Eliges ${S} números de ${HI} y salen ${K}. Estas son las probabilidades reales de cada resultado:</p>
+<div class="tabla"><table><tr><th>Resultado</th><th>Premio (RD$${KINO_PRECIO})</th><th>Probabilidad</th><th>En %</th></tr>${filasP.join('')}</table></div>
+<p><strong>Retorno esperado:</strong> por cada RD$${KINO_PRECIO} que juegas, el azar te devuelve en promedio unos <strong>RD$${(rtp * KINO_PRECIO).toFixed(2)}</strong> (${(rtp * 100).toFixed(1)} %). Es la matemática del juego, no depende de qué números elijas.</p>
+<div class="gen-form"><label>Tickets por sorteo<input id="k-tk" type="number" min="1" value="1" style="padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto)"></label><label>Días jugando<input id="k-dias" type="number" min="1" value="30" style="padding:10px;border-radius:10px;border:1px solid var(--borde);background:var(--panel2);color:var(--texto)"></label><button class="boton" id="k-calc" type="button">Calcular</button></div><div id="k-res-c"></div>
+<p class="leyenda">Los premios son los de nuestra tabla y pueden cambiar; confirma siempre con Leidsa.</p>
+<script>window.KD=${datos};window.KP=${JSON.stringify(KINO_PAGOS)};window.KPRECIO=${KINO_PRECIO};window.KHI=${HI};window.KRTP=${rtp};</script><script>${JS_KINO}</script>`;
+}
+
 function paginaJuego(j, todos, dias) {
   const hoy = fechaRD(), ult = j.sorteos[j.sorteos.length - 1], hoyS = ult.fecha === hoy;
   const reg = reglaDe(j.nombre), recientes = j.sorteos.slice(-60).reverse();
@@ -1056,7 +1147,7 @@ function paginaJuego(j, todos, dias) {
 <p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
 <div class="tarjeta${hoyS ? ' hoy' : ''}"><h3>${hoyS ? 'Resultado de hoy <span class="insignia">HOY</span>' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${hoyS ? numerosJuegoHoy(ult.o) : numerosJuego(ult.o)}</p></div>
 <h2>Últimos sorteos</h2><div class="tabla"><table><tr><th>Día</th><th>Números</th></tr>${filas}</table></div>
-${jugada}${frec}${aviso}
+${jugada}${frec}${reg && /kino/i.test(j.nombre) ? kinoExtra(validos, reg) : ''}${aviso}
 <p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}#${slugJuego(j.nombre)}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
   return pagina({ ruta: '/juegos/' + j.slug + '/', titulo: `${j.nombre} hoy: resultados y últimos sorteos | ${NOMBRE_SITIO}`, descripcion: `Resultado de ${j.nombre} de hoy y de los últimos sorteos, con los números que más han salido.`, cuerpo });
 }
