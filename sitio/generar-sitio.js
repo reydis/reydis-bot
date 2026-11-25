@@ -261,7 +261,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <meta name="google-site-verification" content="6MC7HwNcVNURJxS10NwuWc8ULNkpL6qQSwQKE6moCt8" /><link rel="stylesheet" href="${url('/estilos.css')}?v=${require('crypto').createHash('md5').update(CSS).digest('hex').slice(0,8)}">${ads}<script data-goatcounter="https://reydisradar.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
@@ -621,7 +621,15 @@ function paginaInicio(dias, series) {
 
   const conteo = conteoDe(dia);
   const tarjetas = tarjetasDe(dia, conteo);
-  const otros = dia && dia.otros.length ? `<h2>Otros juegos</h2><div class="rejilla">${dia.otros.map(o => `<div class="tarjeta"><h3>${esc(o.nombre)}</h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`).join('')}</div>` : '';
+  const otros = (() => {
+    const hechos = new Set(dia ? dia.otros.map(o => o.clave) : []);
+    const desde = dias.slice(-14), vistos = new Map();
+    desde.forEach(d => d.otros.forEach(o => { if (!hechos.has(o.clave) && !vistos.has(o.clave)) vistos.set(o.clave, o); }));
+    const hechas = dia ? dia.otros.map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`) : [];
+    const pend = [...vistos.values()].filter(o => o.tipo !== 'cuarteta' && !/cuarteta/i.test(o.nombre)).map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p><span class="pend">Pendiente</span></p></div>`);
+    const todas = hechas.concat(pend);
+    return todas.length ? `<h2>Otros juegos</h2><div class="rejilla">${todas.join('')}</div><p><a href="${url('/juegos/')}">Ver todos los juegos (Kino, Loto 5 y más) →</a></p>` : '';
+  })();
   const reps = repsDe(repetidosDe(conteo), 'hoy', marcadosRadar(hoy));
 
   let previo = '';
@@ -938,6 +946,55 @@ function paginaGenerador(dias) {
 ${ctaTelegram()}${avisoHonesto()}
 <script type="application/json" id="gen-datos">${jsonSeguro(D)}</script><script>${JS_GENERADOR}</script>`;
   return pagina({ ruta: '/generador/', titulo: `Generador de tickets de Kino, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Genera tickets al azar, con los números calientes o con los atrasados para Kino, Loto 5 y otros juegos especiales dominicanos, con el resultado honesto del laboratorio.', cuerpo });
+}
+
+// ── Juegos especiales: resultados (Súper Kino TV, Loto, Loto 5, Pega 3 Más, cuartetas…) ──
+const slugJuego = clave => String(clave).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'juego';
+function juegosDe(dias) {
+  const m = new Map();
+  for (const d of dias) for (const o of d.otros) {
+    if (!m.has(o.clave)) m.set(o.clave, { clave: o.clave, slug: slugJuego(o.clave), nombre: o.nombre, empresa: o.empresa, hora: o.hora, tipo: o.tipo, sorteos: [] });
+    const j = m.get(o.clave); j.nombre = o.nombre || j.nombre; j.empresa = o.empresa || j.empresa; j.hora = o.hora || j.hora; j.tipo = o.tipo || j.tipo;
+    j.sorteos.push({ fecha: d.fecha, numeros: o.numeros, o });
+  }
+  const orden = n => (/kino/i.test(n) ? 0 : /loto ?5/i.test(n) ? 1 : /^loto\b|loto pool|pega/i.test(n) ? 2 : 3);
+  return [...m.values()].sort((a, b) => orden(a.nombre) - orden(b.nombre) || b.sorteos.length - a.sorteos.length);
+}
+function paginaJuegos(dias) {
+  const juegos = juegosDe(dias), hoy = fechaRD();
+  if (!juegos.length) return pagina({ ruta: '/juegos/', titulo: `Resultados de Kino, Loto y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más y otros juegos especiales de la lotería dominicana.', cuerpo: '<h1>Kino y juegos especiales</h1><p>Todavía no hay resultados guardados de estos juegos.</p>' + avisoHonesto() });
+  const tarjetas = juegos.map(j => {
+    const u = j.sorteos[j.sorteos.length - 1], hoyS = u.fecha === hoy;
+    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + j.slug + '/')}">${esc(j.nombre)}</a></h3><div class="hora">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}</div><p>${hoyS ? numerosJuego(u.o) : '<span class="pend">Pendiente hoy</span>'}</p>${hoyS ? '' : `<div class="hora">Último: ${esc(fechaCorta(u.fecha))}</div>`}<p><a href="${url('/juegos/' + j.slug + '/')}">Ver resultados →</a></p></div>`;
+  }).join('');
+  const cuerpo = `<h1>Kino y juegos especiales</h1>
+<p class="sub">Los resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más, las cuartetas y los demás juegos de bolillas, con su historial. Toca un juego para ver los últimos sorteos.</p>
+<div class="rejilla">${tarjetas}</div>
+<p><a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a> <a class="boton" href="${url('/laboratorio/')}">🔬 ¿Le ganan al azar?</a></p>${avisoHonesto()}`;
+  return pagina({ ruta: '/juegos/', titulo: `Resultados de Súper Kino TV, Loto, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de hoy y últimos sorteos de Súper Kino TV, Loto, Loto 5, Pega 3 Más, Loto Pool y las cuartetas de la lotería dominicana.', cuerpo });
+}
+function paginaJuego(j, todos, dias) {
+  const hoy = fechaRD(), ult = j.sorteos[j.sorteos.length - 1], hoyS = ult.fecha === hoy;
+  const reg = reglaDe(j.nombre), recientes = j.sorteos.slice(-60).reverse();
+  const fuera = reg ? j.sorteos.filter(x => x.numeros.some(n => n < reg.lo || n > reg.hi)).length : 0;
+  const filas = recientes.map(x => `<tr><td><a href="${url('/resultados/' + x.fecha + '/')}">${esc(fechaCorta(x.fecha))}</a></td><td>${numerosJuego(x.o)}</td></tr>`).join('');
+  // Frecuencia honesta en los últimos 30 sorteos válidos
+  const val = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi)).slice(-30);
+  let frec = '';
+  if (reg && val.length >= 10) {
+    const c = new Map(); val.forEach(x => new Set(x.numeros).forEach(n => c.set(n, (c.get(n) || 0) + 1)));
+    const k = val[0].numeros.length, rango = reg.hi - reg.lo + 1, esp = val.length * k / rango;
+    const top = [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 8);
+    frec = `<h2>Los que más han salido (últimos ${val.length} sorteos)</h2><p>${top.map(([n, v]) => `<span class="bola">${f2(n)}</span> <small>${v}×</small>`).join(' &nbsp; ')}</p><p class="leyenda">Por azar, cada número salía unas ${esp.toFixed(1)} veces en ese tramo. Que uno haya salido más no lo hace más probable en el próximo sorteo.</p>`;
+  }
+  const aviso = fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '';
+  const cuerpo = `<h1>${esc(j.nombre)}: resultados y últimos sorteos</h1>
+<p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
+<div class="tarjeta"><h3>${hoyS ? 'Resultado de hoy' : 'Hoy: pendiente'}</h3>${hoyS ? '' : `<div class="hora">Último resultado: ${esc(fechaLarga(ult.fecha))}</div>`}<p>${numerosJuego(ult.o)}</p></div>
+<h2>Últimos sorteos</h2><div class="tabla"><table><tr><th>Día</th><th>Números</th></tr>${filas}</table></div>
+${frec}${aviso}
+<p><a href="${url('/juegos/')}">← Todos los juegos</a> · <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a></p>${ctaTelegram()}${avisoHonesto()}`;
+  return pagina({ ruta: '/juegos/' + j.slug + '/', titulo: `${j.nombre} hoy: resultados y últimos sorteos | ${NOMBRE_SITIO}`, descripcion: `Resultado de ${j.nombre} de hoy y de los últimos sorteos, con los números que más han salido.`, cuerpo });
 }
 
 function paginaFecha(dia, anterior, siguiente) {
@@ -1646,6 +1703,7 @@ async function main() {
   guardar('/numeros/', paginaNumeros(series));
   guardar('/mis-numeros/', paginaMisNumeros(dias, series));
   guardar('/generador/', paginaGenerador(dias));
+  { const js = juegosDe(dias); guardar('/juegos/', paginaJuegos(dias)); for (const j of js) guardar('/juegos/' + j.slug + '/', paginaJuego(j, js, dias)); }
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
   dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
