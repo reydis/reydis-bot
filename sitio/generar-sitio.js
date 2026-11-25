@@ -970,6 +970,41 @@ function juegosDe(dias) {
   const orden = n => (/kino/i.test(n) ? 0 : /loto ?5/i.test(n) ? 1 : /^loto\b|loto pool|pega/i.test(n) ? 2 : 3);
   return [...m.values()].sort((a, b) => orden(a.nombre) - orden(b.nombre) || b.sorteos.length - a.sorteos.length);
 }
+// Jugada del día de un juego especial (números calientes + récord real contra el azar). Devuelve '' si no hay datos suficientes.
+function jugadaDeJuego(j, dias, h2) {
+  const reg = reglaDe(j.nombre);
+  const validos = j.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi));
+  if (!reg || validos.length < 40) return '';
+
+    const evj = evaluarEspeciales(dias).salida.find(x => x.nombre === j.nombre);
+    const W = evj && evj.pasa && evj.W ? evj.W : 30;
+    const pick = reg.pick, drawn = validos[0].numeros.length, rango = reg.hi - reg.lo + 1;
+    const calientes = (hist, w) => { const c = new Map(); hist.slice(-w).forEach(x => new Set(x.numeros).forEach(n => c.set(n, (c.get(n) || 0) + 1))); return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, pick).map(e => e[0]).sort((a, b) => a - b); };
+    const ticket = calientes(validos, W);
+    let aciertos = 0, n = 0;
+    for (let i = Math.max(W, 20); i < validos.length; i++) { const t = calientes(validos.slice(0, i), W), sal = new Set(validos[i].numeros); aciertos += t.filter(x => sal.has(x)).length; n++; }
+    const prom = n ? aciertos / n : 0, esp = pick * drawn / rango;
+    return `${h2 ? `<h2>🎯 Jugada del día (${esc(j.nombre)})</h2>` : `<h3>${esc(j.nombre)}</h3>`}<p><span class="bolas">${ticket.map(x => bola(f2(x))).join('')}</span></p><p class="leyenda">Son los ${pick} números que más han salido en los últimos ${W} sorteos. No es una predicción: es información.</p><p>Récord real de este método en los últimos ${n} sorteos: acertó en promedio <strong>${prom.toFixed(2)}</strong> números por sorteo y el azar esperaba <strong>${esp.toFixed(2)}</strong>. ${Math.abs(prom - esp) < 0.15 * esp ? 'Prácticamente igual que el azar.' : (prom > esp * 1.3 ? 'Bastante por encima del azar en este tramo. Eso es raro: antes de confiar, mira si aguanta la prueba honesta del laboratorio.' : prom > esp ? 'Un poco por encima del azar, pero con tan pocos sorteos puede ser casualidad.' : 'Por debajo del azar.')}</p><p><a href="${url('/generador/')}">🎟️ Generar tickets con otros modos</a> · <a href="${url('/laboratorio/')}">🔬 Ver el laboratorio</a></p>`;
+  return '';
+}
+function paginaJugadasEspeciales(dias) {
+  const juegos = juegosDe(dias), prio = n => (/kino/i.test(n) ? 0 : /loto ?5/i.test(n) ? 1 : 2);
+  const orden = juegos.slice().sort((a, b) => prio(a.nombre) - prio(b.nombre));
+  const bloques = orden.map(g => {
+    const h = jugadaDeJuego(g, dias, false);
+    const link = `<a href="${url('/juegos/' + g.slug + '/')}">Ver resultados de ${esc(g.nombre)} →</a>`;
+    if (h) return `<div class="tarjeta" style="margin-bottom:14px">${h}<p>${link}</p></div>`;
+    const reg = reglaDe(g.nombre), val = g.sorteos.filter(x => !reg || x.numeros.every(n => n >= reg.lo && n <= reg.hi)).length;
+    return /cuarteta/i.test(g.nombre) || !reg ? '' : `<div class="tarjeta" style="margin-bottom:14px"><h3>${esc(g.nombre)}</h3><p class="leyenda">Todavía no hay suficientes sorteos válidos para probar la jugada (hay ${val}, hacen falta 40).</p><p>${link}</p></div>`;
+  }).join('');
+  const cuerpo = `<h1>🎯 Jugadas de los juegos especiales</h1>
+<p class="sub">Kino y Loto 5 primero, luego los demás. Esta sección es nueva y la vamos mejorando: cada jugada trae su récord real contra el azar.</p>
+${bloques || '<p>Todavía no hay datos suficientes de los juegos especiales.</p>'}
+<p class="leyenda">Son los números que más han salido en el tramo reciente de cada juego. Es información, no una predicción: hasta hoy, ningún método le ha ganado al azar en el laboratorio.</p>
+<p><a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a> <a class="boton" href="${url('/laboratorio/')}">🔬 El laboratorio</a> <a class="boton" href="${url('/jugadas/')}">🎲 Jugadas de las quinielas</a></p>${ctaTelegram()}${avisoHonesto()}`;
+  return pagina({ ruta: '/jugadas-especiales/', titulo: `Jugadas de Kino, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Los números calientes de Súper Kino TV, Loto 5 y otros juegos especiales, con su récord real contra el azar.', cuerpo });
+}
+
 function paginaJuegos(dias) {
   const juegos = juegosDe(dias), hoy = fechaRD();
   if (!juegos.length) return pagina({ ruta: '/juegos/', titulo: `Resultados de Kino, Loto y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más y otros juegos especiales de la lotería dominicana.', cuerpo: '<h1>Kino y juegos especiales</h1><p>Todavía no hay resultados guardados de estos juegos.</p>' + avisoHonesto() });
@@ -980,7 +1015,7 @@ function paginaJuegos(dias) {
   const cuerpo = `<h1>Kino y juegos especiales</h1>
 <p class="sub">Los resultados de Súper Kino TV, Loto, Loto 5, Pega 3 Más, las cuartetas y los demás juegos de bolillas, con su historial. Toca un juego para ver los últimos sorteos.</p>
 <div class="rejilla">${tarjetas}</div>
-<p><a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a> <a class="boton" href="${url('/laboratorio/')}">🔬 ¿Le ganan al azar?</a></p>${avisoHonesto()}`;
+<p><a class="boton" href="${url('/jugadas-especiales/')}">🎯 Jugadas de Kino y Loto 5</a> <a class="boton" href="${url('/generador/')}">🎟️ Generador de tickets</a> <a class="boton" href="${url('/laboratorio/')}">🔬 ¿Le ganan al azar?</a></p>${avisoHonesto()}`;
   return pagina({ ruta: '/juegos/', titulo: `Resultados de Súper Kino TV, Loto, Loto 5 y juegos especiales | ${NOMBRE_SITIO}`, descripcion: 'Resultados de hoy y últimos sorteos de Súper Kino TV, Loto, Loto 5, Pega 3 Más, Loto Pool y las cuartetas de la lotería dominicana.', cuerpo });
 }
 function paginaJuego(j, todos, dias) {
@@ -998,19 +1033,7 @@ function paginaJuego(j, todos, dias) {
     const top = [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, 8);
     frec = `<h2>Los que más han salido (últimos ${val.length} sorteos)</h2><p>${top.map(([n, v]) => `<span class="bola">${f2(n)}</span> <small>${v}×</small>`).join(' &nbsp; ')}</p><p class="leyenda">Por azar, cada número salía unas ${esp.toFixed(1)} veces en ese tramo. Que uno haya salido más no lo hace más probable en el próximo sorteo.</p>`;
   }
-  // Jugada del día: los números calientes de la ventana que mejor le ha ido al juego (si el laboratorio no encontró ninguna, 30 sorteos), con su récord real contra el azar
-  let jugada = '';
-  if (reg && validos.length >= 40) {
-    const evj = evaluarEspeciales(dias).salida.find(x => x.nombre === j.nombre);
-    const W = evj && evj.pasa && evj.W ? evj.W : 30;
-    const pick = reg.pick, drawn = validos[0].numeros.length, rango = reg.hi - reg.lo + 1;
-    const calientes = (hist, w) => { const c = new Map(); hist.slice(-w).forEach(x => new Set(x.numeros).forEach(n => c.set(n, (c.get(n) || 0) + 1))); return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, pick).map(e => e[0]).sort((a, b) => a - b); };
-    const ticket = calientes(validos, W);
-    let aciertos = 0, n = 0;
-    for (let i = Math.max(W, 20); i < validos.length; i++) { const t = calientes(validos.slice(0, i), W), sal = new Set(validos[i].numeros); aciertos += t.filter(x => sal.has(x)).length; n++; }
-    const prom = n ? aciertos / n : 0, esp = pick * drawn / rango;
-    jugada = `<h2>🎯 Jugada del día (${esc(j.nombre)})</h2><p><span class="bolas">${ticket.map(x => bola(f2(x))).join('')}</span></p><p class="leyenda">Son los ${pick} números que más han salido en los últimos ${W} sorteos. No es una predicción: es información.</p><p>Récord real de este método en los últimos ${n} sorteos: acertó en promedio <strong>${prom.toFixed(2)}</strong> números por sorteo y el azar esperaba <strong>${esp.toFixed(2)}</strong>. ${Math.abs(prom - esp) < 0.15 * esp ? 'Prácticamente igual que el azar.' : (prom > esp * 1.3 ? 'Bastante por encima del azar en este tramo. Eso es raro: antes de confiar, mira si aguanta la prueba honesta del laboratorio.' : prom > esp ? 'Un poco por encima del azar, pero con tan pocos sorteos puede ser casualidad.' : 'Por debajo del azar.')}</p><p><a href="${url('/generador/')}">🎟️ Generar tickets con otros modos</a> · <a href="${url('/laboratorio/')}">🔬 Ver el laboratorio</a></p>`;
-  }
+  const jugada = jugadaDeJuego(j, dias, true);
   const aviso = fuera ? `<p class="leyenda">Nota: ${fuera} sorteo${fuera > 1 ? 's' : ''} de este juego traen números fuera del rango oficial (${reg.lo}–${reg.hi}); se muestran tal como llegaron, pero no se usan en las estadísticas.</p>` : '';
   const cuerpo = `<h1>${esc(j.nombre)}: resultados y últimos sorteos</h1>
 <p class="sub">${esc([j.empresa, j.hora].filter(Boolean).join(' · '))}${reg ? ' · ' + esc(reg.nota) : ''}</p>
@@ -1727,7 +1750,7 @@ async function main() {
   guardar('/numeros/', paginaNumeros(series));
   guardar('/mis-numeros/', paginaMisNumeros(dias, series));
   guardar('/generador/', paginaGenerador(dias));
-  { const js = juegosDe(dias); guardar('/juegos/', paginaJuegos(dias)); for (const j of js) guardar('/juegos/' + j.slug + '/', paginaJuego(j, js, dias)); }
+  { const js = juegosDe(dias); guardar('/jugadas-especiales/', paginaJugadasEspeciales(dias)); guardar('/juegos/', paginaJuegos(dias)); for (const j of js) guardar('/juegos/' + j.slug + '/', paginaJuego(j, js, dias)); }
   for (let n = 0; n < 100; n++) guardar(`/numeros/${f2(n)}/`, paginaNumero(n, series));
   guardar('/resultados/', paginaHistorial(dias));
   dias.forEach((d, i) => guardar(`/resultados/${d.fecha}/`, paginaFecha(d, dias[i - 1]?.fecha, dias[i + 1]?.fecha)));
