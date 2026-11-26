@@ -844,11 +844,15 @@ function rnd(n){var a=new Uint32Array(1),lim=Math.floor(4294967296/n)*n;do{crypt
 function fmt(g,x){return g.hi>9?(x<10?'0'+x:''+x):''+x;}
 function fp(p){return p<0.001?'menor a 0.001':p.toFixed(3);}
 function muestra(pool,m){var r=[],b=pool.slice(),i,j,t;for(i=0;i<m;i++){j=i+rnd(b.length-i);t=b[i];b[i]=b[j];b[j]=t;r.push(b[i]);}return r;}
-function popular(g,t){if(t.length<3)return false;var s=t.slice().sort(function(a,b){return a-b;}),run=1,i;
+function popular(g,t){if(t.length<3)return false;var s=t.slice().sort(function(a,b){return a-b;}),run=1,i,j,d,k,n,alto=0;
   for(i=1;i<s.length;i++){run=(s[i]===s[i-1]+1)?run+1:1;if(run>=3)return true;}
-  if(g.hi>31&&s[s.length-1]<=31)return true;return false;}
+  var has={};for(i=0;i<s.length;i++)has[s[i]]=1;
+  for(i=0;i<s.length;i++){for(j=i+1;j<s.length;j++){d=s[j]-s[i];n=2;k=s[j]+d;while(has[k]){n++;k+=d;}if(n>=4)return true;}}
+  if(g.hi>31){for(i=0;i<s.length;i++){if(s[i]>31)alto++;}if(alto<(t.length>=5?2:1))return true;}
+  return false;}
 function juego(){return D[+sel.value];}
 function texto(){var g=juego();
+  if(modo!=='azar'&&!g.cal.length)return 'Para este juego solo hay modo al azar por ahora: todavía no hay sorteos suficientes guardados.';
   if(modo==='azar')return 'Al azar puro: toda combinación tiene exactamente la misma probabilidad de salir. Es la forma más honesta de jugar.';
   if(modo==='calientes'){
     if(!g.vent)return 'Calientes con los últimos '+g.W+' sorteos. Todavía hay pocos sorteos guardados ('+g.n+') para probar si esto funciona; úsalo solo como criterio personal.';
@@ -856,13 +860,14 @@ function texto(){var g=juego();
     return 'Calientes con los últimos '+g.W+' sorteos. En la prueba con sorteos no vistos no le ganó al azar (p = '+fp(g.wfp)+'). Úsalo solo como criterio personal.';}
   if(g.pa<g.alfa)return 'Atrasados: el laboratorio vio algo raro (p = '+fp(g.pa)+') que hay que confirmar con datos nuevos. No garantiza premios.';
   return 'Atrasados: en el laboratorio no le ganó al azar (p = '+fp(g.pa)+'). Que un número lleve tiempo sin salir no cambia su probabilidad.';}
+function popnota(){var g=juego();return pop.checked?(g.comparte?' Con "poco populares" evitamos secuencias, progresiones y combinaciones de puras fechas: no sube tu probabilidad, pero si sale, lo más probable es que compartas el premio con menos gente.':' Ojo: en este juego el premio es fijo, así que evitar combinaciones populares no cambia lo que cobras.'):'';}
 function actualizar(){var g=juego();
   info.textContent=g.nota+(g.oficial?'':' (Regla no verificada: revisa con tu agencia.)');
   exl.style.display=g.extra?'flex':'none';if(g.extra)document.getElementById('gen-extra-t').textContent='Incluir el bolo adicional del '+g.extra.nombre+' ('+fmt({hi:99},g.extra.lo)+' al '+fmt({hi:99},g.extra.hi)+')';
-  nota.textContent=texto();}
+  nota.textContent=texto()+popnota();}
 function generar(){var g=juego(),m=g.pick,c=Math.max(1,Math.min(10,parseInt(cant.value,10)||1)),todos=[],x,i;
   for(x=g.lo;x<=g.hi;x++)todos.push(x);
-  var rank=modo==='calientes'?g.cal:(modo==='atrasados'?g.atr:null);
+  var rank=modo==='calientes'?g.cal:(modo==='atrasados'?g.atr:null);if(rank&&!rank.length)rank=null;
   var pool=rank?rank.slice(0,Math.min(todos.length,Math.max(m*2,6))):todos;
   ult=[];
   for(i=0;i<c;i++){var t,n=0;
@@ -872,9 +877,10 @@ function generar(){var g=juego(),m=g.pick,c=Math.max(1,Math.min(10,parseInt(cant
     ult.push({t:t,b:b});}
   var h='';
   ult.forEach(function(u,i){h+='<div class="gen-tk"><span class="gen-n">#'+(i+1)+'</span><span class="bolas">'+u.t.map(function(v){return '<span class="bola">'+fmt(g,v)+'</span>';}).join('')+'</span>'+(u.b!==null?'<span class="gen-n">+ '+g.extra.nombre+'</span><span class="bolas"><span class="bola ya">'+fmt({hi:99},u.b)+'</span></span>':'')+'</div>';});
-  out.innerHTML=h;acc.style.display='flex';nota.textContent=texto();}
+  out.innerHTML=h;acc.style.display='flex';nota.textContent=texto()+popnota();}
 function plano(){var g=juego();return g.nombre+' ('+modo+')\n'+ult.map(function(u,i){return (i+1)+': '+u.t.map(function(v){return fmt(g,v);}).join('-')+(u.b!==null?' + '+g.extra.nombre+' '+fmt({hi:99},u.b):'');}).join('\n')+'\nreydis.github.io/reydis-bot/generador/';}
-chips.forEach(function(b){b.addEventListener('click',function(){modo=b.getAttribute('data-modo');chips.forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});nota.textContent=texto();});});
+chips.forEach(function(b){b.addEventListener('click',function(){modo=b.getAttribute('data-modo');chips.forEach(function(o){o.setAttribute('aria-pressed',o===b?'true':'false');});nota.textContent=texto()+popnota();});});
+pop.addEventListener('change',function(){nota.textContent=texto()+popnota();});
 sel.addEventListener('change',function(){out.innerHTML='';acc.style.display='none';actualizar();});
 btn.addEventListener('click',generar);
 document.getElementById('gen-copiar').addEventListener('click',function(){var t=plano(),b=this;
@@ -945,7 +951,9 @@ function paginaGenerador(dias) {
     const r = s.regla, pick = r ? r.pick : Math.min(s.k, 10);
     return { nombre: s.nombre, slug: slugJuego(s.nombre), lo: s.lo, hi: s.hi, pick, oficial: !!r, nota: r ? r.nota : `Eliges ${pick} números del ${s.lo} al ${s.hi}.`, extra: r && r.extra ? r.extra : null, n: s.real.n, W: s.W, pasa: s.pasa, vent: !!s.vent, wfp: s.vent ? s.vent.wf.p : null, pa: s.real.pA, alfa, cal: s.cal.slice(0, 30), atr: s.atr.slice(0, 30) };
   });
-  const opciones = juegos.map((s, i) => `<option value="${i}">${esc(s.nombre)}</option>`).join('');
+  if (!D.some(d => /^loto$/i.test(d.nombre.trim()))) D.push({ nombre: 'Loto', slug: 'loto', lo: 1, hi: 40, pick: 6, oficial: false, nota: 'Eliges 6 números del 1 al 40 (jugada principal del Loto de Leidsa).', extra: null, n: 0, W: 30, vent: false, pasa: false, wfp: 1, pa: 1, alfa, cal: [], atr: [] });
+  D.forEach(d => { d.comparte = /^loto$/i.test(d.nombre.trim()); });
+  const opciones = D.map((d, i) => `<option value="${i}">${esc(d.nombre)}</option>`).join('');
   const cuerpo = `<h1>Generador de tickets · juegos especiales</h1>
 <p class="sub">Genera combinaciones para Kino, Loto 5 y otros juegos especiales. Elige el juego y el modo: el generador ya sabe cuántos números lleva cada ticket y de qué rango. Sin cuenta, sin promesas.</p>
 <div class="gen-form">
@@ -954,7 +962,7 @@ function paginaGenerador(dias) {
 <div class="chips" id="gen-modos"><button type="button" class="chip" data-modo="azar" aria-pressed="true">🎲 Al azar</button><button type="button" class="chip" data-modo="calientes" aria-pressed="false">🔥 Calientes</button><button type="button" class="chip" data-modo="atrasados" aria-pressed="false">⏳ Atrasados</button></div>
 <label>Cantidad de tickets (hasta 10) <input type="number" id="gen-cant" min="1" max="10" value="3" inputmode="numeric" autocomplete="off"></label>
 <label class="chk" id="gen-extra-l" style="display:none"><input type="checkbox" id="gen-extra" autocomplete="off"> <span id="gen-extra-t"></span></label>
-<label class="chk"><input type="checkbox" id="gen-pop" autocomplete="off"> Evitar combinaciones populares (secuencias y solo fechas hasta 31)</label>
+<label class="chk"><input type="checkbox" id="gen-pop" autocomplete="off"> Números poco populares (sin secuencias ni solo fechas)</label>
 <button type="button" id="gen-go" class="boton">Generar tickets</button>
 </div>
 <div id="gen-out"></div>
@@ -965,7 +973,7 @@ function paginaGenerador(dias) {
 <li><strong>Al azar:</strong> el modo principal. Cada combinación tiene exactamente la misma probabilidad que cualquier otra.</li>
 <li><strong>Calientes:</strong> el primer ticket usa los números que más han salido en la ventana de sorteos que mejor nos ha funcionado en el laboratorio (30 si ninguna pasó la prueba); los demás se sacan al azar entre los más calientes.</li>
 <li><strong>Atrasados:</strong> igual, pero con los números que más llevan sin salir.</li>
-<li><strong>Evitar combinaciones populares</strong> no sube la probabilidad de ganar. Solo reduce la chance de compartir el premio con más gente si sale una combinación que muchos juegan, como 1-2-3-4-5 o solo fechas de cumpleaños.</li>
+<li><strong>Números poco populares:</strong> no sube la probabilidad de ganar: toda combinación sale con la misma chance. Solo importa en juegos donde el premio mayor se reparte entre quienes aciertan, como el Loto de Leidsa: en 2023, siete personas acertaron 1-2-3-4-5-9 y se repartieron el premio (<a href="https://www.diariolibre.com/revista/sociales/2023/08/08/leidsa-entrega-29-millones-a-cinco-de-siete-ganadores/2426611" rel="noopener">Diario Libre</a>). En Kino, Loto 5 y los demás juegos el premio es fijo y esta opción no cambia lo que cobras. Evitamos secuencias, progresiones (5-10-15-20) y combinaciones de puras fechas (hasta 31).</li>
 </ul>
 <p>Las reglas de cada juego (cuántos números y de qué rango) vienen de las páginas oficiales de Leidsa, Loteka y La Primera; confírmalas con tu agencia antes de jugar. El <a href="${url('/laboratorio/')}">laboratorio</a> prueba estos criterios con sorteos reales, contra el azar. Si algún día encuentra algo que funcione de verdad, aparecerá allí con su valor p, antes que en ninguna promesa.</p>
 ${ctaTelegram()}${avisoHonesto()}
