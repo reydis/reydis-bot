@@ -1710,21 +1710,21 @@ ${avisoHonesto()}${ctaTelegram()}`;
 const pesosP = x => 'RD$' + Math.round(x).toLocaleString('en-US');
 const PAGO_PALE = 1000;            // pago por peso jugado en un palé (ajustable según la banca)
 const CARTERA_PALES_DESDE = process.env.CARTERA_DESDE || '2026-11-28';
-const BANCA_PALES = 1000, N_LOT_PALES = 5, VENT_LOT_PALES = 30;
+const BANCA_PALES = 1000, N_LOT_PALES = 5, VENT_LOT_PALES = 14, INI_PALES = 30;
 function histPales(dias) {
   const hoy = fechaRD(); const idxHoy = dias.findIndex(d => d.fecha === hoy); const fin = idxHoy >= 0 ? idxHoy : dias.length;
   const hist = [];
   for (let i = 10; i < fin; i++) {
     const q = dias[i].quinielas; const claves = Object.keys(q); if (claves.length < 8) continue;
-    const prs = paresDe(topN(puntajes(dias, i))); const por = {};
-    for (const k of claves) { const nums = q[k]; por[k] = prs.filter(p => nums.includes(p[0]) && nums.includes(p[1])).length; }
-    hist.push({ fecha: dias[i].fecha, por, claves });
+    const top = topN(puntajes(dias, i)); const prs = paresDe(top); const por = {}, nh = {};
+    for (const k of claves) { const nums = q[k]; por[k] = prs.filter(p => nums.includes(p[0]) && nums.includes(p[1])).length; nh[k] = top.filter(n => nums.includes(n)).length; }
+    hist.push({ fecha: dias[i].fecha, por, nh, claves });
   }
   return hist;
 }
-function eligeLots(hist, j, n) { // las n loterías con más palés acertados en los VENT_LOT_PALES días anteriores a j
+function eligeLots(hist, j, n, W = VENT_LOT_PALES, wNum = 1) { // las n loterías donde más están saliendo los palés (x10) y los números del Radar en los W días anteriores a j
   const sc = {}; for (const l of LOTERIAS) sc[l.clave] = 0;
-  for (let t = Math.max(0, j - VENT_LOT_PALES); t < j; t++) for (const k in hist[t].por) sc[k] += hist[t].por[k];
+  for (let t = Math.max(0, j - W); t < j; t++) for (const k in hist[t].por) sc[k] += hist[t].por[k] * 10 + wNum * (hist[t].nh[k] || 0);
   return LOTERIAS.map(l => l.clave).sort((a, b) => sc[b] - sc[a]).slice(0, n);
 }
 function carteraPales(dias) {
@@ -1738,13 +1738,18 @@ function carteraPales(dias) {
   const alfa = filas.length ? 0.05 / filas.length : 0.05; const pasa = filas.filter(f => f.p < alfa).length;
   const tDonde = filas.slice(0, 8).map(f => `<tr><td>${nombre(f.k)}</td><td>${f.c}</td><td>${f.lam.toFixed(1)}</td><td>${(f.c / f.lam).toFixed(2)}×</td><td>${f.p < alfa ? '🚨 ' : f.p < 0.05 ? '👀 ' : ''}${f.p < 0.001 ? f.p.toExponential(1) : f.p.toFixed(3)}</td></tr>`).join('');
   // 2) prueba hacia adelante sobre el historial (elige con datos anteriores, nunca con el futuro)
-  const ini = VENT_LOT_PALES; let gasto = 0, ret = 0, hits = 0, gTodas = 0, rTodas = 0;
+  const ini = INI_PALES; let gasto = 0, ret = 0, hits = 0, gTodas = 0, rTodas = 0;
   for (let j = ini; j < hist.length; j++) {
     const sel = eligeLots(hist, j, N_LOT_PALES).filter(k => hist[j].claves.includes(k));
     gasto += 10 * sel.length; for (const k of sel) { ret += hist[j].por[k] * PAGO_PALE; hits += hist[j].por[k]; }
     gTodas += 10 * hist[j].claves.length; for (const k of hist[j].claves) rTodas += hist[j].por[k] * PAGO_PALE;
   }
   const nDias = Math.max(0, hist.length - ini);
+  const variantes = [['Solo palés, 30 días', 30, 0], ['Palés + números del día, 30 días', 30, 1], ['Palés + números del día, 14 días', 14, 1], ['Palés + números del día, 7 días', 7, 1]].map(([nom, W, wn]) => {
+    let g = 0, x = 0, h = 0;
+    for (let j = ini; j < hist.length; j++) { const sel = eligeLots(hist, j, N_LOT_PALES, W, wn).filter(k => hist[j].claves.includes(k)); g += 10 * sel.length; for (const k of sel) { x += hist[j].por[k] * PAGO_PALE; h += hist[j].por[k]; } }
+    return { nom, g, x, h };
+  });
   const compN = [1, 3, 5, 10, 20].map(n => {
     let g = 0, x = 0, h = 0;
     for (let j = ini; j < hist.length; j++) { const sel = eligeLots(hist, j, n).filter(k => hist[j].claves.includes(k)); g += 10 * sel.length; for (const k of sel) { x += hist[j].por[k] * PAGO_PALE; h += hist[j].por[k]; } }
@@ -1770,15 +1775,18 @@ function carteraPales(dias) {
   const empieza = hoy < CARTERA_PALES_DESDE;
   const ultimos = log.slice(-7).reverse().map(x => `<tr><td>${esc(fechaMini(x.f))}</td><td>${x.sel.map(nombre).join(', ')}</td><td>${x.h ? `<strong style="color:var(--bien)">${x.h} palé${x.h > 1 ? 's' : ''}</strong>` : '—'}</td><td>${x.g ? pesosP(x.g) : '—'}</td></tr>`).join('');
   return `<h2>💰 ¿Y si se juegan RD$1,000 en palés? Primero, a prueba y sin gastar</h2>
-<div class="tarjeta compacta"><p>Antes de poner dinero de verdad, probamos la idea con una <strong>cartera virtual</strong> de ${pesosP(BANCA_PALES)}. La regla: cada día se juega RD$1 en cada uno de los 10 palés, <strong>solo en las ${N_LOT_PALES} loterías donde más han salido los palés del Radar en los ${VENT_LOT_PALES} días anteriores</strong> (${10 * N_LOT_PALES} pesos al día). Se supone un pago de ${PAGO_PALE.toLocaleString('es-DO')} por 1 (confírmalo con tu banca).</p>
+<div class="tarjeta compacta"><p>Antes de poner dinero de verdad, probamos la idea con una <strong>cartera virtual</strong> de ${pesosP(BANCA_PALES)}. La regla: cada día se juega RD$1 en cada uno de los 10 palés, <strong>solo en las ${N_LOT_PALES} loterías donde más están saliendo los palés y los números del Radar en los ${VENT_LOT_PALES} días anteriores</strong> (${10 * N_LOT_PALES} pesos al día). Se supone un pago de ${PAGO_PALE.toLocaleString('es-DO')} por 1 (confírmalo con tu banca).</p>
 <p class="leyenda">Cuenta rápida: cada palé tiene 3 de 4,950 oportunidades por sorteo. A ${PAGO_PALE} por 1, lo normal es que de cada ${pesosP(1000)} jugados vuelvan unos <strong>${pesosP(Math.round(1000 * PARES_PROB * PAGO_PALE))}</strong>; la diferencia es lo que gana la banca. La pregunta es si elegir bien la lotería mejora eso.</p></div>
 <h3>Prueba con el historial (${nDias} días, eligiendo siempre con datos anteriores)</h3>
 <div class="tarjeta compacta"><p>Jugado: <strong>${pesosP(gasto)}</strong> · devuelto: <strong>${pesosP(ret)}</strong> (<strong>${(100 * roi).toFixed(0)}%</strong>) · palés acertados: <strong>${hits}</strong> contra ${esperadoHits.toFixed(1)} esperados por azar.</p>
-<p>Jugando en ${N_LOT_PALES} loterías escogidas al azar, la mediana devuelve <strong>${(100 * mediana).toFixed(0)}%</strong>. Elegir por aciertos pasados quedó por encima de <strong>${perc}%</strong> de esas pruebas al azar.</p>
+<p>Jugando en ${N_LOT_PALES} loterías escogidas al azar, la mediana devuelve <strong>${(100 * mediana).toFixed(0)}%</strong>. Elegir por dónde estaban saliendo quedó por encima de <strong>${perc}%</strong> de esas pruebas al azar.</p>
 <p class="leyenda">${perc >= 97 && hits >= 8 ? 'Esto llama la atención, pero con tan pocos aciertos hay que confirmarlo con datos nuevos.' : 'Con tan pocos aciertos (cada uno vale 1,000×) el resultado depende de la suerte: un solo palé más o menos cambia todo. No es prueba de que elegir la lotería sirva.'}</p></div>
 <h3>¿Cuántas loterías conviene cubrir?</h3>
-<div class="tabla" style="overflow-x:auto"><table><tr><th>Loterías por día</th><th>Pesos al día</th><th>Días que dura la banca</th><th>Jugado en la prueba</th><th>Devuelto</th><th>Palés</th><th>Con loterías al azar</th></tr>${compN.map(c => `<tr><td>${c.n === 20 ? 'Todas (20)' : 'Las ' + c.n + ' mejores'}</td><td>${pesosP(10 * c.n)}</td><td>${c.dias}</td><td>${pesosP(c.g)}</td><td>${c.g ? (100 * c.x / c.g).toFixed(0) : 0}%</td><td>${c.h}</td><td>${(100 * (c.n === N_LOT_PALES ? mediana : medianaN(c.n))).toFixed(0)}%</td></tr>`).join('')}</table></div>
-<p class="leyenda">Cubrir más loterías sube las probabilidades de que algún palé salga, pero también gasta la banca más rápido. Jugando en todas, el resultado es simplemente lo que da el azar (~60%): ahí no influye la lotería que elijas. La cartera de abajo usa las ${N_LOT_PALES} mejores.</p>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Loterías por día</th><th>Pesos al día</th><th>Días que dura la banca</th><th>Jugado en la prueba</th><th>Devuelto</th><th>Palés</th><th>Con loterías al azar</th></tr>${compN.map(c => `<tr><td>${c.n === 20 ? 'Todas (20)' : c.n === 1 ? 'La 1 donde más sale' : 'Las ' + c.n + ' donde más salen'}</td><td>${pesosP(10 * c.n)}</td><td>${c.dias}</td><td>${pesosP(c.g)}</td><td>${c.g ? (100 * c.x / c.g).toFixed(0) : 0}%</td><td>${c.h}</td><td>${(100 * (c.n === N_LOT_PALES ? mediana : medianaN(c.n))).toFixed(0)}%</td></tr>`).join('')}</table></div>
+<p class="leyenda">Cubrir más loterías sube las probabilidades de que algún palé salga, pero también gasta la banca más rápido. Jugando en todas, el resultado es simplemente lo que da el azar (~60%): ahí no influye la lotería que elijas. La cartera de abajo usa las ${N_LOT_PALES} donde más están saliendo.</p>
+<h3>¿Cómo medir «dónde están saliendo»?</h3>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Criterio (${N_LOT_PALES} loterías por día)</th><th>Jugado</th><th>Devuelto</th><th>Palés</th></tr>${variantes.map(v => `<tr><td>${v.nom}</td><td>${pesosP(v.g)}</td><td>${v.g ? (100 * v.x / v.g).toFixed(0) : 0}%</td><td>${v.h}</td></tr>`).join('')}</table></div>
+<p class="leyenda">Escogí de antemano el de <strong>${VENT_LOT_PALES} días con palés y números del día</strong> para la cartera (mide dónde están saliendo ahora, con más datos que mirar solo palés). Las otras filas son para comparar: probar muchas formas y quedarse con la que salió mejor sería hacerse trampa.</p>
 <h3>Cartera virtual en vivo ${empieza ? `(arranca el ${esc(fechaLarga(CARTERA_PALES_DESDE))})` : ''}</h3>
 <div class="tarjeta compacta">${empieza ? `<p>Empieza mañana con ${pesosP(BANCA_PALES)}. Para hoy, las loterías elegidas serían: <strong>${selHoy.map(nombre).join(', ')}</strong>.</p>`
     : `<p><strong>Saldo virtual: ${pesosP(saldo)}</strong> (empezó con ${pesosP(BANCA_PALES)}). Jugado ${pesosP(gast)}, ganado ${pesosP(gan)}, ${jug} días, ${acier} palés acertados.${agotada ? ' <strong>La banca virtual se agotó.</strong>' : ''}</p><p>Loterías de hoy: <strong>${selHoy.map(nombre).join(', ')}</strong>.</p>${ultimos ? `<div class="tabla" style="overflow-x:auto"><table><tr><th>Día</th><th>Loterías jugadas</th><th>Aciertos</th><th>Ganado</th></tr>${ultimos}</table></div>` : ''}`}</div>
