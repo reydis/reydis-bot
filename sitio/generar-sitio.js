@@ -1611,6 +1611,98 @@ ${seccionVentanas(ev)}
 ${pocos}`;
 }
 
+// 🔁 Repeticiones entre loterías: ¿los mismos números salen en varias loterías el mismo día más de lo que daría el azar?
+function paginaRepeticiones(dias) {
+  const q = 1 - Math.pow(0.99, 3); // probabilidad de que un número dado aparezca en una quiniela (3 números de 100)
+  const lots = [...LOTERIAS].sort((a, b) => minLoteria(a.hora) - minLoteria(b.hora));
+  const compl = dias.filter(d => Object.keys(d.quinielas).length >= 8);
+  const hoy = fechaRD();
+  const pasado = compl.filter(d => d.fecha < hoy);
+  const conj = d => { const o = {}; for (const l of lots) { const a = d.quinielas[l.clave]; if (Array.isArray(a) && a.length === 3) o[l.clave] = new Set(a); } return o; };
+  const base = pasado.map(d => ({ fecha: d.fecha, s: conj(d) }));
+  const pSup = (c, lam) => c <= 0 ? 1 : Math.min(1, Math.max(0, 1 - gammaQ(c, lam)));
+  // semilla fija para que el resultado sea reproducible
+  let semilla = 20261126; const rnd = () => { semilla = (semilla * 1664525 + 1013904223) >>> 0; return semilla / 4294967296; };
+  const sim = d0 => { const o = {}; for (const k of Object.keys(d0)) o[k] = new Set([Math.floor(rnd() * 100), Math.floor(rnd() * 100), Math.floor(rnd() * 100)]); return o; };
+  const repetidosDia = s => { const c = new Array(100).fill(0); for (const k in s) for (const n of s[k]) c[n]++; return c.filter(x => x >= 2).length; };
+  const enMasDe = s => { const c = new Array(100).fill(0); for (const k in s) for (const n of s[k]) c[n]++; return c; };
+  // 1) Resumen diario contra Monte Carlo
+  const obs = base.map(b => repetidosDia(b.s)), obsTot = obs.reduce((a, b) => a + b, 0);
+  const N = 600, tots = [];
+  for (let i = 0; i < N; i++) { let t = 0; for (const b of base) t += repetidosDia(sim(b.s)); tots.push(t); }
+  const media = tots.reduce((a, b) => a + b, 0) / (N || 1), sd = Math.sqrt(tots.reduce((a, b) => a + (b - media) ** 2, 0) / (N || 1)) || 1;
+  const pDiario = (tots.filter(t => t >= obsTot).length + 1) / (N + 1);
+  const nd = base.length;
+  const prom = nd ? obsTot / nd : 0, promAzar = nd ? media / nd : 0;
+  // 2) Pares de loterías
+  const calcPares = datos => {
+    const filas = [];
+    for (let i = 0; i < lots.length; i++) for (let j = i + 1; j < lots.length; j++) {
+      const A = lots[i].clave, B = lots[j].clave; let juntos = 0, rep = 0;
+      for (const b of datos) { if (b.s[A] && b.s[B]) { juntos++; for (const n of b.s[A]) if (b.s[B].has(n)) rep++; } }
+      if (juntos < 30) continue;
+      const lam = juntos * 100 * q * q; filas.push({ A: lots[i], B: lots[j], juntos, rep, lam, p: pSup(rep, lam) });
+    }
+    return filas;
+  };
+  const pares = calcPares(base).sort((a, b) => a.p - b.p);
+  const alfaB = pares.length ? 0.05 / pares.length : 0.05;
+  const bajo05 = pares.filter(x => p05(x)).length; function p05(x) { return x.p < 0.05; }
+  const fuertes = pares.filter(x => x.p < alfaB).length;
+  let ctrl = 0; const R = 20; for (let r = 0; r < R; r++) ctrl += calcPares(base.map(b => ({ fecha: b.fecha, s: sim(b.s) }))).filter(x => x.p < 0.05).length;
+  const ctrlProm = ctrl / R;
+  // 3) Misma lotería, día siguiente
+  const mis = [];
+  for (const l of lots) {
+    let juntos = 0, rep = 0;
+    for (let i = 1; i < base.length; i++) {
+      const a = base[i - 1], b = base[i]; const dd = (new Date(b.fecha) - new Date(a.fecha)) / 864e5; if (dd !== 1) continue;
+      if (a.s[l.clave] && b.s[l.clave]) { juntos++; for (const n of b.s[l.clave]) if (a.s[l.clave].has(n)) rep++; }
+    }
+    if (juntos < 30) continue; const lam = juntos * 100 * q * q; mis.push({ l, juntos, rep, lam, p: pSup(rep, lam) });
+  }
+  mis.sort((a, b) => a.p - b.p);
+  const alfaM = mis.length ? 0.05 / mis.length : 0.05;
+  // 4) Por lotería: repeticiones con todas las demás
+  const porLot = lots.map(l => {
+    let juntosTot = 0, rep = 0, lam = 0;
+    for (const b of base) { if (!b.s[l.clave]) continue; for (const o of lots) { if (o.clave === l.clave || !b.s[o.clave]) continue; juntosTot++; lam += 100 * q * q; for (const n of b.s[l.clave]) if (b.s[o.clave].has(n)) rep++; } }
+    return { l, rep, lam, p: pSup(rep, lam) };
+  }).filter(x => x.lam > 0).sort((a, b) => (b.rep / b.lam) - (a.rep / a.lam));
+  const marca = (p, a) => `${p < a ? '🚨 ' : p < 0.05 ? '👀 ' : ''}${p < 0.001 ? p.toExponential(1) : p.toFixed(3)}`;
+  const veces = (r, l) => l ? (r / l).toFixed(2) + '×' : '–';
+  const filaPar = x => `<tr><td>${esc(x.A.nombre)} → ${esc(x.B.nombre)}</td><td>${x.juntos}</td><td>${x.rep}</td><td>${x.lam.toFixed(1)}</td><td>${veces(x.rep, x.lam)}</td><td>${marca(x.p, alfaB)}</td></tr>`;
+  const tPares = pares.slice(0, 15).map(filaPar).join('');
+  const tMis = mis.map(x => `<tr><td>${esc(x.l.nombre)}</td><td>${x.juntos}</td><td>${x.rep}</td><td>${x.lam.toFixed(1)}</td><td>${veces(x.rep, x.lam)}</td><td>${marca(x.p, alfaM)}</td></tr>`).join('');
+  const tLot = porLot.map(x => `<tr><td>${esc(x.l.nombre)}</td><td>${x.rep}</td><td>${x.lam.toFixed(0)}</td><td>${veces(x.rep, x.lam)}</td></tr>`).join('');
+  // número que más se repite entre loterías (conteo bruto, con su esperado)
+  const cnt = new Array(100).fill(0); let lotSalidas = 0;
+  for (const b of base) { const c = enMasDe(b.s); for (let n = 0; n < 100; n++) if (c[n] >= 2) cnt[n]++; }
+  const topNum = cnt.map((c, n) => ({ n, c })).sort((a, b) => b.c - a.c).slice(0, 10);
+  const esperadoNum = nd ? media / 100 : 0;
+  const tNum = topNum.map(x => `<tr><td>${bola(x.n)}</td><td>${x.c}</td><td>${esperadoNum.toFixed(1)}</td><td>${veces(x.c, esperadoNum)}</td></tr>`).join('');
+  const veredicto = !nd ? 'Todavía no hay suficientes días completos.'
+    : (fuertes > 0 || pDiario < 0.01) ? '<strong>Hay una señal que pasa la regla estricta.</strong> Antes de creerla, hay que confirmarla con datos nuevos que no se hayan usado aquí.'
+    : `<strong>Los números sí se repiten entre loterías, pero ni más ni menos de lo que el azar dice que deben repetirse.</strong> Con ${lots.length} loterías al día, es normal que muchos números salgan en dos o más. De ${pares.length} pares revisados, ${bajo05} dieron p menor a 0.05; por pura casualidad se esperaban unos ${(pares.length * 0.05).toFixed(1)} (en datos inventados salen unos ${ctrlProm.toFixed(1)}). Ningún par pasa la regla estricta.`;
+  const cuerpo = `<h1>🔁 ¿Se repiten los mismos números entre loterías?</h1>
+<p>Es lo que se ve a simple vista: un número sale en la mañana y vuelve a salir en otra lotería más tarde. La pregunta honesta es si eso pasa <strong>más de lo que pasaría con números sorteados al azar</strong>. Aquí se mide, con ${nd} días completos, contra lo que daría el azar puro.</p>
+<div class="tarjeta"><h2>Veredicto</h2><p>${veredicto}</p></div>
+<h2>1. Números que salen en 2 o más loterías el mismo día</h2>
+<div class="tarjeta"><p>Promedio real: <strong>${prom.toFixed(1)} números por día</strong>. Lo esperado por azar (simulando ${N} veces el mismo calendario): <strong>${promAzar.toFixed(1)}</strong>. Diferencia: ${nd ? ((obsTot - media) / sd).toFixed(2) : '0'} desviaciones; probabilidad de ver algo igual o mayor por casualidad: <strong>${pDiario.toFixed(3)}</strong>.</p></div>
+<h2>2. ¿Qué pares de loterías se repiten más?</h2>
+<p class="leyenda">Cada par cuenta cuántos números comparten el mismo día. Por azar, dos loterías comparten en promedio ${(100 * q * q).toFixed(3)} números por día. 🚨 = pasa la regla estricta (corregida por mirar ${pares.length} pares, umbral ${alfaB.toExponential(1)}); 👀 = solo llama la atención.</p>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Par (de más temprano a más tarde)</th><th>Días juntos</th><th>Repetidos</th><th>Esperado azar</th><th>Real / azar</th><th>p</th></tr>${tPares}</table></div>
+<h2>3. La misma lotería, de un día al siguiente</h2>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Lotería</th><th>Pares de días</th><th>Repetidos</th><th>Esperado azar</th><th>Real / azar</th><th>p</th></tr>${tMis}</table></div>
+<h2>4. ¿Qué lotería repite más con las demás?</h2>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Lotería</th><th>Repetidos con otras</th><th>Esperado azar</th><th>Real / azar</th></tr>${tLot}</table></div>
+<h2>5. Números que más veces se repitieron entre loterías</h2>
+<div class="tabla"><table><tr><th>Número</th><th>Días repetido</th><th>Esperado azar</th><th>Real / azar</th></tr>${tNum}</table></div>
+<p class="leyenda">Cómo leerlo: «Real / azar» cerca de 1.00× es lo normal. Con tantos números y pares, algunos siempre se ven por encima solo por suerte; por eso se exige pasar el umbral corregido. Esto es información, no una predicción.</p>
+${avisoHonesto()}${ctaTelegram()}`;
+  return pagina({ ruta: '/repeticiones/', titulo: 'Números repetidos entre loterías: ¿más que el azar?', descripcion: 'Medimos si los mismos números se repiten entre loterías dominicanas más de lo que daría el azar.', cuerpo });
+}
+
 function paginaLaboratorio(dias) {
   const hoy = fechaRD();
   const D = dias.filter(d => d.fecha < hoy && Object.keys(d.quinielas).length >= 8).map(d => ({ fecha: d.fecha, t: dUTC(d.fecha).getTime(), dow: dUTC(d.fecha).getUTCDay(), q: d.quinielas }));
@@ -1888,6 +1980,7 @@ async function main() {
   guardar('/guias/loteka/', paginaGuiaLoteka(series));
   guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
   guardar('/laboratorio/', paginaLaboratorio(dias));
+  guardar('/repeticiones/', paginaRepeticiones(dias));
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
   const hoy = fechaRD();
