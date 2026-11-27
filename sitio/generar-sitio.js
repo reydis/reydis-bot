@@ -1807,7 +1807,7 @@ function paginaMuro(dias) {
   const lista = a => `<ul class="muro-lista">${a.map(x => `<li>${x}</li>`).join('')}</ul>`;
   const urgente = m.urg.length
     ? `<div class="muro-urg"><strong>🚨 Urgente · hoy</strong>${lista(m.urg)}</div>`
-    : '<div class="tarjeta compacta"><strong>✅ Sin urgentes por ahora.</strong><p class="leyenda">Si pasa algo fuera de lo común (un número en 5 o más loterías, un triple o un palé acertado), aparece aquí apenas sale el sorteo.</p></div>';
+    : '';
   const semana = m.pasados.map(d => `<div class="tarjeta compacta" style="margin-bottom:10px"><strong>${esc(fechaLarga(d.fecha))}</strong>${lista([...d.urg, ...d.tit].length ? [...d.urg, ...d.tit] : ['Un día tranquilo: nada fuera de lo normal.'])}</div>`).join('');
   const cuerpo = `<h1>📰 Muro de noticias</h1>
 <p>Lo que pasa con los números, día a día: lo urgente apenas ocurre y lo de siempre cada mañana. Todo sale de los resultados reales; son coincidencias, no pistas.</p>
