@@ -1763,11 +1763,11 @@ function carteraPales(dias) {
   const roi = gasto ? ret / gasto : 0, perc = rois.length ? Math.round(100 * rois.filter(x => x < roi).length / rois.length) : 0, mediana = rois.length ? rois[Math.floor(rois.length / 2)] : 0;
   const esperadoHits = gasto * PARES_PROB;
   // 3) cartera virtual hacia adelante desde CARTERA_PALES_DESDE
-  let saldo = BANCA_PALES, gast = 0, gan = 0, jug = 0, acier = 0, agotada = false; const log = [];
+  let saldo = BANCA_PALES, gast = 0, gan = 0, jug = 0, acier = 0, agotada = null; const log = [];
   for (let j = 0; j < hist.length; j++) {
     if (hist[j].fecha < CARTERA_PALES_DESDE) continue;
     const sel = eligeLots(hist, j, N_LOT_PALES).filter(k => hist[j].claves.includes(k)); const cost = 10 * sel.length;
-    if (saldo < cost) { agotada = true; break; }
+    if (saldo < cost && !agotada) agotada = hist[j].fecha; // la banca se agotó: la prueba sigue contando lo jugado y lo devuelto
     let g = 0, h = 0; for (const k of sel) { g += hist[j].por[k] * PAGO_PALE; h += hist[j].por[k]; }
     saldo += g - cost; gast += cost; gan += g; jug++; acier += h; log.push({ f: hist[j].fecha, sel, h, g });
   }
@@ -1789,7 +1789,7 @@ function carteraPales(dias) {
 <p class="leyenda">Escogí de antemano el de <strong>${VENT_LOT_PALES} días con palés y números del día</strong> para la cartera (mide dónde están saliendo ahora, con más datos que mirar solo palés). Las otras filas son para comparar: probar muchas formas y quedarse con la que salió mejor sería hacerse trampa.</p>
 <h3>Cartera virtual en vivo ${empieza ? `(arranca el ${esc(fechaLarga(CARTERA_PALES_DESDE))})` : ''}</h3>
 <div class="tarjeta compacta">${empieza ? `<p>Empieza mañana con ${pesosP(BANCA_PALES)}. Para hoy, las loterías elegidas serían: <strong>${selHoy.map(nombre).join(', ')}</strong>.</p>`
-    : `<p><strong>Saldo virtual: ${pesosP(saldo)}</strong> (empezó con ${pesosP(BANCA_PALES)}). Jugado ${pesosP(gast)}, ganado ${pesosP(gan)}, ${jug} días, ${acier} palés acertados.${agotada ? ' <strong>La banca virtual se agotó.</strong>' : ''}</p><p>Loterías de hoy: <strong>${selHoy.map(nombre).join(', ')}</strong>.</p>${ultimos ? `<div class="tabla" style="overflow-x:auto"><table><tr><th>Día</th><th>Loterías jugadas</th><th>Aciertos</th><th>Ganado</th></tr>${ultimos}</table></div>` : ''}`}</div>
+    : `<p><strong>Saldo virtual: ${pesosP(saldo)}</strong> (empezó con ${pesosP(BANCA_PALES)}). Jugado ${pesosP(gast)}, ganado ${pesosP(gan)}, ${jug} días, ${acier} palés acertados.${agotada ? ` <strong>La banca de ${pesosP(BANCA_PALES)} se agotó el ${esc(fechaMini(agotada))}</strong>: la prueba sigue contando lo jugado y lo devuelto, que es lo que de verdad importa.` : ''}</p><p>Devuelto: <strong>${gast ? (100 * gan / gast).toFixed(0) : 0}%</strong> de lo jugado (el azar da cerca de ${(100 * PARES_PROB * PAGO_PALE).toFixed(0)}%). Palés acertados: <strong>${acier}</strong> contra ${(gast * PARES_PROB).toFixed(1)} esperados.</p><p>Loterías de hoy: <strong>${selHoy.map(nombre).join(', ')}</strong>.</p>${ultimos ? `<div class="tabla" style="overflow-x:auto"><table><tr><th>Día</th><th>Loterías jugadas</th><th>Aciertos</th><th>Ganado</th></tr>${ultimos}</table></div>` : ''}`}</div>
 <h3>¿Dónde han salido más los palés del Radar?</h3>
 <div class="tabla" style="overflow-x:auto"><table><tr><th>Lotería</th><th>Palés acertados</th><th>Esperado azar</th><th>Real / azar</th><th>p</th></tr>${tDonde}</table></div>
 <p class="leyenda">${pasa ? `🚨 ${pasa} lotería(s) pasa(n) la regla estricta (umbral ${alfa.toExponential(1)} por mirar ${filas.length} loterías).` : `Ninguna lotería pasa la regla estricta (umbral ${alfa.toExponential(1)} por mirar ${filas.length} loterías): las diferencias son las que da la suerte.`} Los palés pagan mucho pero salen poco; no hay forma de saber en cuál lotería saldrán.</p>`;
