@@ -276,7 +276,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <meta name="google-site-verification" content="6MC7HwNcVNURJxS10NwuWc8ULNkpL6qQSwQKE6moCt8" /><link rel="stylesheet" href="${url('/estilos.css')}?v=${require('crypto').createHash('md5').update(CSS).digest('hex').slice(0,8)}">${ads}<script data-goatcounter="https://reydisradar.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><a href="${url('/numeros/')}">Números</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><a href="${url('/numeros/')}">Números</a><a href="${url('/pales/')}">Palés</a><a href="${url('/repeticiones/')}">Repetidos</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
@@ -1703,6 +1703,36 @@ ${avisoHonesto()}${ctaTelegram()}`;
   return pagina({ ruta: '/repeticiones/', titulo: 'Números repetidos entre loterías: ¿más que el azar?', descripcion: 'Medimos si los mismos números se repiten entre loterías dominicanas más de lo que daría el azar.', cuerpo });
 }
 
+// 🎲 Página de palés: los 10 palés del día, dónde salió cada número, aciertos recientes y récord contra el azar
+function paginaPales(dias) {
+  const r = calcularRadar(dias);
+  const hoy = fechaRD();
+  const diaHoy = dias.find(d => d.fecha === hoy);
+  const dondeNum = n => diaHoy ? Object.entries(diaHoy.quinielas).filter(([, nums]) => nums.includes(n)).map(([k]) => nombreLoteria(k)) : [];
+  const filasHoy = r.pales.map(x => {
+    const [a, b] = x.p, la = dondeNum(a), lb = dondeNum(b);
+    const est = x.salio.length ? `<strong style="color:var(--bien)">✅ Acertado</strong> en ${x.salio.map(esc).join(', ')}` : (la.length && lb.length ? 'Salieron los dos, pero en loterías distintas' : (la.length || lb.length ? 'Ha salido uno solo' : 'Todavía no sale'));
+    return `<tr><td>${bola(f2(a), la.length ? ' ya' : '')}${bola(f2(b), lb.length ? ' ya' : '')}</td><td><small>${f2(a)}: ${la.length ? la.map(esc).join(', ') : '—'}<br>${f2(b)}: ${lb.length ? lb.map(esc).join(', ') : '—'}</small></td><td>${est}</td></tr>`;
+  }).join('');
+  const recientes = [...r.detalle].reverse().slice(0, 14);
+  const filasRec = recientes.map(d => `<tr><td>${esc(fechaCorta ? fechaCorta(d.fecha) : d.fecha)}</td><td>${d.pales.length ? d.pales.map(x => `<strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> en ${x.salio.map(esc).join(', ')}`).join('<br>') : '<span class="leyenda">ninguno</span>'}</td></tr>`).join('');
+  const porLot = {};
+  for (const d of r.detalle) for (const x of d.pales) for (const k of x.salio) porLot[k] = (porLot[k] || 0) + 1;
+  const tLot = Object.entries(porLot).sort((a, b) => b[1] - a[1]).map(([k, c]) => `<tr><td>${esc(k)}</td><td>${c}</td></tr>`).join('');
+  const veces = r.palesEsp ? (r.palesHits / r.palesEsp).toFixed(2) + '×' : '–';
+  const acert = r.pales.filter(x => x.salio.length).length;
+  const cuerpo = `<h1>🎲 Palés del día</h1>
+<p>Un palé es una pareja de números que sale <strong>junta en el mismo sorteo</strong>. Aquí se arman las 10 parejas posibles entre los 5 números del día y se sigue dónde sale cada uno.</p>
+${r.pales.length ? `<div class="tarjeta"><h2>Hoy: ${acert} de 10 palés acertados</h2><div class="tabla" style="overflow-x:auto"><table><tr><th>Palé</th><th>Dónde salió cada número</th><th>Estado</th></tr>${filasHoy}</table></div>${palLeyenda}</div>` : '<div class="tarjeta"><p>Todavía no hay datos suficientes para armar los palés de hoy.</p></div>'}
+<h2>Palés acertados, últimos 14 días</h2>
+<div class="tabla" style="overflow-x:auto"><table><tr><th>Día</th><th>Palés que salieron juntos</th></tr>${filasRec || '<tr><td colspan="2">Sin datos todavía.</td></tr>'}</table></div>
+<h2>Récord contra el azar (${r.dias} días)</h2>
+<div class="tarjeta"><p>Palés acertados: <strong>${r.palesHits}</strong>. Lo esperado si los números fueran al azar: <strong>${r.palesEsp.toFixed(1)}</strong>. Resultado real / azar: <strong>${veces}</strong>.</p><p class="leyenda">Cerca de 1.00× significa que el método no hace nada distinto al azar. Un palé es difícil: cada sorteo trae solo 3 de las 4,950 parejas posibles.</p></div>
+${tLot ? `<h2>¿En qué loterías han salido los palés acertados?</h2><div class="tabla"><table><tr><th>Lotería</th><th>Palés</th></tr>${tLot}</table></div><p class="leyenda">Ojo: con 20 loterías al día, algunas van a acumular más aciertos solo por suerte. No es una pista de dónde saldrá el próximo.</p>` : ''}
+${avisoHonesto()}${ctaTelegram()}`;
+  return pagina({ ruta: '/pales/', titulo: 'Palés del día: dónde salió cada número', descripcion: 'Los 10 palés del día, en qué lotería salió cada número y cuántos palés se han acertado frente al azar.', cuerpo });
+}
+
 function paginaLaboratorio(dias) {
   const hoy = fechaRD();
   const D = dias.filter(d => d.fecha < hoy && Object.keys(d.quinielas).length >= 8).map(d => ({ fecha: d.fecha, t: dUTC(d.fecha).getTime(), dow: dUTC(d.fecha).getUTCDay(), q: d.quinielas }));
@@ -1981,6 +2011,7 @@ async function main() {
   guardar('/guias/preguntas-frecuentes/', paginaGuiaFAQ());
   guardar('/laboratorio/', paginaLaboratorio(dias));
   guardar('/repeticiones/', paginaRepeticiones(dias));
+  guardar('/pales/', paginaPales(dias));
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
   const hoy = fechaRD();
