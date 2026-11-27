@@ -262,6 +262,7 @@ a.boton{transition:transform .15s,filter .15s,box-shadow .15s}a.boton:hover{tran
 .dato,.lectura,.gen-tk,.celebra{transition:transform .18s,border-color .18s,box-shadow .18s}.dato:hover,.lectura:hover,.gen-tk:hover,.celebra:hover{transform:translateY(-2px);border-color:#36507f;box-shadow:0 12px 26px -16px rgba(34,211,238,.45)}
 }
 .menu .mas{position:relative}.menu .mas summary{list-style:none;cursor:pointer;color:var(--suave);padding:6px 12px;border-radius:999px;transition:background .15s,color .15s}.menu .mas summary::-webkit-details-marker{display:none}.menu .mas summary:hover,.menu .mas[open] summary{color:#fff;background:rgba(255,255,255,.07)}.menu .mas div{position:absolute;right:0;top:calc(100% + 6px);min-width:170px;background:var(--panel2);border:1px solid var(--borde);border-radius:14px;padding:6px;display:flex;flex-direction:column;box-shadow:0 14px 30px -10px rgba(0,0,0,.6);z-index:20}.menu .mas div a{white-space:nowrap}.tarjeta.compacta{min-height:0}.tarjeta.compacta:hover{transform:none}
+.muro-urg{border:1px solid var(--ojo);background:linear-gradient(180deg,rgba(251,191,36,.14),rgba(251,191,36,.04));border-radius:var(--r);padding:14px 16px;margin:14px 0}.muro-urg ul,.muro-lista{margin:8px 0 0;padding-left:18px}.muro-lista li{margin:6px 0}.muro-urg a,.muro-hoy a{display:inline-block;margin-top:8px}.muro-hoy{border:1px solid var(--borde);background:var(--panel);border-radius:var(--r);padding:12px 16px;margin:14px 0}.muro-hoy p{margin:6px 0}
 @media(max-width:560px){.menu{font-size:.88rem;gap:0}.menu a,.menu .mas summary{padding:6px 8px}.menu .mas div{left:0;right:auto}}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -278,7 +279,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <meta name="google-site-verification" content="6MC7HwNcVNURJxS10NwuWc8ULNkpL6qQSwQKE6moCt8" /><link rel="stylesheet" href="${url('/estilos.css')}?v=${require('crypto').createHash('md5').update(CSS).digest('hex').slice(0,8)}">${ads}<script data-goatcounter="https://reydisradar.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/pales/')}">Palés</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><details class="mas"><summary>Más ▾</summary><div><a href="${url('/numeros/')}">Números</a><a href="${url('/repeticiones/')}">Repetidos</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></div></details></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/muro/')}">Muro</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/pales/')}">Palés</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><details class="mas"><summary>Más ▾</summary><div><a href="${url('/numeros/')}">Números</a><a href="${url('/repeticiones/')}">Repetidos</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></div></details></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
@@ -668,7 +669,7 @@ function paginaInicio(dias, series) {
   const cuerpo = `<section class="hero"><span class="vivo">En vivo · se actualiza minutos después de cada sorteo</span>
 <h1>${esc(titulo)}</h1>
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
-${teaserCelebra(dias)}
+${muroTeaser(dias)}${teaserCelebra(dias)}
 ${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${otros}${previo}
 ${tarjetaLectura(dias)}
@@ -1735,6 +1736,91 @@ ${avisoHonesto()}${ctaTelegram()}`;
   return pagina({ ruta: '/pales/', titulo: 'Palés del día: dónde salió cada número', descripcion: 'Los 10 palés del día, en qué lotería salió cada número y cuántos palés se han acertado frente al azar.', cuerpo });
 }
 
+// 📰 Muro de noticias: todo se arma solo con los datos del día. Lo urgente aparece apenas ocurre; "Un día como hoy" cambia cada día.
+const EFEMERIDES = {
+  '01-01': 'Año Nuevo', '01-06': 'Día de los Santos Reyes', '01-21': 'Día de la Altagracia', '01-26': 'el Natalicio de Juan Pablo Duarte',
+  '02-14': 'el Día del Amor y la Amistad', '02-27': 'el Día de la Independencia Nacional', '03-08': 'el Día Internacional de la Mujer',
+  '05-01': 'el Día del Trabajo', '08-16': 'el Día de la Restauración', '09-24': 'el Día de las Mercedes', '10-31': 'Halloween',
+  '11-01': 'el Día de Todos los Santos', '11-02': 'el Día de los Fieles Difuntos', '11-06': 'el Día de la Constitución',
+  '12-08': 'el Día de la Inmaculada Concepción', '12-24': 'Nochebuena', '12-25': 'Navidad', '12-28': 'el Día de los Santos Inocentes', '12-31': 'Fin de Año',
+};
+function efemerideDe(fecha) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const fijo = EFEMERIDES[fecha.slice(5)];
+  if (fijo) return fijo;
+  const dow = dUTC(fecha).getUTCDay(); // 0 = domingo
+  const ultimoDom = mes => { let x = new Date(Date.UTC(y, mes, 0, 12)); while (x.getUTCDay() !== 0) x = new Date(x - 864e5); return x.getUTCDate(); };
+  if (dow === 0 && m === 5 && d === ultimoDom(5)) return 'el Día de las Madres';
+  if (dow === 0 && m === 7 && d === ultimoDom(7)) return 'el Día de los Padres';
+  return '';
+}
+const numerosFecha = fecha => { const [y, m, d] = fecha.split('-').map(Number); return [...new Set([d, m, y % 100])]; };
+const lotsOrden = () => [...LOTERIAS].sort((a, b) => minLoteria(a.hora) - minLoteria(b.hora));
+function noticiasDia(d, rad, esHoy) {
+  const urg = [], tit = [];
+  const orden = lotsOrden(); const pos = k => orden.findIndex(l => l.clave === k);
+  const cont = {};
+  for (const [k, nums] of Object.entries(d.quinielas)) for (const n of new Set(nums)) (cont[n] = cont[n] || []).push(k);
+  const quien = arr => [...arr].sort((a, b) => pos(a) - pos(b)).map(k => esc(nombreLoteria(k))).join(', ');
+  const ultima = arr => { const k = [...arr].sort((a, b) => pos(a) - pos(b)).pop(); const l = LOTERIAS.find(x => x.clave === k); return l ? ` <small class="leyenda">(después de ${esc(l.nombre)}, ${esc(l.hora)})</small>` : ''; };
+  Object.entries(cont).map(([n, a]) => ({ n: +n, a })).filter(x => x.a.length >= 3).sort((x, y) => y.a.length - x.a.length || x.n - y.n).slice(0, 3).forEach(x => {
+    const t = `El <strong>${f2(x.n)}</strong> salió en <strong>${x.a.length} loterías</strong>: ${quien(x.a)}.`;
+    if (x.a.length >= 5) urg.push(`🔥 ${t}${ultima(x.a)}`); else tit.push(`${x.a.length >= 4 ? '🔥' : '🔁'} ${t}`);
+  });
+  for (const [k, nums] of Object.entries(d.quinielas)) {
+    const u = new Set(nums);
+    if (nums.length === 3 && u.size === 1) urg.push(`🤯 ¡Triple! En <strong>${esc(nombreLoteria(k))}</strong> salió el <strong>${f2(nums[0])}-${f2(nums[0])}-${f2(nums[0])}</strong>.`);
+    else if (u.size < nums.length) tit.push(`👯 En ${esc(nombreLoteria(k))} el <strong>${f2(nums.find((x, i) => nums.indexOf(x) !== i))}</strong> salió dos veces en el mismo sorteo.`);
+  }
+  for (const x of (rad.pales || []).filter(x => x.salio.length)) {
+    const t = `🎲 Palé acertado: <strong>${f2(x.p[0])}-${f2(x.p[1])}</strong> salió junto en ${x.salio.map(esc).join(', ')}.`;
+    if (esHoy) urg.push(t); else tit.push(t);
+  }
+  const hits = (rad.top || []).filter(n => cont[n]);
+  if (hits.length) tit.push(`🎯 De los 5 números del día salieron ${hits.length}: ${hits.map(n => `<strong>${f2(n)}</strong> (${quien(cont[n])})`).join(' · ')}.`);
+  const fn = numerosFecha(d.fecha).filter(n => cont[n]);
+  if (fn.length) tit.push(`📅 Números de la fecha: ${fn.map(n => `el <strong>${f2(n)}</strong> salió en ${cont[n].length} ${cont[n].length === 1 ? 'lotería' : 'loterías'}`).join(' · ')}.`);
+  return { urg, tit };
+}
+function datosMuro(dias) {
+  const hoy = fechaRD(), r = calcularRadar(dias);
+  const detalle = Object.fromEntries(r.detalle.map(x => [x.fecha, { top: x.top, pales: x.pales }]));
+  const diaHoy = dias.find(d => d.fecha === hoy);
+  const hoyN = diaHoy ? noticiasDia(diaHoy, { top: r.hoy.map(x => x.n), pales: r.pales }, true) : { urg: [], tit: [] };
+  const pasados = dias.filter(d => d.fecha < hoy && Object.keys(d.quinielas).length >= 8).slice(-7).reverse()
+    .map(d => ({ fecha: d.fecha, ...noticiasDia(d, detalle[d.fecha] || {}, false) }));
+  const hace = n => { const f = new Date(dUTC(hoy) - n * 864e5).toISOString().slice(0, 10); const d = dias.find(x => x.fecha === f); if (!d || Object.keys(d.quinielas).length < 8) return ''; const c = {}; for (const nums of Object.values(d.quinielas)) for (const x of new Set(nums)) c[x] = (c[x] || 0) + 1; const top = Object.entries(c).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]; return top && top[1] >= 2 ? `Hace ${n} días (${esc(fechaMini(f))}) el número más repetido fue el <strong>${f2(top[0])}</strong>, en ${top[1]} loterías.` : ''; };
+  const ef = efemerideDe(hoy);
+  const nf = numerosFecha(hoy);
+  const contHoy = {}; if (diaHoy) for (const [k, nums] of Object.entries(diaHoy.quinielas)) for (const x of new Set(nums)) (contHoy[x] = contHoy[x] || []).push(k);
+  const salio = nf.map(n => contHoy[n] ? `el <strong>${f2(n)}</strong> ya salió en ${contHoy[n].map(k => esc(nombreLoteria(k))).join(', ')}` : `el <strong>${f2(n)}</strong> todavía no sale hoy`).join('; ');
+  const dicen = `${ef ? `Hoy se celebra <strong>${ef}</strong>. ` : ''}Hoy es <strong>${esc(fechaLarga(hoy))}</strong>, y mucha gente juega la fecha: ${nf.map(f2).join(', ')}. Hasta ahora ${salio}.`;
+  return { hoy, urg: hoyN.urg, tit: hoyN.tit, pasados, dicen, hace: [7, 30, 90].map(hace).filter(Boolean), ef };
+}
+function muroTeaser(dias) {
+  const m = datosMuro(dias);
+  if (m.urg.length) return `<div class="muro-urg"><strong>🚨 Urgente</strong><ul>${m.urg.slice(0, 2).map(x => `<li>${x}</li>`).join('')}</ul><a href="${url('/muro/')}">Ver el muro de noticias →</a></div>`;
+  return `<div class="muro-hoy"><strong>📅 Un día como hoy</strong><p>${m.dicen}</p><a href="${url('/muro/')}">Ver el muro de noticias →</a></div>`;
+}
+function paginaMuro(dias) {
+  const m = datosMuro(dias);
+  const lista = a => `<ul class="muro-lista">${a.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const urgente = m.urg.length
+    ? `<div class="muro-urg"><strong>🚨 Urgente · hoy</strong>${lista(m.urg)}</div>`
+    : '<div class="tarjeta compacta"><strong>✅ Sin urgentes por ahora.</strong><p class="leyenda">Si pasa algo fuera de lo común (un número en 5 o más loterías, un triple o un palé acertado), aparece aquí apenas sale el sorteo.</p></div>';
+  const semana = m.pasados.map(d => `<div class="tarjeta compacta" style="margin-bottom:10px"><strong>${esc(fechaLarga(d.fecha))}</strong>${lista([...d.urg, ...d.tit].length ? [...d.urg, ...d.tit] : ['Un día tranquilo: nada fuera de lo normal.'])}</div>`).join('');
+  const cuerpo = `<h1>📰 Muro de noticias</h1>
+<p>Lo que pasa con los números, día a día: lo urgente apenas ocurre y lo de siempre cada mañana. Todo sale de los resultados reales; son coincidencias, no pistas.</p>
+${urgente}
+<h2>📅 Un día como hoy</h2>
+<div class="tarjeta compacta"><p>${m.dicen}</p>${m.hace.length ? lista(m.hace) : ''}<p class="leyenda">Con unas 20 loterías al día, cada número sale cerca de la mitad de los días solo por azar. Que salga la fecha es una coincidencia curiosa, no una señal.</p></div>
+${m.tit.length ? `<h2>Hoy, hasta ahora</h2><div class="tarjeta compacta">${lista(m.tit)}</div>` : ''}
+<h2>Últimos días</h2>
+${semana || '<p>Todavía no hay suficientes días.</p>'}
+${avisoHonesto()}${ctaTelegram()}`;
+  return pagina({ ruta: '/muro/', titulo: 'Muro de noticias de la lotería: un día como hoy y lo urgente', descripcion: 'Lo que pasa con los números cada día: números repetidos, triples, palés acertados y qué salió un día como hoy.', cuerpo });
+}
+
 function paginaLaboratorio(dias) {
   const hoy = fechaRD();
   const D = dias.filter(d => d.fecha < hoy && Object.keys(d.quinielas).length >= 8).map(d => ({ fecha: d.fecha, t: dUTC(d.fecha).getTime(), dow: dUTC(d.fecha).getUTCDay(), q: d.quinielas }));
@@ -2014,6 +2100,7 @@ async function main() {
   guardar('/laboratorio/', paginaLaboratorio(dias));
   guardar('/repeticiones/', paginaRepeticiones(dias));
   guardar('/pales/', paginaPales(dias));
+  guardar('/muro/', paginaMuro(dias));
 
   escribir('404.html', pagina({ ruta: '/404.html', titulo: `Página no encontrada | ${NOMBRE_SITIO}`, descripcion: 'Página no encontrada.', indexar: false, cuerpo: `<h1>Esa página no existe</h1><p><a href="${url('/')}">Ver los resultados de hoy</a></p>` }));
   const hoy = fechaRD();
