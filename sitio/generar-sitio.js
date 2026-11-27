@@ -261,6 +261,8 @@ a.boton{transition:transform .15s,filter .15s,box-shadow .15s}a.boton:hover{tran
 .pal{transition:transform .15s,box-shadow .15s}.pal:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 8px 16px -10px rgba(34,211,238,.6)}
 .dato,.lectura,.gen-tk,.celebra{transition:transform .18s,border-color .18s,box-shadow .18s}.dato:hover,.lectura:hover,.gen-tk:hover,.celebra:hover{transform:translateY(-2px);border-color:#36507f;box-shadow:0 12px 26px -16px rgba(34,211,238,.45)}
 }
+.menu .mas{position:relative}.menu .mas summary{list-style:none;cursor:pointer;color:var(--suave);padding:6px 12px;border-radius:999px;transition:background .15s,color .15s}.menu .mas summary::-webkit-details-marker{display:none}.menu .mas summary:hover,.menu .mas[open] summary{color:#fff;background:rgba(255,255,255,.07)}.menu .mas div{position:absolute;right:0;top:calc(100% + 6px);min-width:170px;background:var(--panel2);border:1px solid var(--borde);border-radius:14px;padding:6px;display:flex;flex-direction:column;box-shadow:0 14px 30px -10px rgba(0,0,0,.6);z-index:20}.menu .mas div a{white-space:nowrap}.tarjeta.compacta{min-height:0}.tarjeta.compacta:hover{transform:none}
+@media(max-width:560px){.menu{font-size:.88rem;gap:0}.menu a,.menu .mas summary{padding:6px 8px}.menu .mas div{left:0;right:auto}}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -276,7 +278,7 @@ function pagina({ ruta, titulo, descripcion, cuerpo, indexar = true }) {
 <meta name="google-site-verification" content="6MC7HwNcVNURJxS10NwuWc8ULNkpL6qQSwQKE6moCt8" /><link rel="stylesheet" href="${url('/estilos.css')}?v=${require('crypto').createHash('md5').update(CSS).digest('hex').slice(0,8)}">${ads}<script data-goatcounter="https://reydisradar.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head><body>
 <header class="cab"><div class="in"><a class="logo" href="${url('/')}">Reydis <span>Radar</span></a>
-<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><a href="${url('/numeros/')}">Números</a><a href="${url('/pales/')}">Palés</a><a href="${url('/repeticiones/')}">Repetidos</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></nav></div></header>
+<nav class="menu"><a href="${url('/')}">Hoy</a><a href="${url('/jugadas/')}">Jugadas</a><a href="${url('/pales/')}">Palés</a><a href="${url('/loterias/')}">Loterías</a><a href="${url('/juegos/')}">Kino y más</a><details class="mas"><summary>Más ▾</summary><div><a href="${url('/numeros/')}">Números</a><a href="${url('/repeticiones/')}">Repetidos</a><a href="${url('/resultados/')}">Historial</a><a href="${url('/guias/')}">Guías</a><a href="${url('/como-funciona/')}">Cómo funciona</a></div></details></nav></div></header>
 <main>${cuerpo}</main>
 <footer><div class="in"><p><strong>${NOMBRE_SITIO}</strong> · Resultados y estadísticas reales de las loterías dominicanas. Vende claridad, no esperanza.</p>
 <p>Los resultados se publican tal como los dan las fuentes; ante cualquier duda, el resultado oficial es el de cada lotería. Las estadísticas describen el pasado y <strong>no predicen</strong> el próximo sorteo. Juega con responsabilidad y solo lo que puedas perder. Solo mayores de 18 años.</p>
@@ -1686,9 +1688,9 @@ function paginaRepeticiones(dias) {
     : `<strong>Los números sí se repiten entre loterías, pero ni más ni menos de lo que el azar dice que deben repetirse.</strong> Con ${lots.length} loterías al día, es normal que muchos números salgan en dos o más. De ${pares.length} pares revisados, ${bajo05} dieron p menor a 0.05; por pura casualidad se esperaban unos ${(pares.length * 0.05).toFixed(1)} (en datos inventados salen unos ${ctrlProm.toFixed(1)}). Ningún par pasa la regla estricta.`;
   const cuerpo = `<h1>🔁 ¿Se repiten los mismos números entre loterías?</h1>
 <p>Es lo que se ve a simple vista: un número sale en la mañana y vuelve a salir en otra lotería más tarde. La pregunta honesta es si eso pasa <strong>más de lo que pasaría con números sorteados al azar</strong>. Aquí se mide, con ${nd} días completos, contra lo que daría el azar puro.</p>
-<div class="tarjeta"><h2>Veredicto</h2><p>${veredicto}</p></div>
+<div class="tarjeta compacta"><h2>Veredicto</h2><p>${veredicto}</p></div>
 <h2>1. Números que salen en 2 o más loterías el mismo día</h2>
-<div class="tarjeta"><p>Promedio real: <strong>${prom.toFixed(1)} números por día</strong>. Lo esperado por azar (simulando ${N} veces el mismo calendario): <strong>${promAzar.toFixed(1)}</strong>. Diferencia: ${nd ? ((obsTot - media) / sd).toFixed(2) : '0'} desviaciones; probabilidad de ver algo igual o mayor por casualidad: <strong>${pDiario.toFixed(3)}</strong>.</p></div>
+<div class="tarjeta compacta"><p>Promedio real: <strong>${prom.toFixed(1)} números por día</strong>. Lo esperado por azar (simulando ${N} veces el mismo calendario): <strong>${promAzar.toFixed(1)}</strong>. Diferencia: ${nd ? ((obsTot - media) / sd).toFixed(2) : '0'} desviaciones; probabilidad de ver algo igual o mayor por casualidad: <strong>${pDiario.toFixed(3)}</strong>.</p></div>
 <h2>2. ¿Qué pares de loterías se repiten más?</h2>
 <p class="leyenda">Cada par cuenta cuántos números comparten el mismo día. Por azar, dos loterías comparten en promedio ${(100 * q * q).toFixed(3)} números por día. 🚨 = pasa la regla estricta (corregida por mirar ${pares.length} pares, umbral ${alfaB.toExponential(1)}); 👀 = solo llama la atención.</p>
 <div class="tabla" style="overflow-x:auto"><table><tr><th>Par (de más temprano a más tarde)</th><th>Días juntos</th><th>Repetidos</th><th>Esperado azar</th><th>Real / azar</th><th>p</th></tr>${tPares}</table></div>
@@ -1723,11 +1725,11 @@ function paginaPales(dias) {
   const acert = r.pales.filter(x => x.salio.length).length;
   const cuerpo = `<h1>🎲 Palés del día</h1>
 <p>Un palé es una pareja de números que sale <strong>junta en el mismo sorteo</strong>. Aquí se arman las 10 parejas posibles entre los 5 números del día y se sigue dónde sale cada uno.</p>
-${r.pales.length ? `<div class="tarjeta"><h2>Hoy: ${acert} de 10 palés acertados</h2><div class="tabla" style="overflow-x:auto"><table><tr><th>Palé</th><th>Dónde salió cada número</th><th>Estado</th></tr>${filasHoy}</table></div>${palLeyenda}</div>` : '<div class="tarjeta"><p>Todavía no hay datos suficientes para armar los palés de hoy.</p></div>'}
+${r.pales.length ? `<div class="tarjeta compacta"><h2>Hoy: ${acert} de 10 palés acertados</h2><div class="tabla" style="overflow-x:auto"><table><tr><th>Palé</th><th>Dónde salió cada número</th><th>Estado</th></tr>${filasHoy}</table></div>${palLeyenda}</div>` : '<div class="tarjeta compacta"><p>Todavía no hay datos suficientes para armar los palés de hoy.</p></div>'}
 <h2>Palés acertados, últimos 14 días</h2>
 <div class="tabla" style="overflow-x:auto"><table><tr><th>Día</th><th>Palés que salieron juntos</th></tr>${filasRec || '<tr><td colspan="2">Sin datos todavía.</td></tr>'}</table></div>
 <h2>Récord contra el azar (${r.dias} días)</h2>
-<div class="tarjeta"><p>Palés acertados: <strong>${r.palesHits}</strong>. Lo esperado si los números fueran al azar: <strong>${r.palesEsp.toFixed(1)}</strong>. Resultado real / azar: <strong>${veces}</strong>.</p><p class="leyenda">Cerca de 1.00× significa que el método no hace nada distinto al azar. Un palé es difícil: cada sorteo trae solo 3 de las 4,950 parejas posibles.</p></div>
+<div class="tarjeta compacta"><p>Palés acertados: <strong>${r.palesHits}</strong>. Lo esperado si los números fueran al azar: <strong>${r.palesEsp.toFixed(1)}</strong>. Resultado real / azar: <strong>${veces}</strong>.</p><p class="leyenda">Cerca de 1.00× significa que el método no hace nada distinto al azar. Un palé es difícil: cada sorteo trae solo 3 de las 4,950 parejas posibles.</p></div>
 ${tLot ? `<h2>¿En qué loterías han salido los palés acertados?</h2><div class="tabla"><table><tr><th>Lotería</th><th>Palés</th></tr>${tLot}</table></div><p class="leyenda">Ojo: con 20 loterías al día, algunas van a acumular más aciertos solo por suerte. No es una pista de dónde saldrá el próximo.</p>` : ''}
 ${avisoHonesto()}${ctaTelegram()}`;
   return pagina({ ruta: '/pales/', titulo: 'Palés del día: dónde salió cada número', descripcion: 'Los 10 palés del día, en qué lotería salió cada número y cuántos palés se han acertado frente al azar.', cuerpo });
