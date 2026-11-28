@@ -211,7 +211,7 @@ h2{font-size:1.3rem;margin:2.4em 0 .9em;display:flex;align-items:center;gap:10px
 h2:before{content:"";width:4px;height:1.1em;border-radius:3px;background:linear-gradient(var(--acento),var(--acento2))}
 h3{font-size:1.02rem;margin:0 0 .15em;font-weight:700}h3 a{color:var(--texto)}
 .sub{color:var(--suave);margin:0 0 1.2em}
-.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));grid-auto-flow:dense}.tarjeta.alta{grid-row:span 3}
 .tarjeta{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:18px 16px;min-height:128px;transition:transform .18s,border-color .18s,box-shadow .18s}
 .tarjeta:hover{transform:translateY(-3px);border-color:#36507f;box-shadow:0 12px 30px -14px rgba(34,211,238,.35)}
 .tarjeta p{margin:.8em 0 0}.tarjeta .hora{color:var(--suave);font-size:.82rem}
@@ -642,10 +642,9 @@ function paginaInicio(dias, series) {
   const kinoClave = (() => { for (let i = dias.length - 1; i >= 0; i--) { const o = dias[i].otros.find(x => /kino/i.test(x.nombre)); if (o) return o; } return null; })();
   const tarjetaKino = kinoClave ? (() => {
     const hoyK = dia && dia.otros.find(x => x.clave === kinoClave.clave);
-    return `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuegoHoy(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
+    return `<div class="tarjeta alta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuegoHoy(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
   })() : '';
-  const tarjetas = tarjetasDe(dia, conteo) + tarjetaKino;
-  const esKino = o => /kino/i.test(o.nombre);
+    const esKino = o => /kino/i.test(o.nombre);
   const otros = (() => {
     const hechos = new Set(dia ? dia.otros.map(o => o.clave) : []);
     const otrosHoy = dia ? dia.otros.filter(o => !esKino(o)) : [];
@@ -654,8 +653,10 @@ function paginaInicio(dias, series) {
     const hechas = otrosHoy.map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`);
     const pend = [...vistos.values()].filter(o => o.tipo !== 'cuarteta' && !/cuarteta/i.test(o.nombre)).map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p><span class="pend">Pendiente</span></p></div>`);
     const todas = hechas.concat(pend);
-    return todas.length ? `<h2>Otros juegos</h2><div class="rejilla">${todas.join('')}</div><p><a href="${url('/juegos/')}">Ver todos los juegos (Kino, Loto 5 y más) →</a></p>` : '';
+    return todas;
   })();
+  const tarjetas = tarjetasDe(dia, conteo) + tarjetaKino + otros.join('');
+  const otrosLink = otros.length || tarjetaKino ? `<p><a href="${url('/juegos/')}">Ver todos los juegos (Kino, Loto 5 y más) →</a></p>` : '';
   const reps = repsDe(repetidosDe(conteo), 'hoy', marcadosRadar(hoy));
 
   let previo = '';
@@ -672,7 +673,7 @@ function paginaInicio(dias, series) {
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 ${muroTeaser(dias)}${teaserCelebra(dias)}
 ${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
-${reps}${otros}${previo}
+${otrosLink}${reps}${previo}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
