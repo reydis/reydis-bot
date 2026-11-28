@@ -238,6 +238,7 @@ form.buscar button{padding:13px 22px;border:0;border-radius:12px;background:line
 footer{border-top:1px solid var(--borde);color:var(--suave);font-size:.88rem;background:rgba(0,0,0,.18)}
 footer .in{max-width:1120px;margin:auto;padding:28px 18px}
 .bola.ya{border-color:var(--bien);color:#03150e;background:radial-gradient(circle at 32% 28%,#6ee7b7,#059669);box-shadow:0 0 14px rgba(52,211,153,.4)} .celebra{display:flex;gap:12px;align-items:center;background:linear-gradient(180deg,rgba(5,150,105,.22),rgba(5,150,105,.08));border:1px solid var(--bien);border-radius:var(--r);padding:14px 16px;margin:18px 0}.celebra .fiesta{font-size:1.8rem;animation:salto 1.6s ease-in-out infinite}@keyframes salto{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}.radar-cta .bola.ya{animation:brilla 2s ease-in-out infinite}@keyframes brilla{0%,100%{box-shadow:0 0 14px rgba(52,211,153,.4)}50%{box-shadow:0 0 26px rgba(52,211,153,.9)}}
+.bola.ya.rep{border-color:#fde68a;color:#04130c;background:linear-gradient(135deg,#34d399 0 50%,#fbbf24 50% 100%);box-shadow:0 0 14px rgba(110,231,183,.4)}
 .lectura h3{margin:0 0 .3em}.dato{background:var(--panel);border:1px solid var(--borde);border-radius:var(--r);padding:12px 16px;margin:14px 0}a.tarjeta{display:block;color:inherit;text-decoration:none}
 .radar{text-align:center;min-height:0}.radar p{margin:.6em 0 0}.radar .bola{width:3.2em;height:3.2em;font-size:1.15rem}
 .radar-cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:16px 18px;margin:30px 0}
@@ -668,10 +669,10 @@ function paginaInicio(dias, series) {
   const tarjetasDe = (d, c) => LOTERIAS.filter(l => series[l.clave].length).map(l => {
     const nums = d && d.quinielas[l.clave];
     const marc = d ? marcadosRadar(d.fecha) : new Set();
-    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), marc.has(n) ? ' ya' : (c[n] && c[n].length >= 2 ? ' rep' : ''))).join('')}</span>` : `<span class="pend">Pendiente</span>`;
+    const cont = nums ? `<span class="bolas">${nums.map(n => bola(f2(n), (marc.has(n) ? ' ya' : '') + (c[n] && c[n].length >= 2 ? ' rep' : ''))).join('')}</span>` : `<span class="pend">Pendiente</span>`;
     return `<div class="tarjeta"><h3><a href="${url(`/loterias/${l.slug}/`)}">${esc(l.nombre)}</a></h3><div class="hora">${esc(horaHoy(l))}</div><p>${cont}</p></div>`;
   }).join('');
-  const repsDe = (rep, cuando, marc = new Set()) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), marc.has(+n) ? ' ya' : ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
+  const repsDe = (rep, cuando, marc = new Set()) => rep.length ? `<h2>⚡ Repetidos en varias loterías ${cuando}</h2><div class="tabla"><table><tr><th>Número</th><th>Salió en</th></tr>${rep.map(([n, ks]) => `<tr><td><a href="${url(`/numeros/${f2(n)}/`)}">${bola(f2(n), (marc.has(+n) ? ' ya' : '') + ' rep')}</a></td><td>${ks.map(k => esc(nombre(k))).join(', ')}</td></tr>`).join('')}</table></div>` : '';
 
   const conteo = conteoDe(dia);
   const kinoClave = (() => { for (let i = dias.length - 1; i >= 0; i--) { const o = dias[i].otros.find(x => /kino/i.test(x.nombre)); if (o) return o; } return null; })();
@@ -712,7 +713,7 @@ function paginaInicio(dias, series) {
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 ${muroTeaser(dias)}${teaserCelebra(dias)}
 ${verificadorTicket(dias)}
-${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
+${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería. Si la bola sale mitad verde y mitad dorada, es un número del día que además se repitió en varias loterías.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
 ${reps}${seccionEspeciales}${previo}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
