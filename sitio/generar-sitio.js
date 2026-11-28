@@ -211,7 +211,7 @@ h2{font-size:1.3rem;margin:2.4em 0 .9em;display:flex;align-items:center;gap:10px
 h2:before{content:"";width:4px;height:1.1em;border-radius:3px;background:linear-gradient(var(--acento),var(--acento2))}
 h3{font-size:1.02rem;margin:0 0 .15em;font-weight:700}h3 a{color:var(--texto)}
 .sub{color:var(--suave);margin:0 0 1.2em}
-.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));grid-auto-flow:dense}.tarjeta.alta{grid-row:span 3}
+.rejilla{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));grid-auto-flow:dense}.tarjeta.alta{grid-row:span 3}.tarjeta.herr{display:block;text-decoration:none;border-color:rgba(56,189,248,.35);background:linear-gradient(160deg,rgba(56,189,248,.10),rgba(129,140,248,.08))}.tarjeta.herr:hover{border-color:#38bdf8}.tarjeta.herr h3{font-size:.98rem}
 .tarjeta{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--borde);border-radius:var(--r);padding:18px 16px;min-height:128px;transition:transform .18s,border-color .18s,box-shadow .18s}
 .tarjeta:hover{transform:translateY(-3px);border-color:#36507f;box-shadow:0 12px 30px -14px rgba(34,211,238,.35)}
 .tarjeta p{margin:.8em 0 0}.tarjeta .hora{color:var(--suave);font-size:.82rem}
@@ -642,7 +642,7 @@ function paginaInicio(dias, series) {
   const kinoClave = (() => { for (let i = dias.length - 1; i >= 0; i--) { const o = dias[i].otros.find(x => /kino/i.test(x.nombre)); if (o) return o; } return null; })();
   const tarjetaKino = kinoClave ? (() => {
     const hoyK = dia && dia.otros.find(x => x.clave === kinoClave.clave);
-    return `<div class="tarjeta alta"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuegoHoy(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
+    return `<div class="tarjeta alta" style="grid-row:span __SPAN__"><h3><a href="${url('/juegos/' + slugJuego(kinoClave.clave) + '/')}">${esc(kinoClave.nombre)}</a></h3><div class="hora">${esc([kinoClave.empresa, kinoClave.hora || '8:55 PM'].filter(Boolean).join(' · '))}</div><p>${hoyK ? numerosJuegoHoy(hoyK) : '<span class="pend">Pendiente</span>'}</p></div>`;
   })() : '';
     const esKino = o => /kino/i.test(o.nombre);
   const otros = (() => {
@@ -655,8 +655,12 @@ function paginaInicio(dias, series) {
     const todas = hechas.concat(pend);
     return todas;
   })();
-  const tarjetas = tarjetasDe(dia, conteo) + tarjetaKino + otros.join('');
-  const otrosLink = otros.length || tarjetaKino ? `<p><a href="${url('/juegos/')}">Ver todos los juegos (Kino, Loto 5 y más) →</a></p>` : '';
+  const tarjetas = tarjetasDe(dia, conteo);
+  const herr = (ico, t, d, r) => `<a class="tarjeta herr" href="${url(r)}"><h3>${ico} ${esc(t)}</h3><p class="hora">${esc(d)}</p></a>`;
+  const seccionEspeciales = (tarjetaKino || otros.length) ? `<h2>🎰 Kino y juegos especiales</h2>
+<p class="leyenda">Super Kino TV, Loto, Pega 3 Más y los demás juegos de bolillas, con las herramientas para armar tus tickets.</p>
+<div class="rejilla">${tarjetaKino.replace('__SPAN__', Math.min(3, Math.ceil((otros.length + 3) / 4)))}${otros.join('')}${herr('🎯', 'Jugadas de Kino y Loto 5', 'Los números calientes de cada juego, con su récord real contra el azar.', '/jugadas-especiales/')}${herr('🎟️', 'Generador de tickets', 'Combinaciones al azar, calientes o atrasadas, ya con el rango de cada juego.', '/generador/')}${herr('🔬', '¿Le ganan al azar?', 'El laboratorio prueba cada juego contra el azar puro, sin promesas.', '/laboratorio/')}</div>
+<p><a href="${url('/juegos/')}">Ver todos los juegos y sus resultados →</a></p>` : '';
   const reps = repsDe(repetidosDe(conteo), 'hoy', marcadosRadar(hoy));
 
   let previo = '';
@@ -673,7 +677,7 @@ function paginaInicio(dias, series) {
 <p class="sub">Quinielas dominicanas y de afuera con estadísticas reales de los últimos ${VENTANA} sorteos. Sin promesas, solo datos.</p></section>
 ${muroTeaser(dias)}${teaserCelebra(dias)}
 ${TOP_RADAR.has(hoy) ? '<p class="leyenda">🟢 Los números en verde son los <strong>Números del día</strong> del Radar cuando salen en una lotería.</p>' : ''}<div class="rejilla">${tarjetas || '<p>Todavía no hay resultados.</p>'}</div>
-${otrosLink}${reps}${previo}
+${reps}${seccionEspeciales}${previo}
 ${tarjetaLectura(dias)}
 ${ctaTelegram()}
 <h2>Busca tu número</h2>
