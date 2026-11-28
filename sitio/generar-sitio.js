@@ -651,7 +651,7 @@ function paginaInicio(dias, series) {
     const desde = dias.slice(-14), vistos = new Map();
     desde.forEach(d => d.otros.forEach(o => { if (!esKino(o) && !hechos.has(o.clave) && !vistos.has(o.clave)) vistos.set(o.clave, o); }));
     const hechas = otrosHoy.map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p>${numerosJuego(o)}</p></div>`);
-    const pend = [...vistos.values()].filter(o => o.tipo !== 'cuarteta' && !/cuarteta/i.test(o.nombre)).map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p><span class="pend">Pendiente</span></p></div>`);
+    const pend = [...vistos.values()].map(o => `<div class="tarjeta"><h3><a href="${url('/juegos/' + slugJuego(o.clave) + '/')}">${esc(o.nombre)}</a></h3><div class="hora">${esc([o.empresa, o.hora].filter(Boolean).join(' · '))}</div><p><span class="pend">Pendiente</span></p></div>`);
     const todas = hechas.concat(pend);
     return todas;
   })();
@@ -659,8 +659,8 @@ function paginaInicio(dias, series) {
   const herr = (ico, t, d, r) => `<a class="tarjeta herr" href="${url(r)}"><h3>${ico} ${esc(t)}</h3><p class="hora">${esc(d)}</p></a>`;
   const seccionEspeciales = (tarjetaKino || otros.length) ? `<h2>🎰 Kino y juegos especiales</h2>
 <p class="leyenda">Super Kino TV, Loto, Pega 3 Más y los demás juegos de bolillas, con las herramientas para armar tus tickets.</p>
-<div class="rejilla">${tarjetaKino.replace('__SPAN__', Math.min(3, Math.ceil((otros.length + 3) / 4)))}${otros.join('')}${herr('🎯', 'Jugadas de Kino y Loto 5', 'Los números calientes de cada juego, con su récord real contra el azar.', '/jugadas-especiales/')}${herr('🎟️', 'Generador de tickets', 'Combinaciones al azar, calientes o atrasadas, ya con el rango de cada juego.', '/generador/')}${herr('🔬', '¿Le ganan al azar?', 'El laboratorio prueba cada juego contra el azar puro, sin promesas.', '/laboratorio/')}</div>
-<p><a href="${url('/juegos/')}">Ver todos los juegos y sus resultados →</a></p>` : '';
+<div class="rejilla">${tarjetaKino.replace('__SPAN__', Math.min(3, Math.ceil((otros.length + 4) / 4)))}${otros.join('')}${herr('🎯', 'Jugadas de Kino y Loto 5', 'Los números calientes de cada juego, con su récord real contra el azar.', '/jugadas-especiales/')}${herr('🎟️', 'Generador de tickets', 'Combinaciones al azar, calientes o atrasadas, ya con el rango de cada juego.', '/generador/')}${herr('🔬', '¿Le ganan al azar?', 'El laboratorio prueba cada juego contra el azar puro, sin promesas.', '/laboratorio/')}${herr('📚', 'Todos los juegos', 'Historial y últimos sorteos de Kino, Loto, Loto 5, Pega 3 y las cuartetas.', '/juegos/')}</div>
+` : '';
   const reps = repsDe(repetidosDe(conteo), 'hoy', marcadosRadar(hoy));
 
   let previo = '';
