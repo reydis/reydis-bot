@@ -265,7 +265,7 @@ a.boton{transition:transform .15s,filter .15s,box-shadow .15s}a.boton:hover{tran
 .muro-urg{border:1px solid var(--ojo);background:linear-gradient(180deg,rgba(251,191,36,.14),rgba(251,191,36,.04));border-radius:var(--r);padding:14px 16px;margin:14px 0}.muro-urg ul,.muro-lista{margin:8px 0 0;padding-left:18px}.muro-lista li{margin:6px 0}.muro-urg a,.muro-hoy a{display:inline-block;margin-top:8px}.muro-hoy{border:1px solid var(--borde);background:var(--panel);border-radius:var(--r);padding:12px 16px;margin:14px 0}.muro-hoy p{margin:6px 0}
 .menu .amplio{display:none}@media(min-width:1100px){.menu .amplio{display:inline-block}.menu .estrecho{display:none}}
 @media(max-width:560px){.menu{font-size:.88rem;gap:0}.menu a,.menu .mas summary{padding:6px 8px}.menu .mas div{left:0;right:auto}}
-.verif{background:var(--panel);border:1px solid var(--borde);border-radius:14px;padding:16px 18px;margin:18px 0}.verif h2{margin:0 0 10px;font-size:1.15rem}.verif form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}.verif label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--tenue,#94a3b8)}.verif select,.verif input{padding:10px 12px;border-radius:10px;border:1px solid var(--borde);background:#0b1020;color:#fff;font-size:1rem;min-width:140px}.verif label:not(.vfn){flex:1;min-width:120px}.verif label:not(.vfn) select{min-width:0;width:100%}.verif .vfn{flex:2 1 100%;min-width:150px}@media(min-width:760px){.verif .vfn{flex:2 1 200px}}.verif .vfn input{width:100%;box-sizing:border-box}.verif button{padding:11px 20px;border-radius:10px;border:0;background:linear-gradient(135deg,#38bdf8,#818cf8);color:#04101f;font-weight:700;font-size:1rem;cursor:pointer}.vfr{margin-top:10px}.vfr ul{list-style:none;padding:0;margin:0;display:grid;gap:6px}.vfr p{margin:6px 0}.vf-ok{color:#4ade80}.vf-no,.vf-aviso{color:#94a3b8}.verif .leyenda{margin:10px 0 0}
+.verif{background:var(--panel);border:1px solid var(--borde);border-radius:14px;padding:16px 18px;margin:18px 0}.verif h2{margin:0 0 10px;font-size:1.15rem}.verif form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}.verif label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--tenue,#94a3b8)}.verif select,.verif input{padding:10px 12px;border-radius:10px;border:1px solid var(--borde);background:#0b1020;color:#fff;font-size:1rem;min-width:140px}.verif label:not(.vfn){flex:1;min-width:120px}.verif label:not(.vfn) select{min-width:0;width:100%;text-overflow:ellipsis}.verif label:not(.vfn){min-width:150px}.verif label:nth-child(2){flex:1.6 1 190px}.verif .vfn{flex:2 1 100%;min-width:150px}@media(min-width:760px){.verif .vfn{flex:2 1 200px}}.verif .vfn input{width:100%;box-sizing:border-box}.verif button{padding:11px 20px;border-radius:10px;border:0;background:linear-gradient(135deg,#38bdf8,#818cf8);color:#04101f;font-weight:700;font-size:1rem;cursor:pointer}.vfr{margin-top:10px}.vfr ul{list-style:none;padding:0;margin:0;display:grid;gap:6px}.vfr p{margin:6px 0}.vf-ok{color:#4ade80}.vf-no,.vf-aviso{color:#94a3b8}.verif .leyenda{margin:10px 0 0}
 @media(max-width:560px){.hero{padding:26px 0 14px}.rejilla{gap:12px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}.bola{min-width:2.25em;height:2.25em}.cab .in{justify-content:center}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
@@ -632,15 +632,15 @@ function verificadorTicket(dias) {
   const json = JSON.stringify({ d: datos.reverse() }).replace(/</g, '\\u003c');
   const opts = `<option value="">Todas las quinielas</option><optgroup label="Quinielas">${quins.map(n => `<option>${esc(n)}</option>`).join('')}</optgroup><optgroup label="Kino, Loto y más">${espec.map(n => `<option value="@${esc(n)}">${esc(n)}</option>`).join('')}</optgroup>`;
   return `<section class="verif" id="verificar"><h2>🎟️ Verifica tu ticket</h2>
-<form id="vf" onsubmit="return false"><label>Día<select id="vfd"></select></label><label>Lotería<select id="vfl">${opts}</select></label><label class="vfn">Tus números<input id="vfn" inputmode="numeric" autocomplete="off" placeholder="Ej: 27 46 05"></label><button id="vfb" type="button">Verificar</button></form>
+<form id="vf" onsubmit="return false"><label>Día<select id="vfd"></select></label><label>Lotería<select id="vfl">${opts}</select></label><label class="vfn">Tus números<input id="vfn" inputmode="numeric" autocomplete="off" placeholder="Ej: 27, 46, 05" maxlength="22"></label><button id="vfb" type="button">Verificar</button></form>
 <div id="vfr" class="vfr" aria-live="polite"></div>
-<p class="leyenda">Con 2 números también revisa el palé. El premio depende de tu banca; aquí solo ves si salió y dónde.</p>
+<p class="leyenda">Escribe sin comas, se ponen solas. Con 2 números también revisa el palé. El premio depende de tu banca; aquí solo ves si salió y dónde.</p>
 <script>(function(){var D=${json}.d,$=function(i){return document.getElementById(i)},sd=$('vfd');
 D.forEach(function(x,i){var o=document.createElement('option');o.value=i;o.textContent=new Date(x.f+'T12:00:00').toLocaleDateString('es-DO',{weekday:'short',day:'numeric',month:'short'});sd.appendChild(o)});
 var f2=function(n){return (n<10?'0':'')+n},P=['1.er','2.º','3.er'];
-function go(){var d=D[+sd.value],sel=$('vfl').value,r=$('vfr'),ns=($('vfn').value.match(/\\d+/g)||[]).map(Number).filter(function(n){return n>=0&&n<=99});
+function go(fin){var d=D[+sd.value],sel=$('vfl').value,r=$('vfr'),ns=($('vfn').value.match(/\\d+/g)||[]).filter(function(t){return t.length===2||fin}).map(Number).filter(function(n){return n>=0&&n<=99});
 ns=ns.filter(function(n,i){return ns.indexOf(n)===i}).slice(0,6);
-if(!ns.length){r.innerHTML='<p class="vf-aviso">Escribe uno o más números del 00 al 99.</p>';return}
+if(!ns.length){r.innerHTML=fin?'<p class="vf-aviso">Escribe uno o más números del 00 al 99.</p>':'';return}
 var h='';
 if(sel.charAt(0)==='@'){var nm=sel.slice(1),j=d.o.filter(function(o){return o.n===nm})[0];
  if(!j){h='<p class="vf-aviso">'+nm+': todavía no hay resultado ese día.</p>'}
@@ -652,7 +652,8 @@ if(sel.charAt(0)==='@'){var nm=sel.slice(1),j=d.o.filter(function(o){return o.n=
   var pal=[];for(var a=0;a<ns.length;a++)for(var b=a+1;b<ns.length;b++)ks.forEach(function(k){if(d.q[k].indexOf(ns[a])>-1&&d.q[k].indexOf(ns[b])>-1)pal.push('<li>🎲 Palé <strong>'+f2(ns[a])+'-'+f2(ns[b])+'</strong> salió en '+k+'</li>')});
   h=lin.length||pal.length?'<ul class="vf-ok">'+lin.join('')+pal.join('')+'</ul>':'<p class="vf-no">Ninguno de tus números salió ese día'+(sel?' en '+sel:' en las '+ks.length+' quinielas con resultado')+'.</p>'}}
 r.innerHTML=h}
-$('vfb').onclick=go;$('vfn').onkeydown=function(e){if(e.key==='Enter')go()};})();</script></section>`;
+var vn=$('vfn');vn.addEventListener('input',function(){var g=vn.value.replace(/\\D/g,'').slice(0,12).match(/\\d{1,2}/g)||[];vn.value=g.join(', ');go(false)});
+sd.onchange=$('vfl').onchange=function(){go(true)};$('vfb').onclick=function(){go(true)};vn.onkeydown=function(e){if(e.key==='Enter')go(true)};})();</script></section>`;
 }
 
 function paginaInicio(dias, series) {
